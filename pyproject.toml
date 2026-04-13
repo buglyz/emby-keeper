@@ -1,0 +1,68 @@
+[build-system]
+requires = ["setuptools"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "embykeeper"
+version = "7.6.1"
+authors = [
+    {name = "jackzzs", email = "jackzzs@outlook.com"},
+]
+description = "Daily checkin automator for emby bots in telegram."
+keywords = [
+    "emby",
+    "telegram",
+    "checkin",
+    "automator",
+    "bot",
+    "telegram bot",
+    "keep active",
+]
+classifiers = [
+    "Development Status :: 5 - Production/Stable",
+    "Environment :: Console",
+    "Environment :: Web Environment",
+    "Intended Audience :: End Users/Desktop",
+    "Natural Language :: Chinese (Simplified)",
+    "License :: OSI Approved :: GNU General Public License v3 (GPLv3)",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.8",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+]
+requires-python = ">=3.8"
+dynamic = ["dependencies"]
+
+[project.urls]
+Homepage = "https://github.com/emby-keeper/emby-keeper"
+
+[project.readme]
+file = "README.md"
+content-type = "text/markdown"
+
+[project.scripts]
+embykeeper = "embykeeper.cli:app"
+embykeeperweb = "embykeeperweb.app:cli"
+
+[tool.setuptools]
+zip-safe = false
+
+[tool.setuptools.dynamic]
+dependencies = {file = ["requirements.txt"]}
+
+[tool.setuptools.packages]
+find = {namespaces = false}
+
+[tool.black]
+line-length = 110
+extend-exclude = '''
+# A regex preceded with ^/ will apply only to files and directories
+# in the root of the project.
+(
+  ^/config.example.toml
+  # | .*.toml
+)
+'''
