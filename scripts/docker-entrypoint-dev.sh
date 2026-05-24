@@ -15,8 +15,8 @@ else
     exit 1
 fi
 
-if [ -z "${EK_WEBPASS}" ]; then
-    exec "embykeeper" "--basedir" "/app" "$@"
+if [ -z "${EK_MODE}" ] || [ "${EK_MODE}" = "api" ]; then
+    exec "embykeeperapi" "--basedir" "/app" "$@"
 else
-    exec "embykeeperweb" "--basedir" "/app" "--public" "$@"
+    exec "embykeeper" "--basedir" "/app" "$@"
 fi

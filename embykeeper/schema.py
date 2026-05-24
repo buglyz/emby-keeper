@@ -123,7 +123,7 @@ class MediaServerBaseConfig(ConfigModel):
 class EmbyAccount(ConfigModel):
     url: UseHttpUrl
     username: str
-    password: str
+    password: Optional[str] = None
     name: str = None
     time: Optional[Union[int, List[int]]] = [300, 600]
     useragent: Optional[str] = None

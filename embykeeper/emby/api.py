@@ -209,6 +209,24 @@ class Emby:
         cache.set(f"emby.env.{self.hostname}.{self.a.username}", data)
         return env
 
+    def set_credentials(self, token: str, user_id: str = None):
+        self._token = token
+        self._user_id = user_id
+        cache_data = {"token": token}
+        if user_id:
+            cache_data["userid"] = user_id
+        cache.set(f"emby.credential.{self.hostname}.{self.a.username}", cache_data)
+
+    async def authenticate_with_token(self) -> bool:
+        if not self.token:
+            return False
+        resp = await self._request("GET", "/Users/Me", _login=True)
+        if resp.status_code != 200:
+            return False
+        user = resp.json()
+        self.set_credentials(self.token, user.get("Id"))
+        return bool(self.user_id)
+
     def build_headers(self):
         headers = {}
         auth_headers = {
@@ -257,7 +275,7 @@ class Emby:
             try:
                 async with self._get_session() as session:
                     resp: Response = await session.request(method, url, **kw)
-                    if resp.status_code == 401 and self.a.username and not _login:
+                    if resp.status_code == 401 and self.a.username and self.a.password and not _login:
                         if not await self.login():
                             raise EmbyLoginError("无法登陆到服务器")
                         continue
@@ -353,14 +371,8 @@ class Emby:
             return None
 
         user: dict = resp.json()
-        self._token = user.get("AccessToken", None)
-        self._user_id = user.get("User", {}).get("Id")
+        self.set_credentials(user.get("AccessToken", None), user.get("User", {}).get("Id"))
         if self.token and self.user_id:
-            cache_data = {
-                "token": self.token,
-                "userid": self.user_id,
-            }
-            cache.set(f"emby.credential.{self.hostname}.{self.a.username}", cache_data)
             return self.token
 
     async def play(self, item: Union[dict, int], time: float = 10):

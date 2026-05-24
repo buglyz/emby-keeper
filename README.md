@@ -68,7 +68,7 @@ docker compose up -d
 | `EK_WEBPASS` | 管理密码（用于 Web UI 密码登录） | 无 |
 | `EK_SECRET` | Fernet 加密密钥 / JWT 签名密钥 | 自动生成 |
 | `EK_BASEDIR` | 数据存储目录 | 系统默认 |
-| `EK_MODE` | 运行模式：`cli` / `web` / `api` | `cli` |
+| `EK_MODE` | 运行模式：`api` / `cli`，默认启动新 Web UI | `api` |
 | `PORT` | API 服务端口 | `1818` |
 
 ## Web UI 使用说明
@@ -113,8 +113,7 @@ docker compose up -d
 ```
 emby-keeper/
 ├── embykeeper/          # 核心 CLI 工具（签到、保活、Telegram 机器人）
-├── embykeeperweb/       # Flask Web UI（终端控制台 + TOML 编辑器）
-├── embykeeperapi/       # FastAPI Web UI（图形化管理平台，新增）
+├── embykeeperapi/       # FastAPI Web UI（图形化管理平台，默认入口）
 │   ├── app.py           # FastAPI 应用入口
 │   ├── auth.py          # JWT 认证
 │   ├── crypto.py        # Token 加密
@@ -134,13 +133,12 @@ emby-keeper/
 └── requirements.txt
 ```
 
-## 三种运行模式
+## 运行模式
 
 | 模式 | `EK_MODE` | 入口 | 说明 |
 |------|-----------|------|------|
+| API | `api` | `embykeeperapi` | FastAPI 图形化管理平台，Docker 默认启动 |
 | CLI | `cli` | `embykeeper` | 原始命令行工具 |
-| Web | `web` | `embykeeperweb` | Flask 终端 + TOML 编辑器 |
-| API | `api` | `embykeeperapi` | FastAPI 图形化管理平台 |
 
 ## 技术栈
 

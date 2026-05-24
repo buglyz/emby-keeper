@@ -135,7 +135,7 @@ run/noinstant: venv/require
 >   @"$(VENV)/bin/python" -m embykeeper
 
 run/web: venv/require
->   @"$(VENV)/bin/python" -m embykeeperweb --public
+>   @"$(VENV)/bin/python" -m embykeeperapi
 
 systemd: systemd/install
 
@@ -222,7 +222,7 @@ debugpy/cli: venv/require
 >   "$(VENV)/bin/python" -m debugpy --listen localhost:5678 --wait-for-client cli.py
 
 debugpy/web: venv/require
->   "$(VENV)/bin/python" -m debugpy --listen localhost:5678 --wait-for-client web.py --public
+>   "$(VENV)/bin/python" -m debugpy --listen localhost:5678 --wait-for-client -m embykeeperapi
 
 version: version/patch
 

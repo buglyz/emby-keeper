@@ -270,22 +270,15 @@ async def trigger_checkin(account_id: str, user: str = Depends(get_current_user)
 @router.post("/actions/watch-all", response_model=ActionResponse)
 async def watch_all(user: str = Depends(get_current_user)):
     """Trigger watch for all enabled accounts."""
-    if not bridge.emby_manager:
-        raise HTTPException(status_code=503, detail="Scheduler not initialized")
-
-    from embykeeper.runinfo import RunContext, RunStatus
-    ctx = RunContext.prepare(description="Manual watch all")
-
-    task = asyncio.create_task(
-        bridge.emby_manager._watch_main(
-            bridge.web_accounts.to_emby_accounts(),
-            instant=True,
-        ),
-        name="watch-all",
-    )
+    run_ids = []
+    for account_id, data in bridge.web_accounts.get_all().items():
+        if data.get("enabled", True):
+            result = await bridge.trigger_watch(account_id)
+            if result.get("run_id"):
+                run_ids.append(result["run_id"])
 
     return ActionResponse(
-        run_id=ctx.id,
-        status="started",
-        message="Watch all task started",
+        run_id=run_ids[0] if run_ids else "",
+        status="started" if run_ids else "skipped",
+        message=f"Started {len(run_ids)} watch task(s)",
     )

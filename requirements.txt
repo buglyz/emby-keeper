@@ -14,13 +14,7 @@ tgcrypto
 pillow>10.0.0
 thefuzz[speedup]
 aiocache
-flask==3.0.3
-flask-socketio==5.3.6
-flask-login==0.6.3
-simple-websocket
-eventlet
 cryptography
-werkzeug==3.0.3
 cachetools
 emoji
 numpy<2.0.0

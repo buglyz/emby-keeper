@@ -23,8 +23,8 @@
       "command": "embykeeper config.toml -d"
     },
     "embykeeper-web": {
-      "name": "Run embykeeper web console",
-      "command": "embykeeperweb --public",
+      "name": "Run embykeeper API web UI",
+      "command": "embykeeperapi --host 0.0.0.0",
       "preview": {
         "port": 1818
       }

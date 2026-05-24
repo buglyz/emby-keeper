@@ -67,36 +67,34 @@ class WebAccountData:
             del self._data[account_id]
             self._save()
 
+    def _get_account_token(self, data: dict) -> str:
+        encrypted_token = data.get("encrypted_token")
+        return decrypt_token(encrypted_token, self.basedir) if encrypted_token else ""
+
+    def _to_emby_account(self, data: dict) -> EmbyAccount:
+        account_dict = {
+            "url": data["url"],
+            "username": data["username"],
+            "password": "",
+            "name": data.get("name"),
+            "time": data.get("time", [300, 600]),
+            "allow_multiple": data.get("allow_multiple", True),
+            "allow_stream": data.get("allow_stream", False),
+            "use_proxy": data.get("use_proxy", True),
+            "play_id": data.get("play_id"),
+            "enabled": data.get("enabled", True),
+            "interval_days": data.get("interval_days"),
+            "time_range": data.get("time_range"),
+        }
+        account_dict = {k: v for k, v in account_dict.items() if v is not None}
+        return EmbyAccount(**account_dict)
+
     def to_emby_accounts(self) -> List[EmbyAccount]:
         """Convert web accounts to EmbyAccount objects for the scheduler."""
         accounts = []
         for aid, data in self._data.items():
             try:
-                # Decrypt the stored token for runtime use
-                encrypted_token = data.get("encrypted_token")
-                password = ""
-                if encrypted_token:
-                    password = decrypt_token(encrypted_token, self.basedir)
-
-                account_dict = {
-                    "url": data["url"],
-                    "username": data["username"],
-                    "password": password,
-                    "name": data.get("name"),
-                    "time": data.get("time", [300, 600]),
-                    "allow_multiple": data.get("allow_multiple", True),
-                    "allow_stream": data.get("allow_stream", False),
-                    "use_proxy": data.get("use_proxy", True),
-                    "play_id": data.get("play_id"),
-                    "enabled": data.get("enabled", True),
-                    "interval_days": data.get("interval_days"),
-                    "time_range": data.get("time_range"),
-                }
-
-                # Remove None values that EmbyAccount doesn't accept
-                account_dict = {k: v for k, v in account_dict.items() if v is not None}
-
-                accounts.append(EmbyAccount(**account_dict))
+                accounts.append(self._to_emby_account(data))
             except Exception as e:
                 logger.error(f"Failed to convert web account {aid}: {e}")
         return accounts
@@ -165,32 +163,59 @@ class SchedulerBridge:
         self.web_accounts.delete(account_id)
         self._merge_accounts()
 
+    def _prepare_emby(self, account_data: dict):
+        from embykeeper.emby.api import Emby
+
+        account = self.web_accounts._to_emby_account(account_data)
+        emby = Emby(account)
+        emby.set_credentials(self.web_accounts._get_account_token(account_data))
+        return emby, account
+
+    async def _authenticate_emby(self, emby) -> bool:
+        return await emby.authenticate_with_token()
+
     async def trigger_watch(self, account_id: str) -> dict:
         """Trigger an immediate watch for a specific account."""
         account_data = self.web_accounts.get(account_id)
         if not account_data:
             return {"error": "Account not found"}
 
-        accounts = self.web_accounts.to_emby_accounts()
-        account = None
-        for a in accounts:
-            spec = f"{a.username}@{a.name or a.url.host}"
-            if spec == account_id:
-                account = a
-                break
-
-        if not account:
-            return {"error": "Account not found in converted list"}
-
         from embykeeper.runinfo import RunContext, RunStatus
+
         ctx = RunContext.prepare(description=f"Manual watch: {account_id}")
         ctx.start(RunStatus.INITIALIZING)
 
-        task = asyncio.create_task(
-            self.emby_manager._watch_main([account], instant=True),
-            name=f"watch-{account_id}",
-        )
+        async def run_watch():
+            from embykeeper.emby.api import EmbyError
+
+            emby, account = self._prepare_emby(account_data)
+            try:
+                if not await self._authenticate_emby(emby):
+                    ctx.finish(RunStatus.FAIL, "Token authentication failed")
+                    return
+                if account.play_id:
+                    item = await emby.get_item(account.play_id)
+                    if not item or "Id" not in item:
+                        ctx.finish(RunStatus.FAIL, "Video item not found")
+                        return
+                    emby.items[item["Id"]] = item
+                else:
+                    await emby.load_main_page()
+                    if not emby.items:
+                        ctx.finish(RunStatus.FAIL, "No playable video found")
+                        return
+                if await emby.watch():
+                    ctx.finish(RunStatus.SUCCESS, "Watch successful")
+                else:
+                    ctx.finish(RunStatus.FAIL, "Watch failed")
+            except EmbyError as e:
+                ctx.finish(RunStatus.FAIL, str(e))
+            except Exception as e:
+                ctx.finish(RunStatus.ERROR, str(e))
+
+        task = asyncio.create_task(run_watch(), name=f"watch-{account_id}")
         self._running_tasks[account_id] = task
+        task.add_done_callback(lambda _: self._running_tasks.pop(account_id, None))
 
         return {"run_id": ctx.id, "status": "started"}
 
@@ -200,32 +225,19 @@ class SchedulerBridge:
         if not account_data:
             return {"error": "Account not found"}
 
-        accounts = self.web_accounts.to_emby_accounts()
-        account = None
-        for a in accounts:
-            spec = f"{a.username}@{a.name or a.url.host}"
-            if spec == account_id:
-                account = a
-                break
-
-        if not account:
-            return {"error": "Account not found"}
-
-        from embykeeper.emby.api import Emby
         from embykeeper.runinfo import RunContext, RunStatus
 
         ctx = RunContext.prepare(description=f"Login test: {account_id}")
         ctx.start(RunStatus.INITIALIZING)
 
-        emby = Emby(account)
+        emby, _ = self._prepare_emby(account_data)
         try:
-            result = await emby.login()
-            if result:
-                ctx.finish(RunStatus.SUCCESS, "Login successful")
-                return {"run_id": ctx.id, "status": "success", "message": "Login successful"}
+            if await self._authenticate_emby(emby):
+                ctx.finish(RunStatus.SUCCESS, "Token authentication successful")
+                return {"run_id": ctx.id, "status": "success", "message": "Token authentication successful"}
             else:
-                ctx.finish(RunStatus.FAIL, "Login failed")
-                return {"run_id": ctx.id, "status": "failed", "message": "Login failed - invalid credentials"}
+                ctx.finish(RunStatus.FAIL, "Token authentication failed")
+                return {"run_id": ctx.id, "status": "failed", "message": "Token authentication failed"}
         except Exception as e:
             ctx.finish(RunStatus.ERROR, f"Login error: {e}")
             return {"run_id": ctx.id, "status": "error", "message": str(e)}
@@ -240,28 +252,16 @@ class SchedulerBridge:
         if not plugin_id:
             return {"error": "No check-in plugin configured for this account"}
 
-        accounts = self.web_accounts.to_emby_accounts()
-        account = None
-        for a in accounts:
-            spec = f"{a.username}@{a.name or a.url.host}"
-            if spec == account_id:
-                account = a
-                break
-
-        if not account:
-            return {"error": "Account not found"}
-
-        from embykeeper.emby.api import Emby
         from embykeeper.runinfo import RunContext, RunStatus
 
         ctx = RunContext.prepare(description=f"Check-in: {account_id}")
         ctx.start(RunStatus.INITIALIZING)
 
-        emby = Emby(account)
+        emby, _ = self._prepare_emby(account_data)
         try:
-            if not await emby.login():
-                ctx.finish(RunStatus.FAIL, "Login failed for check-in")
-                return {"run_id": ctx.id, "status": "failed", "message": "Login failed"}
+            if not await self._authenticate_emby(emby):
+                ctx.finish(RunStatus.FAIL, "Token authentication failed for check-in")
+                return {"run_id": ctx.id, "status": "failed", "message": "Token authentication failed"}
 
             resp = await emby._request(
                 "POST",
@@ -284,19 +284,12 @@ class SchedulerBridge:
         if not account_data:
             return {}
 
-        hostname = account_data.get("url", "")
-        username = account_data.get("username", "")
-
-        # Check credential cache for login/watch status
-        credential = cache.get(f"emby.credential.{hostname}.{username}", {})
-        env = cache.get(f"emby.env.{hostname}.{username}", {})
-
         is_running = account_id in self._running_tasks
-        has_token = bool(credential.get("token"))
+        has_token = bool(account_data.get("encrypted_token"))
 
         return {
             "has_token": has_token,
-            "is_online": has_token,  # Approximate: if we have a cached token, likely online
+            "is_online": has_token,  # Token validity is checked by the login test action.
             "is_running": is_running,
             "last_login_time": None,
             "last_watch_time": None,
