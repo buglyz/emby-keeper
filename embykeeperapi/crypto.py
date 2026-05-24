@@ -37,6 +37,10 @@ def _get_key(basedir: Path) -> bytes:
         return key_file.read_bytes().strip()
     key = Fernet.generate_key()
     key_file.write_bytes(key)
+    try:
+        os.chmod(key_file, 0o600)
+    except OSError:
+        pass
     return key
 
 

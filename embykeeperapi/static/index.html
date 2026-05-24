@@ -70,7 +70,11 @@
           throw new Error('Unauthorized');
         }
         const text = await resp.text();
-        const data = text ? JSON.parse(text) : null;
+        let data = null;
+        if (text) {
+          try { data = JSON.parse(text); }
+          catch (e) { data = { detail: text }; }
+        }
         if (!resp.ok) throw new Error((data && data.detail) || 'Request failed');
         return data;
       },
@@ -104,7 +108,7 @@
 
       // Schedule & Status
       getSchedule() { return this.get('/api/schedule'); },
-      runNow(id) { return this.post(`/api/schedule/${id}/run-now`); },
+      runNow(id) { return this.post(`/api/schedule/${encodeURIComponent(id)}/run-now`); },
       getStatus() { return this.get('/api/status'); },
       healthz() { return this.get('/healthz'); },
 
@@ -734,13 +738,13 @@
           saving.value = true;
           try {
             await API.updateConfig({
-              emby_time_range: editConfig.emby_time_range || undefined,
-              emby_interval_days: editConfig.emby_interval_days || undefined,
-              emby_concurrency: editConfig.emby_concurrency || undefined,
+              emby_time_range: editConfig.emby_time_range || null,
+              emby_interval_days: editConfig.emby_interval_days || null,
+              emby_concurrency: editConfig.emby_concurrency || null,
               proxy: {
-                hostname: editConfig.proxy_hostname || undefined,
-                port: editConfig.proxy_port || undefined,
-                scheme: editConfig.proxy_scheme || undefined,
+                hostname: editConfig.proxy_hostname || null,
+                port: editConfig.proxy_port || null,
+                scheme: editConfig.proxy_scheme || null,
               },
             });
             message.success('配置已保存');

@@ -1,5 +1,7 @@
 import hashlib
+import hmac
 import os
+import secrets
 import time
 from datetime import datetime, timedelta
 
@@ -30,7 +32,7 @@ def _get_jwt_secret() -> str:
     token = os.environ.get("EK_TOKEN")
     if token:
         return hashlib.sha256(token.encode()).hexdigest()
-    return "embykeeper-default-secret-change-me"
+    return secrets.token_urlsafe(32)
 
 
 JWT_SECRET = _get_jwt_secret()
@@ -61,12 +63,16 @@ async def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(s
     return payload.get("sub", "admin")
 
 
+def _constant_time_equal(value: str, expected: str) -> bool:
+    return hmac.compare_digest(value.encode(), expected.encode())
+
+
 def validate_pre_shared_token(token: str) -> bool:
     """Validate a pre-shared token against EK_TOKEN env var."""
     expected = os.environ.get("EK_TOKEN")
     if not expected:
         return False
-    return token == expected
+    return _constant_time_equal(token, expected)
 
 
 def validate_password(password: str) -> bool:
@@ -74,7 +80,7 @@ def validate_password(password: str) -> bool:
     expected = os.environ.get("EK_WEBPASS")
     if not expected:
         return False
-    return password == expected
+    return _constant_time_equal(password, expected)
 
 
 def check_rate_limit(ip: str) -> bool:

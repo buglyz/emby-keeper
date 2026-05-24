@@ -7,6 +7,10 @@ from embykeeper.config import config
 router = APIRouter(prefix="/api/config", tags=["config"])
 
 
+def _model_fields_set(model) -> set:
+    return getattr(model, "model_fields_set", getattr(model, "__fields_set__", set()))
+
+
 @router.get("", response_model=GlobalConfigResponse)
 async def get_config(user: str = Depends(get_current_user)):
     """Read current global config (sensitive fields masked)."""
@@ -34,23 +38,25 @@ async def update_config(req: GlobalConfigUpdate, user: str = Depends(get_current
 
     new_config = config._cache.model_copy()
 
-    # Update Emby config
-    if req.emby_time_range:
+    fields_set = _model_fields_set(req)
+
+    if "emby_time_range" in fields_set:
         new_config.emby.time_range = req.emby_time_range
-    if req.emby_interval_days:
+    if "emby_interval_days" in fields_set:
         new_config.emby.interval_days = req.emby_interval_days
-    if req.emby_concurrency:
+    if "emby_concurrency" in fields_set:
         new_config.emby.concurrency = req.emby_concurrency
 
-    # Update proxy config
-    if req.proxy:
+    if "proxy" in fields_set and req.proxy is not None:
         from embykeeper.schema import ProxyConfig
+
         existing_proxy = new_config.proxy or ProxyConfig()
-        if req.proxy.hostname:
+        proxy_fields_set = _model_fields_set(req.proxy)
+        if "hostname" in proxy_fields_set:
             existing_proxy.hostname = req.proxy.hostname
-        if req.proxy.port:
+        if "port" in proxy_fields_set:
             existing_proxy.port = req.proxy.port
-        if req.proxy.scheme:
+        if "scheme" in proxy_fields_set:
             existing_proxy.scheme = req.proxy.scheme
         new_config.proxy = existing_proxy
 

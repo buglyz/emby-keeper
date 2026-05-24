@@ -34,7 +34,7 @@ async def list_schedule(user: str = Depends(get_current_user)):
     ]
 
 
-@router.post("/api/schedule/{schedule_id}/run-now")
+@router.post("/api/schedule/{schedule_id:path}/run-now")
 async def run_now(schedule_id: str, user: str = Depends(get_current_user)):
     """Force immediate execution of a scheduled task."""
     account_spec = schedule_id.replace("emby.watch.", "") if schedule_id.startswith("emby.watch.") else schedule_id
