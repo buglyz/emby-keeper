@@ -1,17 +1,14 @@
 import asyncio
 import json
-import uuid
-from datetime import datetime
 from pathlib import Path
 from typing import Dict, List, Optional
 
 from loguru import logger
 
 from embykeeper.config import config
-from embykeeper.schema import EmbyAccount, EmbyConfig, Config
-from embykeeper.cache import cache
+from embykeeper.schema import EmbyAccount
 
-from .crypto import encrypt_token, decrypt_token
+from .crypto import decrypt_token
 
 
 logger = logger.bind(scheme="embykeeperapi")
@@ -41,8 +38,10 @@ class WebAccountData:
 
     def _save(self):
         filepath = self.basedir / WEB_ACCOUNTS_FILE
-        with open(filepath, "w", encoding="utf-8") as f:
+        tmp_path = filepath.with_suffix(f"{filepath.suffix}.tmp")
+        with open(tmp_path, "w", encoding="utf-8") as f:
             json.dump(self._data, f, ensure_ascii=False, indent=2)
+        tmp_path.replace(filepath)
 
     def get_all(self) -> Dict[str, dict]:
         return self._data.copy()
@@ -106,6 +105,7 @@ class SchedulerBridge:
     def __init__(self):
         self.emby_manager = None
         self.web_accounts: WebAccountData = None
+        self._base_emby_accounts: List[EmbyAccount] = []
         self._running_tasks: Dict[str, asyncio.Task] = {}
         self._initialized = False
 
@@ -117,6 +117,7 @@ class SchedulerBridge:
         # Load existing config
         config.basedir = basedir
         await config.reload_conf()
+        self._base_emby_accounts = list(config.emby.account)
 
         # Merge web-managed accounts into the config
         self._merge_accounts()
@@ -138,9 +139,8 @@ class SchedulerBridge:
 
         web_accounts = self.web_accounts.to_emby_accounts()
 
-        # Combine CLI accounts + web accounts
-        existing_accounts = list(config.emby.account)
-        all_accounts = existing_accounts + web_accounts
+        # Combine original CLI accounts + current web accounts
+        all_accounts = self._base_emby_accounts + web_accounts
 
         # Update config
         new_config = config._cache.model_copy(update={
@@ -313,9 +313,10 @@ class SchedulerBridge:
 
     async def shutdown(self):
         """Cleanup on shutdown."""
-        for task in self._running_tasks.values():
+        tasks = list(self._running_tasks.values())
+        for task in tasks:
             task.cancel()
-        for task in self._running_tasks.values():
+        for task in tasks:
             try:
                 await task
             except asyncio.CancelledError:

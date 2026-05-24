@@ -27,7 +27,9 @@ def _get_jwt_secret() -> str:
     webpass = os.environ.get("EK_WEBPASS")
     if webpass:
         return hashlib.sha256(webpass.encode()).hexdigest()
-    # Fallback: auto-generated secret stored in basedir (handled by crypto.py)
+    token = os.environ.get("EK_TOKEN")
+    if token:
+        return hashlib.sha256(token.encode()).hexdigest()
     return "embykeeper-default-secret-change-me"
 
 
