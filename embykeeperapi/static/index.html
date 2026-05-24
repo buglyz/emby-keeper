@@ -62,15 +62,16 @@
       },
       async request(method, path, body = null) {
         const opts = { method, headers: this._getHeaders() };
-        if (body) opts.body = JSON.stringify(body);
+        if (body !== null) opts.body = JSON.stringify(body);
         const resp = await fetch(`${this.baseUrl}${path}`, opts);
         if (resp.status === 401) {
           sessionStorage.removeItem('ek_jwt');
           window.location.hash = '#/login';
           throw new Error('Unauthorized');
         }
-        const data = await resp.json();
-        if (!resp.ok) throw new Error(data.detail || 'Request failed');
+        const text = await resp.text();
+        const data = text ? JSON.parse(text) : null;
+        if (!resp.ok) throw new Error((data && data.detail) || 'Request failed');
         return data;
       },
       get(path) { return this.request('GET', path); },
@@ -86,17 +87,19 @@
       verifyToken() { return this.get('/api/auth/me'); },
 
       // Servers
+      encodeId(id) { return encodeURIComponent(id); },
+      serverPath(id, suffix = '') { return `/api/servers/${this.encodeId(id)}${suffix}`; },
       listServers() { return this.get('/api/servers'); },
-      getServer(id) { return this.get(`/api/servers/${id}`); },
+      getServer(id) { return this.get(this.serverPath(id)); },
       createServer(data) { return this.post('/api/servers', data); },
-      updateServer(id, data) { return this.put(`/api/servers/${id}`, data); },
-      deleteServer(id) { return this.delete(`/api/servers/${id}`); },
-      toggleServer(id, enabled) { return this.patch(`/api/servers/${id}/toggle`, { enabled }); },
+      updateServer(id, data) { return this.put(this.serverPath(id), data); },
+      deleteServer(id) { return this.delete(this.serverPath(id)); },
+      toggleServer(id, enabled) { return this.patch(this.serverPath(id, '/toggle'), { enabled }); },
 
       // Actions
-      triggerLogin(id) { return this.post(`/api/servers/${id}/login`); },
-      triggerWatch(id) { return this.post(`/api/servers/${id}/watch`); },
-      triggerCheckin(id) { return this.post(`/api/servers/${id}/checkin`); },
+      triggerLogin(id) { return this.post(this.serverPath(id, '/login')); },
+      triggerWatch(id) { return this.post(this.serverPath(id, '/watch')); },
+      triggerCheckin(id) { return this.post(this.serverPath(id, '/checkin')); },
       watchAll() { return this.post('/api/servers/actions/watch-all'); },
 
       // Schedule & Status
@@ -236,7 +239,7 @@
               <n-empty description="暂无服务器，点击"添加服务器"开始" />
             </div>
             <div v-else class="server-grid">
-              <n-card v-for="s in servers" :key="s.id" size="small" hoverable @click="$router.push('/servers/' + s.id)">
+              <n-card v-for="s in servers" :key="s.id" size="small" hoverable @click="$router.push('/servers/' + API.encodeId(s.id))">
                 <template #header>
                   <n-space align="center" :size="8">
                     <span class="status-dot" :class="s.is_online ? 'online' : (s.is_running ? 'running' : 'offline')" />
@@ -325,7 +328,7 @@
         });
         onUnmounted(() => { if (pollTimer) clearInterval(pollTimer); });
 
-        return { servers, status, loading, actionLoading, handleLogin, handleWatch, handleCheckin, handleWatchAll };
+        return { API, servers, status, loading, actionLoading, handleLogin, handleWatch, handleCheckin, handleWatchAll };
       }
     };
 
@@ -388,6 +391,11 @@
             <n-space vertical :size="12">
               <n-switch v-model:value="form.use_proxy"><template #checked>使用代理</template><template #unchecked>不使用代理</template></n-switch>
               <n-input v-model:value="form.play_id" placeholder="指定视频 ID（可选）" />
+              <n-input v-model:value="form.useragent" placeholder="User-Agent（可选）" />
+              <n-input v-model:value="form.client" placeholder="客户端名称（可选）" />
+              <n-input v-model:value="form.client_version" placeholder="客户端版本（可选）" />
+              <n-input v-model:value="form.device" placeholder="设备名称（可选）" />
+              <n-input v-model:value="form.device_id" placeholder="设备 ID（可选）" />
             </n-space>
 
             <n-divider />
@@ -418,6 +426,7 @@
           allow_multiple: true, allow_stream: false, use_proxy: true,
           enabled: true, play_id: '',
           interval_days: '', time_range: '', checkin_plugin_id: '',
+          useragent: '', client: '', client_version: '', device: '', device_id: '',
         });
 
         onMounted(async () => {
@@ -436,6 +445,11 @@
               form.interval_days = server.interval_days || '';
               form.time_range = server.time_range || '';
               form.checkin_plugin_id = server.checkin_plugin_id || '';
+              form.useragent = server.useragent || '';
+              form.client = server.client || '';
+              form.client_version = server.client_version || '';
+              form.device = server.device || '';
+              form.device_id = server.device_id || '';
               if (Array.isArray(server.time)) {
                 form.time_min = server.time[0] || 300;
                 form.time_max = server.time[1] || 600;
@@ -465,6 +479,11 @@
             interval_days: form.interval_days || null,
             time_range: form.time_range || null,
             checkin_plugin_id: form.checkin_plugin_id || null,
+            useragent: form.useragent || null,
+            client: form.client || null,
+            client_version: form.client_version || null,
+            device: form.device || null,
+            device_id: form.device_id || null,
           };
           try {
             if (isEdit.value) {
@@ -493,7 +512,7 @@
               <template #header-extra>
                 <n-space>
                   <n-tag :type="server.enabled ? 'success' : 'default'">{{ server.enabled ? '启用' : '禁用' }}</n-tag>
-                  <n-button text @click="$router.push('/servers/' + server.id + '/edit')">编辑</n-button>
+                  <n-button text @click="$router.push('/servers/' + API.encodeId(server.id) + '/edit')">编辑</n-button>
                   <n-button text @click="$router.back()">返回</n-button>
                 </n-space>
               </template>
@@ -528,6 +547,11 @@
                 <n-descriptions-item label="时间范围">{{ server.time_range || '跟随全局' }}</n-descriptions-item>
                 <n-descriptions-item label="签到插件">{{ server.checkin_plugin_id || '未配置' }}</n-descriptions-item>
                 <n-descriptions-item label="使用代理">{{ server.use_proxy ? '是' : '否' }}</n-descriptions-item>
+                <n-descriptions-item label="User-Agent">{{ server.useragent || '默认' }}</n-descriptions-item>
+                <n-descriptions-item label="客户端">{{ server.client || '默认' }}</n-descriptions-item>
+                <n-descriptions-item label="客户端版本">{{ server.client_version || '默认' }}</n-descriptions-item>
+                <n-descriptions-item label="设备名称">{{ server.device || '默认' }}</n-descriptions-item>
+                <n-descriptions-item label="设备 ID">{{ server.device_id || '默认' }}</n-descriptions-item>
               </n-descriptions>
 
               <n-divider />
@@ -600,7 +624,7 @@
         }
 
         onMounted(loadData);
-        return { server, loading, actionLoading, handleWatch, handleLogin, handleCheckin, handleToggle, handleDelete };
+        return { API, server, loading, actionLoading, handleWatch, handleLogin, handleCheckin, handleToggle, handleDelete };
       }
     };
 

@@ -7,6 +7,7 @@ from ..auth import (
     validate_pre_shared_token,
     create_jwt,
     check_rate_limit,
+    clear_failed_attempts,
     record_failed_attempt,
     get_current_user,
     DEFAULT_EXPIRE_DAYS,
@@ -49,6 +50,7 @@ async def login_with_password(req: PasswordLoginRequest, request: Request):
             detail="Invalid password",
         )
 
+    clear_failed_attempts(client_ip)
     jwt_token = create_jwt(subject="admin", expire_days=DEFAULT_EXPIRE_DAYS)
     return LoginResponse(
         access_token=jwt_token,

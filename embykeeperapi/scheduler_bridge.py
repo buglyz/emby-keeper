@@ -53,13 +53,26 @@ class WebAccountData:
         self._data[account_id] = data
         self._save()
 
-    def update(self, account_id: str, data: dict):
-        if account_id in self._data:
-            # Merge updates
-            for k, v in data.items():
-                if v is not None:
-                    self._data[account_id][k] = v
-            self._save()
+    def update(self, account_id: str, data: dict, new_account_id: Optional[str] = None) -> Optional[str]:
+        if account_id not in self._data:
+            return None
+
+        target_id = new_account_id or account_id
+        if target_id != account_id and target_id in self._data:
+            return None
+
+        account_data = self._data[account_id].copy()
+        for k, v in data.items():
+            if v is None:
+                account_data.pop(k, None)
+            else:
+                account_data[k] = v
+
+        if target_id != account_id:
+            del self._data[account_id]
+        self._data[target_id] = account_data
+        self._save()
+        return target_id
 
     def delete(self, account_id: str):
         if account_id in self._data:
@@ -79,6 +92,11 @@ class WebAccountData:
             "time": data.get("time", [300, 600]),
             "allow_multiple": data.get("allow_multiple", True),
             "allow_stream": data.get("allow_stream", False),
+            "useragent": data.get("useragent"),
+            "client": data.get("client"),
+            "client_version": data.get("client_version"),
+            "device": data.get("device"),
+            "device_id": data.get("device_id"),
             "use_proxy": data.get("use_proxy", True),
             "play_id": data.get("play_id"),
             "enabled": data.get("enabled", True),
@@ -153,10 +171,12 @@ class SchedulerBridge:
         self.web_accounts.add(account_id, data)
         self._merge_accounts()
 
-    def update_account(self, account_id: str, data: dict):
+    def update_account(self, account_id: str, data: dict, new_account_id: Optional[str] = None) -> Optional[str]:
         """Update an existing account via the web API."""
-        self.web_accounts.update(account_id, data)
-        self._merge_accounts()
+        updated_id = self.web_accounts.update(account_id, data, new_account_id)
+        if updated_id:
+            self._merge_accounts()
+        return updated_id
 
     def delete_account(self, account_id: str):
         """Delete an account via the web API."""

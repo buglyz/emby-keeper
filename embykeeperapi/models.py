@@ -90,6 +90,11 @@ class EmbyServerResponse(BaseModel):
     interval_days: Optional[str] = None
     time_range: Optional[str] = None
     checkin_plugin_id: Optional[str] = None
+    useragent: Optional[str] = None
+    client: Optional[str] = None
+    client_version: Optional[str] = None
+    device: Optional[str] = None
+    device_id: Optional[str] = None
     # Status fields (populated from runtime data)
     has_token: bool = False
     is_online: Optional[bool] = None

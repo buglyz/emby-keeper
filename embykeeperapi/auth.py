@@ -93,3 +93,8 @@ def record_failed_attempt(ip: str):
     if ip not in _failed_attempts:
         _failed_attempts[ip] = []
     _failed_attempts[ip].append(now)
+
+
+def clear_failed_attempts(ip: str):
+    """Clear failed login attempts after a successful login."""
+    _failed_attempts.pop(ip, None)

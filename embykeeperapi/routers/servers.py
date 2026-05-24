@@ -1,5 +1,3 @@
-import asyncio
-import uuid
 from typing import List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, status
@@ -23,11 +21,15 @@ router = APIRouter(prefix="/api/servers", tags=["servers"])
 
 def _make_account_id(username: str, name: Optional[str], url: str) -> str:
     """Generate account ID matching EmbyManager.get_spec pattern."""
-    # Parse host from URL
     from urllib.parse import urlparse
+
     parsed = urlparse(url)
     host = parsed.hostname or url
     return f"{username}@{name or host}"
+
+
+def _model_fields_set(model) -> set:
+    return getattr(model, "model_fields_set", getattr(model, "__fields_set__", set()))
 
 
 def _account_data_to_response(account_id: str, data: dict) -> EmbyServerResponse:
@@ -48,6 +50,11 @@ def _account_data_to_response(account_id: str, data: dict) -> EmbyServerResponse
         interval_days=data.get("interval_days"),
         time_range=data.get("time_range"),
         checkin_plugin_id=data.get("checkin_plugin_id"),
+        useragent=data.get("useragent"),
+        client=data.get("client"),
+        client_version=data.get("client_version"),
+        device=data.get("device"),
+        device_id=data.get("device_id"),
         has_token=status_data.get("has_token", bool(data.get("encrypted_token"))),
         is_online=status_data.get("is_online"),
         last_login_time=status_data.get("last_login_time"),
@@ -65,7 +72,7 @@ async def list_servers(user: str = Depends(get_current_user)):
     return [_account_data_to_response(aid, data) for aid, data in accounts.items()]
 
 
-@router.get("/{account_id}", response_model=EmbyServerResponse)
+@router.get("/{account_id:path}", response_model=EmbyServerResponse)
 async def get_server(account_id: str, user: str = Depends(get_current_user)):
     """Get a single Emby server account detail."""
     data = bridge.web_accounts.get(account_id)
@@ -136,6 +143,11 @@ async def create_server(req: EmbyServerCreate, user: str = Depends(get_current_u
         "interval_days": req.interval_days,
         "time_range": req.time_range,
         "checkin_plugin_id": req.checkin_plugin_id,
+        "useragent": req.useragent,
+        "client": req.client,
+        "client_version": req.client_version,
+        "device": req.device,
+        "device_id": req.device_id,
     }
 
     # Remove None values
@@ -146,7 +158,7 @@ async def create_server(req: EmbyServerCreate, user: str = Depends(get_current_u
     return _account_data_to_response(account_id, bridge.web_accounts.get(account_id))
 
 
-@router.put("/{account_id}", response_model=EmbyServerResponse)
+@router.put("/{account_id:path}", response_model=EmbyServerResponse)
 async def update_server(
     account_id: str,
     req: EmbyServerUpdate,
@@ -158,26 +170,45 @@ async def update_server(
         raise HTTPException(status_code=404, detail="Server not found")
 
     update_data = {}
+    fields_set = _model_fields_set(req)
 
-    # Handle auth method update
-    if req.auth_method == "token" and req.access_token:
+    simple_fields = [
+        "url", "username", "name", "time", "allow_multiple", "allow_stream",
+        "use_proxy", "play_id", "enabled", "interval_days", "time_range",
+        "checkin_plugin_id", "useragent", "client", "client_version", "device", "device_id",
+    ]
+    for field in simple_fields:
+        if field in fields_set:
+            value = getattr(req, field)
+            if field in {"url", "username"} and not value:
+                raise HTTPException(status_code=400, detail=f"{field} cannot be empty")
+            update_data[field] = value
+
+    auth_method = req.auth_method
+    if auth_method is not None:
+        if auth_method not in {"token", "password"}:
+            raise HTTPException(status_code=400, detail="auth_method must be 'token' or 'password'")
+        if auth_method != existing.get("auth_method", "token") and not (req.access_token or req.password):
+            raise HTTPException(status_code=400, detail="New credentials are required when changing auth_method")
+
+    if req.access_token:
         update_data["auth_method"] = "token"
-        update_data["encrypted_token"] = encrypt_token(
-            req.access_token, bridge.web_accounts.basedir
-        )
-    elif req.auth_method == "password" and req.password:
-        # Exchange new password for token
+        update_data["encrypted_token"] = encrypt_token(req.access_token, bridge.web_accounts.basedir)
+    elif auth_method == "token" and existing.get("auth_method", "token") != "token":
+        raise HTTPException(status_code=400, detail="access_token is required when auth_method is 'token'")
+
+    if req.password:
         from embykeeper.emby.api import Emby
         from embykeeper.schema import EmbyAccount
 
-        url = req.url or existing["url"]
-        username = req.username or existing["username"]
+        url = update_data.get("url") or existing["url"]
+        username = update_data.get("username") or existing["username"]
 
         temp_account = EmbyAccount(
             url=url,
             username=username,
             password=req.password,
-            name=existing.get("name"),
+            name=update_data.get("name", existing.get("name")),
         )
         emby = Emby(temp_account)
         token_result = await emby.login()
@@ -187,27 +218,26 @@ async def update_server(
                 detail="Failed to authenticate with Emby server. Check username and password.",
             )
         update_data["auth_method"] = "password"
-        update_data["encrypted_token"] = encrypt_token(
-            token_result, bridge.web_accounts.basedir
-        )
-        # Password discarded after exchange
+        update_data["encrypted_token"] = encrypt_token(token_result, bridge.web_accounts.basedir)
+    elif auth_method == "password" and existing.get("auth_method", "token") != "password":
+        raise HTTPException(status_code=400, detail="password is required when auth_method is 'password'")
 
-    # Update other fields
-    simple_fields = [
-        "url", "username", "name", "time", "allow_multiple", "allow_stream",
-        "use_proxy", "play_id", "enabled", "interval_days", "time_range",
-        "checkin_plugin_id",
-    ]
-    for field in simple_fields:
-        if getattr(req, field) is not None:
-            update_data[field] = getattr(req, field)
+    new_account_id = _make_account_id(
+        update_data.get("username", existing["username"]),
+        update_data.get("name", existing.get("name")),
+        update_data.get("url", existing["url"]),
+    )
+    if new_account_id != account_id and bridge.web_accounts.get(new_account_id):
+        raise HTTPException(status_code=409, detail="Server with this ID already exists")
 
-    bridge.update_account(account_id, update_data)
+    updated_id = bridge.update_account(account_id, update_data, new_account_id)
+    if not updated_id:
+        raise HTTPException(status_code=409, detail="Server with this ID already exists")
 
-    return _account_data_to_response(account_id, bridge.web_accounts.get(account_id))
+    return _account_data_to_response(updated_id, bridge.web_accounts.get(updated_id))
 
 
-@router.delete("/{account_id}", status_code=status.HTTP_204_NO_CONTENT)
+@router.delete("/{account_id:path}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_server(account_id: str, user: str = Depends(get_current_user)):
     """Delete an Emby server account."""
     if not bridge.web_accounts.get(account_id):
@@ -215,7 +245,7 @@ async def delete_server(account_id: str, user: str = Depends(get_current_user)):
     bridge.delete_account(account_id)
 
 
-@router.patch("/{account_id}/toggle", response_model=EmbyServerResponse)
+@router.patch("/{account_id:path}/toggle", response_model=EmbyServerResponse)
 async def toggle_server(
     account_id: str,
     req: EmbyServerToggle,
@@ -228,7 +258,7 @@ async def toggle_server(
     return _account_data_to_response(account_id, bridge.web_accounts.get(account_id))
 
 
-@router.post("/{account_id}/login", response_model=ActionResponse)
+@router.post("/{account_id:path}/login", response_model=ActionResponse)
 async def trigger_login(account_id: str, user: str = Depends(get_current_user)):
     """Trigger an immediate login test."""
     result = await bridge.trigger_login(account_id)
@@ -241,7 +271,7 @@ async def trigger_login(account_id: str, user: str = Depends(get_current_user)):
     )
 
 
-@router.post("/{account_id}/watch", response_model=ActionResponse)
+@router.post("/{account_id:path}/watch", response_model=ActionResponse)
 async def trigger_watch(account_id: str, user: str = Depends(get_current_user)):
     """Trigger an immediate simulate-watch."""
     result = await bridge.trigger_watch(account_id)
@@ -254,7 +284,7 @@ async def trigger_watch(account_id: str, user: str = Depends(get_current_user)):
     )
 
 
-@router.post("/{account_id}/checkin", response_model=ActionResponse)
+@router.post("/{account_id:path}/checkin", response_model=ActionResponse)
 async def trigger_checkin(account_id: str, user: str = Depends(get_current_user)):
     """Trigger a check-in (sign-in) action."""
     result = await bridge.trigger_checkin(account_id)
