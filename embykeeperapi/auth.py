@@ -3,6 +3,8 @@ import os
 import time
 from datetime import datetime, timedelta
 
+from typing import Dict, List
+
 from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from jose import JWTError, jwt
@@ -13,7 +15,7 @@ DEFAULT_EXPIRE_DAYS = 7
 security = HTTPBearer()
 
 # Simple rate limiter: track failed login attempts
-_failed_attempts: dict[str, list[float]] = {}
+_failed_attempts: Dict[str, List[float]] = {}
 MAX_FAILED_PER_HOUR = 5
 
 
