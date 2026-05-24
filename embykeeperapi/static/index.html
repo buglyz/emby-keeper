@@ -1,0 +1,810 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Emby Keeper</title>
+  <script src="https://unpkg.com/vue@3/dist/vue.global.prod.js"></script>
+  <script src="https://unpkg.com/naive-ui@2/dist/index.prod.js"></script>
+  <script src="https://unpkg.com/vue-router@4/dist/vue-router.global.prod.js"></script>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { background: #f5f5f5; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; }
+    #app { min-height: 100vh; }
+    .page-container { max-width: 1100px; margin: 0 auto; padding: 24px 16px; }
+    .login-container { min-height: 100vh; display: flex; align-items: center; justify-content: center; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); }
+    .login-card { width: 400px; }
+    .header-bar { background: #fff; padding: 16px 24px; border-bottom: 1px solid #e8e8e8; display: flex; align-items: center; justify-content: space-between; position: sticky; top: 0; z-index: 100; }
+    .header-title { font-size: 20px; font-weight: 600; color: #333; }
+    .header-actions { display: flex; gap: 12px; align-items: center; }
+    .status-dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; }
+    .status-dot.online { background: #52c41a; }
+    .status-dot.offline { background: #ff4d4f; }
+    .status-dot.running { background: #faad14; }
+    .status-dot.unknown { background: #d9d9d9; }
+    .server-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(340px, 1fr)); gap: 16px; }
+    .empty-state { text-align: center; padding: 60px 20px; color: #999; }
+    .form-section-title { font-size: 14px; font-weight: 600; color: #666; margin: 16px 0 8px 0; border-bottom: 1px solid #eee; padding-bottom: 4px; }
+  </style>
+</head>
+<body>
+  <div id="app">
+    <n-config-provider :theme="null" :locale="zhCN" :date-locale="dateZhCN">
+      <n-message-provider>
+        <n-notification-provider>
+          <n-dialog-provider>
+            <router-view></router-view>
+          </n-dialog-provider>
+        </n-notification-provider>
+      </n-message-provider>
+    </n-config-provider>
+  </div>
+
+  <script>
+    const { createApp, ref, reactive, computed, onMounted, onUnmounted, watch, nextTick } = Vue;
+    const {
+      NConfigProvider, NMessageProvider, NNotificationProvider, NDialogProvider,
+      NCard, NButton, NSpace, NInput, NForm, NFormItem, NSelect, NSwitch,
+      NDataTable, NTag, NModal, NTabs, NTabPane, NDescriptions, NDescriptionsItem,
+      NGrid, NGi, NLayout, NLayoutHeader, NLayoutContent, NLayoutFooter,
+      NSpin, NResult, NEmpty, NDivider, NAlert, NInputNumber, NPopconfirm,
+      NDatePicker, NTimePicker, NIcon, NText, NAvatar, NBadge, NStatistic,
+      NProgress, NTooltip, useMessage, useNotification, useDialog,
+      zhCN, dateZhCN
+    } = naiveUI;
+
+    // ============ API Service ============
+    const API = {
+      baseUrl: window.location.origin,
+      _getHeaders() {
+        const token = sessionStorage.getItem('ek_jwt');
+        return { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' };
+      },
+      async request(method, path, body = null) {
+        const opts = { method, headers: this._getHeaders() };
+        if (body) opts.body = JSON.stringify(body);
+        const resp = await fetch(`${this.baseUrl}${path}`, opts);
+        if (resp.status === 401) {
+          sessionStorage.removeItem('ek_jwt');
+          window.location.hash = '#/login';
+          throw new Error('Unauthorized');
+        }
+        const data = await resp.json();
+        if (!resp.ok) throw new Error(data.detail || 'Request failed');
+        return data;
+      },
+      get(path) { return this.request('GET', path); },
+      post(path, body) { return this.request('POST', path, body); },
+      put(path, body) { return this.request('PUT', path, body); },
+      patch(path, body) { return this.request('PATCH', path, body); },
+      delete(path) { return this.request('DELETE', path); },
+
+      // Auth
+      authMethods() { return this.get('/api/auth/methods'); },
+      tokenExchange(token) { return this.post('/api/auth/token-exchange', { token }); },
+      passwordLogin(password) { return this.post('/api/auth/login', { password }); },
+      verifyToken() { return this.get('/api/auth/me'); },
+
+      // Servers
+      listServers() { return this.get('/api/servers'); },
+      getServer(id) { return this.get(`/api/servers/${id}`); },
+      createServer(data) { return this.post('/api/servers', data); },
+      updateServer(id, data) { return this.put(`/api/servers/${id}`, data); },
+      deleteServer(id) { return this.delete(`/api/servers/${id}`); },
+      toggleServer(id, enabled) { return this.patch(`/api/servers/${id}/toggle`, { enabled }); },
+
+      // Actions
+      triggerLogin(id) { return this.post(`/api/servers/${id}/login`); },
+      triggerWatch(id) { return this.post(`/api/servers/${id}/watch`); },
+      triggerCheckin(id) { return this.post(`/api/servers/${id}/checkin`); },
+      watchAll() { return this.post('/api/servers/actions/watch-all'); },
+
+      // Schedule & Status
+      getSchedule() { return this.get('/api/schedule'); },
+      runNow(id) { return this.post(`/api/schedule/${id}/run-now`); },
+      getStatus() { return this.get('/api/status'); },
+      healthz() { return this.get('/healthz'); },
+
+      // Config
+      getConfig() { return this.get('/api/config'); },
+      updateConfig(data) { return this.put('/api/config', data); },
+    };
+
+    // ============ Auth Guard Component ============
+    const AuthGuard = {
+      setup() {
+        const router = VueRouter.useRouter();
+        onMounted(() => {
+          const token = sessionStorage.getItem('ek_jwt');
+          if (!token) {
+            router.replace('/login');
+          }
+        });
+      },
+      render() { return null; }
+    };
+
+    // ============ Login Page ============
+    const LoginPage = {
+      components: { NCard, NButton, NSpace, NInput, NTabs, NTabPane, NAlert, NIcon },
+      template: `
+        <div class="login-container">
+          <n-card class="login-card" title="Emby Keeper" :bordered="false">
+            <template #header-extra>
+              <n-text style="font-size:12px;color:#999">v0.1.0</n-text>
+            </template>
+            <n-alert v-if="errorMsg" type="error" :bordered="false" style="margin-bottom:16px">{{ errorMsg }}</n-alert>
+            <n-tabs v-model:value="activeTab" type="segment" animated>
+              <n-tab-pane name="token" tab="Token 登录">
+                <n-space vertical :size="16">
+                  <n-input v-model:value="tokenInput" type="password" show-password-on="click" placeholder="请输入预共享 Token" />
+                  <n-button type="primary" block :loading="loading" @click="handleTokenLogin">登录</n-button>
+                </n-space>
+              </n-tab-pane>
+              <n-tab-pane name="password" tab="密码登录">
+                <n-space vertical :size="16">
+                  <n-input v-model:value="passwordInput" type="password" show-password-on="click" placeholder="请输入管理密码" />
+                  <n-button type="primary" block :loading="loading" @click="handlePasswordLogin">登录</n-button>
+                </n-space>
+              </n-tab-pane>
+            </n-tabs>
+            <n-space v-if="!hasToken && !hasPassword" vertical :size="8" style="margin-top:16px">
+              <n-alert type="warning" :bordered="false">未配置认证方式，请设置 EK_TOKEN 或 EK_WEBPASS 环境变量</n-alert>
+            </n-space>
+          </n-card>
+        </div>
+      `,
+      setup() {
+        const router = VueRouter.useRouter();
+        const message = useMessage();
+        const activeTab = ref('token');
+        const tokenInput = ref('');
+        const passwordInput = ref('');
+        const loading = ref(false);
+        const errorMsg = ref('');
+        const hasToken = ref(false);
+        const hasPassword = ref(false);
+
+        onMounted(async () => {
+          try {
+            const methods = await API.authMethods();
+            hasToken.value = methods.token;
+            hasPassword.value = methods.password;
+            if (methods.token) activeTab.value = 'token';
+            else if (methods.password) activeTab.value = 'password';
+          } catch (e) { /* ignore */ }
+        });
+
+        async function handleTokenLogin() {
+          loading.value = true; errorMsg.value = '';
+          try {
+            const res = await API.tokenExchange(tokenInput.value);
+            sessionStorage.setItem('ek_jwt', res.access_token);
+            message.success('登录成功');
+            router.replace('/');
+          } catch (e) { errorMsg.value = e.message; }
+          finally { loading.value = false; }
+        }
+
+        async function handlePasswordLogin() {
+          loading.value = true; errorMsg.value = '';
+          try {
+            const res = await API.passwordLogin(passwordInput.value);
+            sessionStorage.setItem('ek_jwt', res.access_token);
+            message.success('登录成功');
+            router.replace('/');
+          } catch (e) { errorMsg.value = e.message; }
+          finally { loading.value = false; }
+        }
+
+        return { activeTab, tokenInput, passwordInput, loading, errorMsg, hasToken, hasPassword, handleTokenLogin, handlePasswordLogin };
+      }
+    };
+
+    // ============ Dashboard Page ============
+    const DashboardPage = {
+      components: { NCard, NButton, NSpace, NGrid, NGi, NStatistic, NTag, NEmpty, NSpin, NPopconfirm, NTooltip, NIcon, NBadge, NAvatar, NText },
+      template: `
+        <div class="page-container">
+          <n-grid :cols="4" :x-gap="12" :y-gap="12" style="margin-bottom:24px">
+            <n-gi>
+              <n-card size="small"><n-statistic label="服务器总数" :value="status.total_servers" /></n-card>
+            </n-gi>
+            <n-gi>
+              <n-card size="small"><n-statistic label="已启用" :value="status.enabled_servers" /></n-card>
+            </n-gi>
+            <n-gi>
+              <n-card size="small"><n-statistic label="在线" :value="status.online_servers" /></n-card>
+            </n-gi>
+            <n-gi>
+              <n-card size="small"><n-statistic label="运行中" :value="status.running_servers" /></n-card>
+            </n-gi>
+          </n-grid>
+
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">
+            <n-text style="font-size:18px;font-weight:600">服务器列表</n-text>
+            <n-space>
+              <n-button type="primary" @click="$router.push('/servers/new')">添加服务器</n-button>
+              <n-popconfirm @positive-click="handleWatchAll" content="确定要对所有已启用服务器执行保活吗？">
+                <n-button>全部保活</n-button>
+              </n-popconfirm>
+            </n-space>
+          </div>
+
+          <n-spin :show="loading">
+            <div v-if="servers.length === 0" class="empty-state">
+              <n-empty description="暂无服务器，点击"添加服务器"开始" />
+            </div>
+            <div v-else class="server-grid">
+              <n-card v-for="s in servers" :key="s.id" size="small" hoverable @click="$router.push('/servers/' + s.id)">
+                <template #header>
+                  <n-space align="center" :size="8">
+                    <span class="status-dot" :class="s.is_online ? 'online' : (s.is_running ? 'running' : 'offline')" />
+                    <span>{{ s.name || s.id }}</span>
+                  </n-space>
+                </template>
+                <template #header-extra>
+                  <n-tag :type="s.enabled ? 'success' : 'default'" size="small">{{ s.enabled ? '启用' : '禁用' }}</n-tag>
+                </template>
+                <n-space vertical :size="8">
+                  <n-text depth="3">{{ s.url }}</n-text>
+                  <n-text depth="3">用户: {{ s.username }}</n-text>
+                  <n-space v-if="s.has_token" :size="8">
+                    <n-tag type="info" size="small">Token 已配置</n-tag>
+                  </n-space>
+                  <n-space v-else :size="8">
+                    <n-tag type="warning" size="small">未配置认证</n-tag>
+                  </n-space>
+                </n-space>
+                <template #action>
+                  <n-space justify="end">
+                    <n-button size="small" @click.stop="handleLogin(s.id)" :loading="actionLoading[s.id]">登录测试</n-button>
+                    <n-button size="small" type="primary" @click.stop="handleWatch(s.id)" :loading="actionLoading[s.id+'-w']">保活</n-button>
+                    <n-button v-if="s.checkin_plugin_id" size="small" @click.stop="handleCheckin(s.id)" :loading="actionLoading[s.id+'-c']">签到</n-button>
+                  </n-space>
+                </template>
+              </n-card>
+            </div>
+          </n-spin>
+        </div>
+      `,
+      setup() {
+        const message = useMessage();
+        const servers = ref([]);
+        const status = reactive({ total_servers: 0, enabled_servers: 0, online_servers: 0, running_servers: 0 });
+        const loading = ref(true);
+        const actionLoading = reactive({});
+        let pollTimer = null;
+
+        async function loadData() {
+          try {
+            servers.value = await API.listServers();
+            const s = await API.getStatus();
+            Object.assign(status, s);
+          } catch (e) { message.error(e.message); }
+          finally { loading.value = false; }
+        }
+
+        async function handleLogin(id) {
+          actionLoading[id] = true;
+          try {
+            const res = await API.triggerLogin(id);
+            message.success(res.message || '登录测试已触发');
+          } catch (e) { message.error(e.message); }
+          finally { actionLoading[id] = false; }
+        }
+
+        async function handleWatch(id) {
+          actionLoading[id + '-w'] = true;
+          try {
+            const res = await API.triggerWatch(id);
+            message.success('保活任务已启动');
+          } catch (e) { message.error(e.message); }
+          finally { actionLoading[id + '-w'] = false; }
+        }
+
+        async function handleCheckin(id) {
+          actionLoading[id + '-c'] = true;
+          try {
+            const res = await API.triggerCheckin(id);
+            message.success(res.message || '签到已触发');
+          } catch (e) { message.error(e.message); }
+          finally { actionLoading[id + '-c'] = false; }
+        }
+
+        async function handleWatchAll() {
+          try {
+            const res = await API.watchAll();
+            message.success('全部保活任务已启动');
+          } catch (e) { message.error(e.message); }
+        }
+
+        onMounted(() => {
+          loadData();
+          pollTimer = setInterval(loadData, 30000);
+        });
+        onUnmounted(() => { if (pollTimer) clearInterval(pollTimer); });
+
+        return { servers, status, loading, actionLoading, handleLogin, handleWatch, handleCheckin, handleWatchAll };
+      }
+    };
+
+    // ============ Server Form Page (Add/Edit) ============
+    const ServerFormPage = {
+      components: { NCard, NButton, NSpace, NInput, NForm, NFormItem, NSwitch, NSelect, NInputNumber, NAlert, NDivider, NText },
+      template: `
+        <div class="page-container">
+          <n-card :title="isEdit ? '编辑服务器' : '添加服务器'">
+            <template #header-extra>
+              <n-button text @click="$router.back()">返回</n-button>
+            </template>
+            <n-alert v-if="errorMsg" type="error" :bordered="false" style="margin-bottom:16px">{{ errorMsg }}</n-alert>
+
+            <div class="form-section-title">认证方式</div>
+            <n-space vertical :size="12" style="margin-bottom:12px">
+              <n-select v-model:value="form.auth_method" :options="authOptions" />
+              <n-alert v-if="form.auth_method === 'token'" type="success" :bordered="false">
+                推荐：直接提供 AccessToken，更安全，无需密码
+              </n-alert>
+              <n-alert v-if="form.auth_method === 'password'" type="warning" :bordered="false">
+                密码仅用于一次性换取 Token，不会被保存。登录成功后密码立即丢弃
+              </n-alert>
+              <n-input v-if="form.auth_method === 'token'" v-model:value="form.access_token" type="password" show-password-on="click" placeholder="请输入 AccessToken" />
+              <n-input v-if="form.auth_method === 'password'" v-model:value="form.password" type="password" show-password-on="click" placeholder="请输入密码（一次性使用）" />
+            </n-space>
+
+            <div class="form-section-title">基本信息</div>
+            <n-space vertical :size="12">
+              <n-input v-model:value="form.url" placeholder="Emby 服务器地址 (如 https://emby.example.com:8096)" />
+              <n-input v-model:value="form.username" placeholder="用户名" />
+              <n-input v-model:value="form.name" placeholder="显示名称（可选）" />
+              <n-switch v-model:value="form.enabled"><template #checked>启用</template><template #unchecked>禁用</template></n-switch>
+            </n-space>
+
+            <div class="form-section-title">保活设置</div>
+            <n-space vertical :size="12">
+              <n-space :size="12" align="center">
+                <n-input-number v-model:value="form.time_min" :min="60" :step="60" placeholder="最小秒数" style="width:120px" />
+                <n-text>至</n-text>
+                <n-input-number v-model:value="form.time_max" :min="60" :step="60" placeholder="最大秒数" style="width:120px" />
+                <n-text>秒</n-text>
+              </n-space>
+              <n-switch v-model:value="form.allow_multiple"><template #checked>允许多视频播放</template><template #unchecked>仅单视频</template></n-switch>
+              <n-switch v-model:value="form.allow_stream"><template #checked>允许无时长流播放</template><template #unchecked>需时长信息</template></n-switch>
+            </n-space>
+
+            <div class="form-section-title">调度设置</div>
+            <n-space vertical :size="12">
+              <n-input v-model:value="form.interval_days" placeholder="保活间隔天数 (如 <7,12> 或 7)" />
+              <n-input v-model:value="form.time_range" placeholder="保活时间范围 (如 <11:00AM,11:00PM>)" />
+            </n-space>
+
+            <div class="form-section-title">签到插件</div>
+            <n-space vertical :size="12">
+              <n-input v-model:value="form.checkin_plugin_id" placeholder="签到插件 ID（可选，如 EmbyBoss）" />
+            </n-space>
+
+            <div class="form-section-title">高级设置</div>
+            <n-space vertical :size="12">
+              <n-switch v-model:value="form.use_proxy"><template #checked>使用代理</template><template #unchecked>不使用代理</template></n-switch>
+              <n-input v-model:value="form.play_id" placeholder="指定视频 ID（可选）" />
+            </n-space>
+
+            <n-divider />
+            <n-space justify="end">
+              <n-button @click="$router.back()">取消</n-button>
+              <n-button type="primary" :loading="saving" @click="handleSave">{{ isEdit ? '保存' : '创建' }}</n-button>
+            </n-space>
+          </n-card>
+        </div>
+      `,
+      setup() {
+        const router = VueRouter.useRouter();
+        const route = VueRouter.useRoute();
+        const message = useMessage();
+        const isEdit = computed(() => route.params.id && route.params.id !== 'new');
+        const saving = ref(false);
+        const errorMsg = ref('');
+
+        const authOptions = [
+          { label: 'Token（推荐，更安全）', value: 'token' },
+          { label: '密码（一次性换取 Token）', value: 'password' },
+        ];
+
+        const form = reactive({
+          url: '', username: '', name: '', auth_method: 'token',
+          access_token: '', password: '',
+          time_min: 300, time_max: 600,
+          allow_multiple: true, allow_stream: false, use_proxy: true,
+          enabled: true, play_id: '',
+          interval_days: '', time_range: '', checkin_plugin_id: '',
+        });
+
+        onMounted(async () => {
+          if (isEdit.value) {
+            try {
+              const server = await API.getServer(route.params.id);
+              form.url = server.url;
+              form.username = server.username;
+              form.name = server.name || '';
+              form.auth_method = server.auth_method || 'token';
+              form.enabled = server.enabled;
+              form.allow_multiple = server.allow_multiple;
+              form.allow_stream = server.allow_stream;
+              form.use_proxy = server.use_proxy;
+              form.play_id = server.play_id || '';
+              form.interval_days = server.interval_days || '';
+              form.time_range = server.time_range || '';
+              form.checkin_plugin_id = server.checkin_plugin_id || '';
+              if (Array.isArray(server.time)) {
+                form.time_min = server.time[0] || 300;
+                form.time_max = server.time[1] || 600;
+              } else {
+                form.time_min = server.time || 300;
+                form.time_max = server.time || 300;
+              }
+            } catch (e) { message.error(e.message); router.replace('/'); }
+          }
+        });
+
+        async function handleSave() {
+          saving.value = true; errorMsg.value = '';
+          const data = {
+            url: form.url,
+            username: form.username,
+            name: form.name || null,
+            auth_method: form.auth_method,
+            access_token: form.auth_method === 'token' ? form.access_token : null,
+            password: form.auth_method === 'password' ? form.password : null,
+            time: form.time_min === form.time_max ? form.time_min : [form.time_min, form.time_max],
+            allow_multiple: form.allow_multiple,
+            allow_stream: form.allow_stream,
+            use_proxy: form.use_proxy,
+            enabled: form.enabled,
+            play_id: form.play_id || null,
+            interval_days: form.interval_days || null,
+            time_range: form.time_range || null,
+            checkin_plugin_id: form.checkin_plugin_id || null,
+          };
+          try {
+            if (isEdit.value) {
+              await API.updateServer(route.params.id, data);
+              message.success('服务器已更新');
+            } else {
+              await API.createServer(data);
+              message.success('服务器已创建');
+            }
+            router.replace('/');
+          } catch (e) { errorMsg.value = e.message; }
+          finally { saving.value = false; }
+        }
+
+        return { form, isEdit, saving, errorMsg, authOptions, handleSave };
+      }
+    };
+
+    // ============ Server Detail Page ============
+    const ServerDetailPage = {
+      components: { NCard, NButton, NSpace, NDescriptions, NDescriptionsItem, NTag, NSpin, NPopconfirm, NText },
+      template: `
+        <div class="page-container">
+          <n-spin :show="loading">
+            <n-card v-if="server" :title="server.name || server.id">
+              <template #header-extra>
+                <n-space>
+                  <n-tag :type="server.enabled ? 'success' : 'default'">{{ server.enabled ? '启用' : '禁用' }}</n-tag>
+                  <n-button text @click="$router.push('/servers/' + server.id + '/edit')">编辑</n-button>
+                  <n-button text @click="$router.back()">返回</n-button>
+                </n-space>
+              </template>
+
+              <n-descriptions label-placement="left" :column="2" bordered>
+                <n-descriptions-item label="服务器地址">{{ server.url }}</n-descriptions-item>
+                <n-descriptions-item label="用户名">{{ server.username }}</n-descriptions-item>
+                <n-descriptions-item label="认证方式">
+                  <n-tag :type="server.auth_method === 'token' ? 'success' : 'warning'" size="small">
+                    {{ server.auth_method === 'token' ? 'Token' : '密码' }}
+                  </n-tag>
+                </n-descriptions-item>
+                <n-descriptions-item label="Token 状态">
+                  <n-tag :type="server.has_token ? 'success' : 'warning'" size="small">
+                    {{ server.has_token ? '已配置' : '未配置' }}
+                  </n-tag>
+                </n-descriptions-item>
+                <n-descriptions-item label="在线状态">
+                  <span class="status-dot" :class="server.is_online ? 'online' : 'offline'" />
+                  {{ server.is_online ? '在线' : '离线' }}
+                </n-descriptions-item>
+                <n-descriptions-item label="运行状态">
+                  <n-tag :type="server.is_running ? 'warning' : 'info'" size="small">
+                    {{ server.is_running ? '运行中' : '空闲' }}
+                  </n-tag>
+                </n-descriptions-item>
+                <n-descriptions-item label="播放时长">
+                  {{ Array.isArray(server.time) ? server.time[0] + '-' + server.time[1] + '秒' : (server.time || '-') + '秒' }}
+                </n-descriptions-item>
+                <n-descriptions-item label="允许多视频">{{ server.allow_multiple ? '是' : '否' }}</n-descriptions-item>
+                <n-descriptions-item label="保活间隔">{{ server.interval_days || '跟随全局' }}</n-descriptions-item>
+                <n-descriptions-item label="时间范围">{{ server.time_range || '跟随全局' }}</n-descriptions-item>
+                <n-descriptions-item label="签到插件">{{ server.checkin_plugin_id || '未配置' }}</n-descriptions-item>
+                <n-descriptions-item label="使用代理">{{ server.use_proxy ? '是' : '否' }}</n-descriptions-item>
+              </n-descriptions>
+
+              <n-divider />
+
+              <n-space justify="center" :size="12">
+                <n-button type="primary" :loading="actionLoading.watch" @click="handleWatch">立即保活</n-button>
+                <n-button :loading="actionLoading.login" @click="handleLogin">登录测试</n-button>
+                <n-button v-if="server.checkin_plugin_id" :loading="actionLoading.checkin" @click="handleCheckin">立即签到</n-button>
+                <n-button @click="handleToggle(!server.enabled)">
+                  {{ server.enabled ? '禁用' : '启用' }}
+                </n-button>
+                <n-popconfirm @positive-click="handleDelete" content="确定删除此服务器吗？此操作不可恢复">
+                  <n-button type="error">删除</n-button>
+                </n-popconfirm>
+              </n-space>
+            </n-card>
+          </n-spin>
+        </div>
+      `,
+      setup() {
+        const router = VueRouter.useRouter();
+        const route = VueRouter.useRoute();
+        const message = useMessage();
+        const server = ref(null);
+        const loading = ref(true);
+        const actionLoading = reactive({ watch: false, login: false, checkin: false });
+
+        async function loadData() {
+          try {
+            server.value = await API.getServer(route.params.id);
+          } catch (e) { message.error(e.message); router.replace('/'); }
+          finally { loading.value = false; }
+        }
+
+        async function handleWatch() {
+          actionLoading.watch = true;
+          try { const res = await API.triggerWatch(route.params.id); message.success('保活已启动'); }
+          catch (e) { message.error(e.message); }
+          finally { actionLoading.watch = false; }
+        }
+
+        async function handleLogin() {
+          actionLoading.login = true;
+          try { const res = await API.triggerLogin(route.params.id); message.success(res.message); }
+          catch (e) { message.error(e.message); }
+          finally { actionLoading.login = false; }
+        }
+
+        async function handleCheckin() {
+          actionLoading.checkin = true;
+          try { const res = await API.triggerCheckin(route.params.id); message.success(res.message); }
+          catch (e) { message.error(e.message); }
+          finally { actionLoading.checkin = false; }
+        }
+
+        async function handleToggle(enabled) {
+          try {
+            await API.toggleServer(route.params.id, enabled);
+            message.success(enabled ? '已启用' : '已禁用');
+            loadData();
+          } catch (e) { message.error(e.message); }
+        }
+
+        async function handleDelete() {
+          try {
+            await API.deleteServer(route.params.id);
+            message.success('服务器已删除');
+            router.replace('/');
+          } catch (e) { message.error(e.message); }
+        }
+
+        onMounted(loadData);
+        return { server, loading, actionLoading, handleWatch, handleLogin, handleCheckin, handleToggle, handleDelete };
+      }
+    };
+
+    // ============ Schedule Page ============
+    const SchedulePage = {
+      components: { NCard, NDataTable, NButton, NSpace, NTag, NEmpty, NSpin },
+      template: `
+        <div class="page-container">
+          <n-card title="计划任务">
+            <n-spin :show="loading">
+              <n-data-table v-if="schedules.length" :columns="columns" :data="schedules" :bordered="false" />
+              <n-empty v-else description="暂无计划任务" />
+            </n-spin>
+          </n-card>
+        </div>
+      `,
+      setup() {
+        const message = useMessage();
+        const schedules = ref([]);
+        const loading = ref(true);
+
+        const columns = [
+          { title: 'ID', key: 'id', width: 200 },
+          { title: '账号', key: 'account_spec' },
+          { title: '间隔', key: 'interval_days' },
+          { title: '时间范围', key: 'time_range' },
+          { title: '状态', key: 'is_running', render(row) {
+            return Vue.h(naiveUI.NTag, { type: row.is_running ? 'warning' : 'info', size: 'small' }, () => row.is_running ? '运行中' : '等待');
+          }},
+          { title: '操作', key: 'actions', render(row) {
+            return Vue.h(naiveUI.NButton, { size: 'small', onClick: () => handleRunNow(row.id) }, () => '立即执行');
+          }},
+        ];
+
+        async function loadData() {
+          try { schedules.value = await API.getSchedule(); }
+          catch (e) { message.error(e.message); }
+          finally { loading.value = false; }
+        }
+
+        async function handleRunNow(id) {
+          try {
+            const res = await API.runNow(id);
+            message.success('任务已启动');
+          } catch (e) { message.error(e.message); }
+        }
+
+        onMounted(loadData);
+        return { schedules, loading, columns };
+      }
+    };
+
+    // ============ Config Page ============
+    const ConfigPage = {
+      components: { NCard, NButton, NSpace, NInput, NInputNumber, NSelect, NDescriptions, NDescriptionsItem, NSpin, NText },
+      template: `
+        <div class="page-container">
+          <n-spin :show="loading">
+            <n-card title="全局配置">
+              <n-descriptions v-if="configData" label-placement="left" :column="2" bordered>
+                <n-descriptions-item label="Emby 时间范围">
+                  <n-input v-model:value="editConfig.emby_time_range" size="small" />
+                </n-descriptions-item>
+                <n-descriptions-item label="Emby 间隔天数">
+                  <n-input v-model:value="editConfig.emby_interval_days" size="small" />
+                </n-descriptions-item>
+                <n-descriptions-item label="Emby 并发数">
+                  <n-input-number v-model:value="editConfig.emby_concurrency" :min="1" size="small" />
+                </n-descriptions-item>
+                <n-descriptions-item label="代理主机">
+                  <n-input v-model:value="editConfig.proxy_hostname" size="small" />
+                </n-descriptions-item>
+                <n-descriptions-item label="代理端口">
+                  <n-input-number v-model:value="editConfig.proxy_port" :min="1" size="small" />
+                </n-descriptions-item>
+                <n-descriptions-item label="代理协议">
+                  <n-select v-model:value="editConfig.proxy_scheme" :options="[{label:'SOCKS5',value:'socks5'},{label:'HTTP',value:'http'}]" size="small" />
+                </n-descriptions-item>
+              </n-descriptions>
+              <n-divider />
+              <n-space justify="end">
+                <n-button :loading="saving" type="primary" @click="handleSave">保存配置</n-button>
+              </n-space>
+            </n-card>
+          </n-spin>
+        </div>
+      `,
+      setup() {
+        const message = useMessage();
+        const configData = ref(null);
+        const loading = ref(true);
+        const saving = ref(false);
+        const editConfig = reactive({
+          emby_time_range: '', emby_interval_days: '', emby_concurrency: 1,
+          proxy_hostname: '', proxy_port: null, proxy_scheme: null,
+        });
+
+        async function loadData() {
+          try {
+            configData.value = await API.getConfig();
+            Object.assign(editConfig, configData.value);
+          } catch (e) { message.error(e.message); }
+          finally { loading.value = false; }
+        }
+
+        async function handleSave() {
+          saving.value = true;
+          try {
+            await API.updateConfig({
+              emby_time_range: editConfig.emby_time_range || undefined,
+              emby_interval_days: editConfig.emby_interval_days || undefined,
+              emby_concurrency: editConfig.emby_concurrency || undefined,
+              proxy: {
+                hostname: editConfig.proxy_hostname || undefined,
+                port: editConfig.proxy_port || undefined,
+                scheme: editConfig.proxy_scheme || undefined,
+              },
+            });
+            message.success('配置已保存');
+          } catch (e) { message.error(e.message); }
+          finally { saving.value = false; }
+        }
+
+        onMounted(loadData);
+        return { configData, loading, saving, editConfig, handleSave };
+      }
+    };
+
+    // ============ Main App Layout ============
+    const AppLayout = {
+      components: { NLayout, NLayoutHeader, NLayoutContent, NButton, NSpace, NText },
+      template: `
+        <n-layout>
+          <n-layout-header class="header-bar" bordered>
+            <n-text class="header-title">Emby Keeper</n-text>
+            <n-space class="header-actions" :size="8">
+              <n-button text @click="$router.push('/')">仪表盘</n-button>
+              <n-button text @click="$router.push('/schedule')">计划任务</n-button>
+              <n-button text @click="$router.push('/config')">配置</n-button>
+              <n-button text type="error" @click="handleLogout">退出</n-button>
+            </n-space>
+          </n-layout-header>
+          <n-layout-content style="padding:0">
+            <router-view />
+          </n-layout-content>
+        </n-layout>
+      `,
+      setup() {
+        const router = VueRouter.useRouter();
+        function handleLogout() {
+          sessionStorage.removeItem('ek_jwt');
+          router.replace('/login');
+        }
+        return { handleLogout };
+      }
+    };
+
+    // ============ Vue App & Router ============
+    const routes = [
+      { path: '/login', component: LoginPage },
+      {
+        path: '/',
+        component: AppLayout,
+        children: [
+          { path: '', component: DashboardPage },
+          { path: 'servers/new', component: ServerFormPage },
+          { path: 'servers/:id', component: ServerDetailPage },
+          { path: 'servers/:id/edit', component: ServerFormPage },
+          { path: 'schedule', component: SchedulePage },
+          { path: 'config', component: ConfigPage },
+        ],
+      },
+    ];
+
+    const router = VueRouter.createRouter({
+      history: VueRouter.createWebHashHistory(),
+      routes,
+    });
+
+    // Navigation guard: check auth
+    router.beforeEach((to, from, next) => {
+      const token = sessionStorage.getItem('ek_jwt');
+      if (to.path === '/login') {
+        next();
+      } else if (!token) {
+        next('/login');
+      } else {
+        next();
+      }
+    });
+
+    const app = createApp({
+      template: '<router-view />',
+    });
+    app.use(router);
+
+    // Register all Naive UI components
+    for (const [name, comp] of Object.entries(naiveUI)) {
+      if (name.startsWith('N') && comp) {
+        app.component(name, comp);
+      }
+    }
+
+    app.mount('#app');
+  </script>
+</body>
+</html>

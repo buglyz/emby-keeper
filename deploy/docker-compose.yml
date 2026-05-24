@@ -1,0 +1,16 @@
+version: "3.8"
+
+services:
+  embykeeper:
+    build: ..
+    environment:
+      EK_MODE: api
+      EK_TOKEN: ${EK_TOKEN}
+      EK_SECRET: ${EK_SECRET}
+      EK_WEBPASS: ${EK_WEBPASS:-}
+      EK_BASEDIR: /app
+    ports:
+      - "1818:1818"
+    volumes:
+      - ./data:/app
+    restart: unless-stopped

@@ -1,0 +1,168 @@
+from datetime import datetime
+from typing import List, Optional, Union
+
+from pydantic import BaseModel, Field
+
+
+# ============ Auth Models ============
+
+class TokenExchangeRequest(BaseModel):
+    token: str
+
+
+class PasswordLoginRequest(BaseModel):
+    password: str
+
+
+class LoginResponse(BaseModel):
+    access_token: str
+    token_type: str = "bearer"
+    expires_in: int
+
+
+# ============ Emby Server (Account) Models ============
+
+class EmbyServerCreate(BaseModel):
+    """Create a new Emby server account."""
+    url: str = Field(description="Emby server URL, e.g. https://emby.example.com:8096")
+    username: str = Field(description="Emby username")
+    auth_method: str = Field(default="token", description="Authentication method: 'token' or 'password'")
+    # For token auth: direct AccessToken
+    access_token: Optional[str] = Field(default=None, description="AccessToken (for token auth method)")
+    # For password auth: will be exchanged for token
+    password: Optional[str] = Field(default=None, description="Password (for password auth method, one-time use)")
+    name: Optional[str] = Field(default=None, description="Display name for this server")
+    time: Optional[Union[int, List[int]]] = Field(default=[300, 600], description="Watch duration range (seconds)")
+    allow_multiple: Optional[bool] = Field(default=True, description="Allow playing multiple videos")
+    allow_stream: Optional[bool] = Field(default=False, description="Allow streaming when no length info")
+    use_proxy: Optional[bool] = Field(default=True, description="Use configured proxy")
+    play_id: Optional[str] = Field(default=None, description="Specific video ID to play")
+    enabled: Optional[bool] = Field(default=True, description="Whether this account is enabled")
+    interval_days: Optional[str] = Field(default=None, description="Per-account interval override")
+    time_range: Optional[str] = Field(default=None, description="Per-account time range override")
+    # Check-in plugin
+    checkin_plugin_id: Optional[str] = Field(default=None, description="Check-in plugin ID for sign-in")
+    # Advanced settings
+    useragent: Optional[str] = None
+    client: Optional[str] = None
+    client_version: Optional[str] = None
+    device: Optional[str] = None
+    device_id: Optional[str] = None
+
+
+class EmbyServerUpdate(BaseModel):
+    """Update an existing Emby server account (all fields optional)."""
+    url: Optional[str] = None
+    username: Optional[str] = None
+    auth_method: Optional[str] = None
+    access_token: Optional[str] = None
+    password: Optional[str] = None
+    name: Optional[str] = None
+    time: Optional[Union[int, List[int]]] = None
+    allow_multiple: Optional[bool] = None
+    allow_stream: Optional[bool] = None
+    use_proxy: Optional[bool] = None
+    play_id: Optional[str] = None
+    enabled: Optional[bool] = None
+    interval_days: Optional[str] = None
+    time_range: Optional[str] = None
+    checkin_plugin_id: Optional[str] = None
+    useragent: Optional[str] = None
+    client: Optional[str] = None
+    client_version: Optional[str] = None
+    device: Optional[str] = None
+    device_id: Optional[str] = None
+
+
+class EmbyServerResponse(BaseModel):
+    """Response model for Emby server account (never includes password/token)."""
+    id: str
+    url: str
+    username: str
+    name: Optional[str] = None
+    auth_method: str = "token"
+    time: Optional[Union[int, List[int]]] = None
+    allow_multiple: Optional[bool] = True
+    allow_stream: Optional[bool] = False
+    use_proxy: Optional[bool] = True
+    play_id: Optional[str] = None
+    enabled: Optional[bool] = True
+    interval_days: Optional[str] = None
+    time_range: Optional[str] = None
+    checkin_plugin_id: Optional[str] = None
+    # Status fields (populated from runtime data)
+    has_token: bool = False
+    is_online: Optional[bool] = None
+    last_login_time: Optional[datetime] = None
+    last_watch_time: Optional[datetime] = None
+    last_watch_status: Optional[str] = None
+    next_schedule_time: Optional[datetime] = None
+    is_running: bool = False
+
+
+class EmbyServerToggle(BaseModel):
+    enabled: bool
+
+
+# ============ Action Models ============
+
+class ActionResponse(BaseModel):
+    run_id: str
+    status: str = "started"
+    message: str
+
+
+# ============ Schedule Models ============
+
+class ScheduleInfo(BaseModel):
+    id: str
+    account_spec: str
+    interval_days: Optional[str] = None
+    time_range: Optional[str] = None
+    next_time: Optional[datetime] = None
+    is_running: bool = False
+    last_status: Optional[str] = None
+    enabled: bool = True
+
+
+# ============ Config Models ============
+
+class ProxyConfigUpdate(BaseModel):
+    hostname: Optional[str] = None
+    port: Optional[int] = None
+    scheme: Optional[str] = None
+
+
+class GlobalConfigUpdate(BaseModel):
+    proxy: Optional[ProxyConfigUpdate] = None
+    emby_time_range: Optional[str] = None
+    emby_interval_days: Optional[str] = None
+    emby_concurrency: Optional[int] = None
+
+
+class GlobalConfigResponse(BaseModel):
+    emby_time_range: Optional[str] = None
+    emby_interval_days: Optional[str] = None
+    emby_concurrency: Optional[int] = None
+    proxy_hostname: Optional[str] = None
+    proxy_port: Optional[int] = None
+    proxy_scheme: Optional[str] = None
+
+
+# ============ Status Models ============
+
+class DashboardStatus(BaseModel):
+    total_servers: int = 0
+    enabled_servers: int = 0
+    running_servers: int = 0
+    online_servers: int = 0
+    last_global_watch_time: Optional[datetime] = None
+
+
+class RunHistoryItem(BaseModel):
+    run_id: str
+    description: Optional[str] = None
+    status: str = "unknown"
+    start_time: Optional[datetime] = None
+    end_time: Optional[datetime] = None
+    account_spec: Optional[str] = None

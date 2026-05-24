@@ -1,1 +1,3 @@
-FROM embykeeper/embykeeper:v7.6.1
+FROM ghcr.io/emby-keeper/emby-keeper/api:main
+
+ENV EK_MODE=api
