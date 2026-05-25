@@ -1,5 +1,5 @@
 # Emby Keeper
-[![Docker API Image Publish](https://github.com/buglyz/emby-keeper/actions/workflows/docker-api.yml/badge.svg)](https://github.com/buglyz/emby-keeper/actions/workflows/docker-api.yml)
+[![Docker API (amd64)](https://github.com/buglyz/emby-keeper/actions/workflows/docker-api-amd64.yml/badge.svg)](https://github.com/buglyz/emby-keeper/actions/workflows/docker-api-amd64.yml)
 
 一个美观、简洁、易用的图形化管理平台，用于管理和执行 Emby 服务器的自动签到与模拟观看保活任务。
 
