@@ -50,6 +50,9 @@ async def lifespan(app: FastAPI):
     basedir.mkdir(parents=True, exist_ok=True)
     logger.info(f"Working directory: {basedir}")
 
+    from .auth import init_jwt_secret_from_basedir
+    init_jwt_secret_from_basedir(basedir)
+
     # Initialize scheduler bridge
     try:
         await bridge.initialize(basedir)
@@ -104,18 +107,16 @@ def create_app() -> FastAPI:
         app.mount("/static", StaticFiles(directory=str(static_dir)), name="static")
 
         # SPA catch-all route: serve index.html for any non-API path
-        from starlette.responses import FileResponse
+        from starlette.responses import FileResponse, JSONResponse
 
         @app.get("/{path:path}")
         async def serve_spa(path: str):
-            # Don't intercept API routes or static files
-            if path.startswith("api/") or path.startswith("static/"):
-                return Response(status_code=404)
-            # Serve index.html for SPA routing
+            if path.startswith("api/") or path.startswith("static/") or path == "healthz":
+                return JSONResponse({"detail": "Not Found"}, status_code=404)
             index_path = static_dir / "index.html"
             if index_path.is_file():
                 return FileResponse(str(index_path))
-            return Response(status_code=404)
+            return JSONResponse({"detail": "Not Found"}, status_code=404)
 
     return app
 

@@ -32,6 +32,30 @@ def _model_fields_set(model) -> set:
     return getattr(model, "model_fields_set", getattr(model, "__fields_set__", set()))
 
 
+def _validate_server_fields(url: Optional[str] = None, time=None):
+    """Validate common server fields."""
+    if url is not None:
+        from urllib.parse import urlparse
+
+        parsed = urlparse(url)
+        if parsed.scheme not in {"http", "https"}:
+            raise HTTPException(status_code=400, detail="URL must start with http:// or https://")
+        if not parsed.hostname:
+            raise HTTPException(status_code=400, detail="URL must contain a valid hostname")
+
+    if time is not None:
+        if isinstance(time, (list, tuple)):
+            if len(time) != 2:
+                raise HTTPException(status_code=400, detail="time must be an integer or a [min, max] pair")
+            if time[0] < 0 or time[1] < 0:
+                raise HTTPException(status_code=400, detail="time values must be non-negative")
+            if time[0] > time[1]:
+                raise HTTPException(status_code=400, detail="time[0] (min) must be <= time[1] (max)")
+        elif isinstance(time, int):
+            if time < 0:
+                raise HTTPException(status_code=400, detail="time must be non-negative")
+
+
 def _account_data_to_response(account_id: str, data: dict) -> EmbyServerResponse:
     """Convert internal account data to API response (never includes secrets)."""
     status_data = bridge.get_account_status(account_id)
@@ -84,6 +108,7 @@ async def get_server(account_id: str, user: str = Depends(get_current_user)):
 @router.post("", response_model=EmbyServerResponse, status_code=status.HTTP_201_CREATED)
 async def create_server(req: EmbyServerCreate, user: str = Depends(get_current_user)):
     """Create a new Emby server account."""
+    _validate_server_fields(url=req.url, time=req.time)
     account_id = _make_account_id(req.username, req.name, req.url)
 
     # Check for duplicate
@@ -115,13 +140,19 @@ async def create_server(req: EmbyServerCreate, user: str = Depends(get_current_u
             name=req.name,
         )
         emby = Emby(temp_account)
-        token_result = await emby.login()
+        try:
+            token_result = await emby.login()
+        except Exception as e:
+            logger.warning(f"Emby login failed for {account_id}: {type(e).__name__}")
+            raise HTTPException(
+                status_code=400,
+                detail=f"Failed to connect to Emby server: {type(e).__name__}",
+            )
         if not token_result:
             raise HTTPException(
                 status_code=400,
                 detail="Failed to authenticate with Emby server. Check username and password.",
             )
-        # Password is discarded after successful exchange; only token is stored
         encrypted_token = encrypt_token(token_result, bridge.web_accounts.basedir)
         logger.info(f"Successfully exchanged password for token for {account_id}")
     else:
@@ -169,6 +200,8 @@ async def update_server(
     if not existing:
         raise HTTPException(status_code=404, detail="Server not found")
 
+    _validate_server_fields(url=req.url, time=req.time)
+
     update_data = {}
     fields_set = _model_fields_set(req)
 
@@ -211,7 +244,14 @@ async def update_server(
             name=update_data.get("name", existing.get("name")),
         )
         emby = Emby(temp_account)
-        token_result = await emby.login()
+        try:
+            token_result = await emby.login()
+        except Exception as e:
+            logger.warning(f"Emby login failed during update for {account_id}: {type(e).__name__}")
+            raise HTTPException(
+                status_code=400,
+                detail=f"Failed to connect to Emby server: {type(e).__name__}",
+            )
         if not token_result:
             raise HTTPException(
                 status_code=400,

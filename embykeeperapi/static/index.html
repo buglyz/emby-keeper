@@ -467,6 +467,26 @@
 
         async function handleSave() {
           saving.value = true; errorMsg.value = '';
+          if (!form.url || !form.username) {
+            errorMsg.value = '服务器地址和用户名不能为空';
+            saving.value = false;
+            return;
+          }
+          if (form.time_min > form.time_max) {
+            errorMsg.value = '最小播放时长不能大于最大播放时长';
+            saving.value = false;
+            return;
+          }
+          if (form.auth_method === 'token' && !form.access_token && !isEdit.value) {
+            errorMsg.value = 'Token 模式下必须提供 AccessToken';
+            saving.value = false;
+            return;
+          }
+          if (form.auth_method === 'password' && !form.password && !isEdit.value) {
+            errorMsg.value = '密码模式下必须提供密码';
+            saving.value = false;
+            return;
+          }
           const data = {
             url: form.url,
             username: form.username,

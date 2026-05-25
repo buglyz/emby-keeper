@@ -38,6 +38,22 @@ def _get_jwt_secret() -> str:
 JWT_SECRET = _get_jwt_secret()
 
 
+def init_jwt_secret_from_basedir(basedir):
+    """Re-derive JWT secret using persistent key file when no env vars are set."""
+    global JWT_SECRET
+    if os.environ.get("EK_SECRET") or os.environ.get("EK_WEBPASS") or os.environ.get("EK_TOKEN"):
+        return
+    from pathlib import Path
+
+    key_file = Path(basedir) / "secret.key"
+    if key_file.is_file():
+        key_bytes = key_file.read_bytes().strip()
+        JWT_SECRET = hashlib.sha256(key_bytes).hexdigest()
+    else:
+        JWT_SECRET = hashlib.sha256(secrets.token_bytes(32)).hexdigest()
+        key_file.write_bytes(JWT_SECRET.encode())
+
+
 def create_jwt(subject: str = "admin", expire_days: int = DEFAULT_EXPIRE_DAYS) -> str:
     """Create a JWT token."""
     expire = datetime.utcnow() + timedelta(days=expire_days)

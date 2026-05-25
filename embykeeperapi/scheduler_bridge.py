@@ -1,5 +1,6 @@
 import asyncio
 import json
+from datetime import datetime
 from pathlib import Path
 from typing import Dict, List, Optional
 
@@ -39,9 +40,16 @@ class WebAccountData:
     def _save(self):
         filepath = self.basedir / WEB_ACCOUNTS_FILE
         tmp_path = filepath.with_suffix(f"{filepath.suffix}.tmp")
-        with open(tmp_path, "w", encoding="utf-8") as f:
-            json.dump(self._data, f, ensure_ascii=False, indent=2)
-        tmp_path.replace(filepath)
+        try:
+            with open(tmp_path, "w", encoding="utf-8") as f:
+                json.dump(self._data, f, ensure_ascii=False, indent=2)
+            tmp_path.replace(filepath)
+        except OSError:
+            try:
+                tmp_path.unlink(missing_ok=True)
+            except OSError:
+                pass
+            raise
 
     def get_all(self) -> Dict[str, dict]:
         return self._data.copy()
@@ -125,7 +133,12 @@ class SchedulerBridge:
         self.web_accounts: WebAccountData = None
         self._base_emby_accounts: List[EmbyAccount] = []
         self._running_tasks: Dict[str, asyncio.Task] = {}
+        self._account_status: Dict[str, dict] = {}
         self._initialized = False
+
+    def _record_status(self, account_id: str, **fields):
+        existing = self._account_status.setdefault(account_id, {})
+        existing.update(fields)
 
     async def initialize(self, basedir: Path):
         """Initialize the scheduler bridge on app startup."""
@@ -175,12 +188,15 @@ class SchedulerBridge:
         """Update an existing account via the web API."""
         updated_id = self.web_accounts.update(account_id, data, new_account_id)
         if updated_id:
+            if updated_id != account_id and account_id in self._account_status:
+                self._account_status[updated_id] = self._account_status.pop(account_id)
             self._merge_accounts()
         return updated_id
 
     def delete_account(self, account_id: str):
         """Delete an account via the web API."""
         self.web_accounts.delete(account_id)
+        self._account_status.pop(account_id, None)
         self._merge_accounts()
 
     def _prepare_emby(self, account_data: dict):
@@ -209,29 +225,37 @@ class SchedulerBridge:
             from embykeeper.emby.api import EmbyError
 
             emby, account = self._prepare_emby(account_data)
+            now = datetime.utcnow()
             try:
                 if not await self._authenticate_emby(emby):
                     ctx.finish(RunStatus.FAIL, "Token authentication failed")
+                    self._record_status(account_id, last_watch_time=now, last_watch_status="auth_failed", is_online=False)
                     return
                 if account.play_id:
                     item = await emby.get_item(account.play_id)
                     if not item or "Id" not in item:
                         ctx.finish(RunStatus.FAIL, "Video item not found")
+                        self._record_status(account_id, last_watch_time=now, last_watch_status="no_video")
                         return
                     emby.items[item["Id"]] = item
                 else:
                     await emby.load_main_page()
                     if not emby.items:
                         ctx.finish(RunStatus.FAIL, "No playable video found")
+                        self._record_status(account_id, last_watch_time=now, last_watch_status="no_video")
                         return
                 if await emby.watch():
                     ctx.finish(RunStatus.SUCCESS, "Watch successful")
+                    self._record_status(account_id, last_watch_time=now, last_watch_status="success", is_online=True)
                 else:
                     ctx.finish(RunStatus.FAIL, "Watch failed")
+                    self._record_status(account_id, last_watch_time=now, last_watch_status="failed")
             except EmbyError as e:
                 ctx.finish(RunStatus.FAIL, str(e))
+                self._record_status(account_id, last_watch_time=now, last_watch_status="failed")
             except Exception as e:
                 ctx.finish(RunStatus.ERROR, str(e))
+                self._record_status(account_id, last_watch_time=now, last_watch_status="error")
 
         task = asyncio.create_task(run_watch(), name=f"watch-{account_id}")
         self._running_tasks[account_id] = task
@@ -251,15 +275,19 @@ class SchedulerBridge:
         ctx.start(RunStatus.INITIALIZING)
 
         emby, _ = self._prepare_emby(account_data)
+        now = datetime.utcnow()
         try:
             if await self._authenticate_emby(emby):
                 ctx.finish(RunStatus.SUCCESS, "Token authentication successful")
+                self._record_status(account_id, last_login_time=now, is_online=True)
                 return {"run_id": ctx.id, "status": "success", "message": "Token authentication successful"}
             else:
                 ctx.finish(RunStatus.FAIL, "Token authentication failed")
+                self._record_status(account_id, last_login_time=now, is_online=False)
                 return {"run_id": ctx.id, "status": "failed", "message": "Token authentication failed"}
         except Exception as e:
             ctx.finish(RunStatus.ERROR, f"Login error: {e}")
+            self._record_status(account_id, last_login_time=now, is_online=False)
             return {"run_id": ctx.id, "status": "error", "message": str(e)}
 
     async def trigger_checkin(self, account_id: str) -> dict:
@@ -306,29 +334,53 @@ class SchedulerBridge:
 
         is_running = account_id in self._running_tasks
         has_token = bool(account_data.get("encrypted_token"))
+        recorded = self._account_status.get(account_id, {})
 
         return {
             "has_token": has_token,
-            "is_online": has_token,  # Token validity is checked by the login test action.
+            "is_online": recorded.get("is_online"),
             "is_running": is_running,
-            "last_login_time": None,
-            "last_watch_time": None,
+            "last_login_time": recorded.get("last_login_time"),
+            "last_watch_time": recorded.get("last_watch_time"),
+            "last_watch_status": recorded.get("last_watch_status"),
         }
 
     def get_schedule_info(self) -> List[dict]:
         """Get schedule info for all scheduled tasks."""
         schedules = []
-        if self.emby_manager:
-            for sid, scheduler in self.emby_manager._schedulers.items():
-                schedules.append({
-                    "id": sid,
-                    "account_spec": sid.replace("emby.watch.", "") if sid.startswith("emby.watch.") else sid,
-                    "interval_days": str(scheduler.days) if hasattr(scheduler, "days") else None,
-                    "time_range": f"{scheduler.start_time}-{scheduler.end_time}" if hasattr(scheduler, "start_time") else None,
-                    "next_time": None,
-                    "is_running": sid in self.emby_manager._running,
-                    "enabled": True,
-                })
+        if not self.emby_manager:
+            return schedules
+
+        for sid, scheduler in self.emby_manager._schedulers.items():
+            account_spec = sid.replace("emby.watch.", "") if sid.startswith("emby.watch.") else sid
+
+            interval_days = None
+            if hasattr(scheduler, "days"):
+                if isinstance(scheduler.days, (list, tuple)):
+                    interval_days = f"<{scheduler.days[0]},{scheduler.days[1]}>"
+                else:
+                    interval_days = str(scheduler.days)
+
+            time_range = None
+            if hasattr(scheduler, "start_time") and scheduler.start_time:
+                start = scheduler.start_time.strftime("%H:%M") if hasattr(scheduler.start_time, "strftime") else str(scheduler.start_time)
+                end = scheduler.end_time.strftime("%H:%M") if hasattr(scheduler.end_time, "strftime") else str(scheduler.end_time)
+                time_range = f"<{start},{end}>" if start != end else start
+
+            next_time = getattr(scheduler, "_next_time", None)
+
+            account_data = self.web_accounts.get(account_spec) if self.web_accounts else None
+            enabled = account_data.get("enabled", True) if account_data else True
+
+            schedules.append({
+                "id": sid,
+                "account_spec": account_spec,
+                "interval_days": interval_days,
+                "time_range": time_range,
+                "next_time": next_time,
+                "is_running": sid in self.emby_manager._running,
+                "enabled": enabled,
+            })
         return schedules
 
     async def shutdown(self):
@@ -339,7 +391,13 @@ class SchedulerBridge:
         for task in tasks:
             try:
                 await task
-            except asyncio.CancelledError:
+            except (asyncio.CancelledError, Exception):
+                pass
+        if self.emby_manager:
+            try:
+                for task in list(getattr(self.emby_manager, "_running", {}).values()):
+                    task.cancel()
+            except Exception:
                 pass
 
 
