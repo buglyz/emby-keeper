@@ -56,17 +56,7 @@
       }
     });
   </script>
-  <div id="app">
-    <n-config-provider :theme="null" :locale="zhCN" :date-locale="dateZhCN">
-      <n-message-provider>
-        <n-notification-provider>
-          <n-dialog-provider>
-            <router-view></router-view>
-          </n-dialog-provider>
-        </n-notification-provider>
-      </n-message-provider>
-    </n-config-provider>
-  </div>
+  <div id="app"></div>
 
   <script>
     const { createApp, ref, reactive, computed, onMounted, onUnmounted, watch, nextTick } = Vue;
@@ -869,7 +859,20 @@
     });
 
     const app = createApp({
-      template: '<router-view />',
+      setup() {
+        return { zhCN, dateZhCN };
+      },
+      template: `
+        <n-config-provider :theme="null" :locale="zhCN" :date-locale="dateZhCN">
+          <n-message-provider>
+            <n-notification-provider>
+              <n-dialog-provider>
+                <router-view />
+              </n-dialog-provider>
+            </n-notification-provider>
+          </n-message-provider>
+        </n-config-provider>
+      `,
     });
     app.use(router);
 
