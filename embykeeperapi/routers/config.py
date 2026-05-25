@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException
 
 from ..auth import get_current_user
 from ..models import GlobalConfigResponse, GlobalConfigUpdate
@@ -34,7 +34,7 @@ async def get_config(user: str = Depends(get_current_user)):
 async def update_config(req: GlobalConfigUpdate, user: str = Depends(get_current_user)):
     """Update global config settings."""
     if not config._cache:
-        return {"error": "Config not loaded"}
+        raise HTTPException(status_code=503, detail="Config not loaded")
 
     new_config = config._cache.model_copy()
 

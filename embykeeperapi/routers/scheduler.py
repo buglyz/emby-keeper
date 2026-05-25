@@ -1,6 +1,6 @@
 from typing import List
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException
 
 from ..auth import get_current_user
 from ..models import ScheduleInfo, DashboardStatus
@@ -41,13 +41,16 @@ async def run_now(schedule_id: str, user: str = Depends(get_current_user)):
 
     result = await bridge.trigger_watch(account_spec)
     if "error" in result:
-        return {"error": result["error"]}
+        raise HTTPException(status_code=404, detail=result["error"])
     return {"run_id": result.get("run_id", ""), "status": "started"}
 
 
 @router.get("/api/status", response_model=DashboardStatus)
 async def get_dashboard_status(user: str = Depends(get_current_user)):
     """Get dashboard overview status."""
+    if not bridge.web_accounts:
+        return DashboardStatus()
+
     accounts = bridge.web_accounts.get_all()
     total = len(accounts)
     enabled = sum(1 for a in accounts.values() if a.get("enabled", True))

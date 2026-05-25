@@ -18,13 +18,23 @@ router = APIRouter(prefix="/api/auth", tags=["auth"])
 
 
 @router.post("/token-exchange", response_model=LoginResponse)
-async def exchange_token(req: TokenExchangeRequest):
+async def exchange_token(req: TokenExchangeRequest, request: Request):
     """Exchange a pre-shared token (EK_TOKEN) for a JWT."""
+    client_ip = request.client.host if request.client else "unknown"
+
+    if not check_rate_limit(client_ip):
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail="Too many failed attempts. Try again later.",
+        )
+
     if not validate_pre_shared_token(req.token):
+        record_failed_attempt(client_ip)
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid pre-shared token",
         )
+    clear_failed_attempts(client_ip)
     jwt_token = create_jwt(subject="admin", expire_days=DEFAULT_EXPIRE_DAYS)
     return LoginResponse(
         access_token=jwt_token,

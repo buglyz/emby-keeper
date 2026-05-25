@@ -28,6 +28,31 @@
   </style>
 </head>
 <body>
+  <noscript>
+    <div style="padding:40px;text-align:center;font-family:sans-serif;">
+      <h2>需要启用 JavaScript</h2>
+      <p>Emby Keeper Web UI 需要 JavaScript 才能运行。请启用后刷新页面。</p>
+    </div>
+  </noscript>
+  <div id="cdn-fallback" style="display:none;padding:40px;max-width:600px;margin:60px auto;font-family:sans-serif;background:#fff3f0;border:1px solid #ffccc7;border-radius:8px;">
+    <h2 style="color:#cf1322;margin-bottom:12px;">前端资源加载失败</h2>
+    <p style="margin-bottom:8px;">无法加载 Vue / Naive UI / Vue Router。可能的原因：</p>
+    <ul style="margin-left:20px;line-height:1.8;">
+      <li>网络环境无法访问 cdn.jsdelivr.net</li>
+      <li>浏览器或代理拦截了脚本</li>
+      <li>CDN 临时故障</li>
+    </ul>
+    <p style="margin-top:12px;">请检查浏览器控制台 (F12) 获取详细错误，或尝试切换网络后刷新。</p>
+  </div>
+  <script>
+    window.addEventListener('DOMContentLoaded', function () {
+      if (typeof Vue === 'undefined' || typeof naiveUI === 'undefined' || typeof VueRouter === 'undefined') {
+        document.getElementById('cdn-fallback').style.display = 'block';
+        var app = document.getElementById('app');
+        if (app) app.style.display = 'none';
+      }
+    });
+  </script>
   <div id="app">
     <n-config-provider :theme="null" :locale="zhCN" :date-locale="dateZhCN">
       <n-message-provider>
