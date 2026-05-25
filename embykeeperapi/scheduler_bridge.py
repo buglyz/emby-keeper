@@ -134,6 +134,7 @@ class SchedulerBridge:
         self._base_emby_accounts: List[EmbyAccount] = []
         self._running_tasks: Dict[str, asyncio.Task] = {}
         self._account_status: Dict[str, dict] = {}
+        self._scheduler_task: Optional[asyncio.Task] = None
         self._initialized = False
 
     def _record_status(self, account_id: str, **fields):
@@ -157,8 +158,10 @@ class SchedulerBridge:
         from embykeeper.emby.main import EmbyManager
         self.emby_manager = EmbyManager()
 
-        # Start scheduled tasks for all accounts
-        await self.emby_manager.schedule_all(instant=False)
+        # Start scheduled tasks in background (schedule_all blocks forever)
+        self._scheduler_task = asyncio.create_task(
+            self.emby_manager.schedule_all(instant=False)
+        )
 
         self._initialized = True
         logger.info("Scheduler bridge initialized.")
@@ -385,6 +388,13 @@ class SchedulerBridge:
 
     async def shutdown(self):
         """Cleanup on shutdown."""
+        if self._scheduler_task and not self._scheduler_task.done():
+            self._scheduler_task.cancel()
+            try:
+                await self._scheduler_task
+            except (asyncio.CancelledError, Exception):
+                pass
+
         tasks = list(self._running_tasks.values())
         for task in tasks:
             task.cancel()
