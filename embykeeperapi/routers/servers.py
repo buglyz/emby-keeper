@@ -133,12 +133,14 @@ async def create_server(req: EmbyServerCreate, user: str = Depends(get_current_u
         from embykeeper.emby.api import Emby
         from embykeeper.schema import EmbyAccount
 
-        temp_account = EmbyAccount(
-            url=req.url,
-            username=req.username,
-            password=req.password,
-            name=req.name,
-        )
+        temp_kwargs = {
+            "url": req.url,
+            "username": req.username,
+            "password": req.password,
+        }
+        if req.name is not None:
+            temp_kwargs["name"] = req.name
+        temp_account = EmbyAccount(**temp_kwargs)
         emby = Emby(temp_account)
         try:
             token_result = await emby.login()
@@ -236,13 +238,16 @@ async def update_server(
 
         url = update_data.get("url") or existing["url"]
         username = update_data.get("username") or existing["username"]
+        name = update_data.get("name", existing.get("name"))
 
-        temp_account = EmbyAccount(
-            url=url,
-            username=username,
-            password=req.password,
-            name=update_data.get("name", existing.get("name")),
-        )
+        temp_kwargs = {
+            "url": url,
+            "username": username,
+            "password": req.password,
+        }
+        if name is not None:
+            temp_kwargs["name"] = name
+        temp_account = EmbyAccount(**temp_kwargs)
         emby = Emby(temp_account)
         try:
             token_result = await emby.login()
