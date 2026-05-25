@@ -95,8 +95,6 @@ class WebAccountData:
         account_dict = {
             "url": data["url"],
             "username": data["username"],
-            "password": "",
-            "name": data.get("name"),
             "time": data.get("time", [300, 600]),
             "allow_multiple": data.get("allow_multiple", True),
             "allow_stream": data.get("allow_stream", False),
@@ -111,6 +109,8 @@ class WebAccountData:
             "interval_days": data.get("interval_days"),
             "time_range": data.get("time_range"),
         }
+        if data.get("name"):
+            account_dict["name"] = data["name"]
         account_dict = {k: v for k, v in account_dict.items() if v is not None}
         return EmbyAccount(**account_dict)
 
@@ -172,6 +172,16 @@ class SchedulerBridge:
             return
 
         web_accounts = self.web_accounts.to_emby_accounts()
+
+        # Populate credential cache so the scheduler's Emby objects can find tokens
+        from embykeeper.cache import cache as credential_cache
+        for aid, data in self.web_accounts.get_all().items():
+            token = self.web_accounts._get_account_token(data)
+            if token:
+                from urllib.parse import urlparse
+                hostname = urlparse(data["url"]).hostname or ""
+                username = data["username"]
+                credential_cache.set(f"emby.credential.{hostname}.{username}", {"token": token})
 
         # Combine original CLI accounts + current web accounts
         all_accounts = self._base_emby_accounts + web_accounts
@@ -405,7 +415,7 @@ class SchedulerBridge:
                 pass
         if self.emby_manager:
             try:
-                for task in list(getattr(self.emby_manager, "_running", {}).values()):
+                for task in list(getattr(self.emby_manager, "_tasks", {}).values()):
                     task.cancel()
             except Exception:
                 pass

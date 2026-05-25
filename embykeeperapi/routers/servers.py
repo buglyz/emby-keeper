@@ -89,9 +89,16 @@ def _account_data_to_response(account_id: str, data: dict) -> EmbyServerResponse
     )
 
 
+def _require_bridge():
+    """Ensure the scheduler bridge is initialized."""
+    if bridge.web_accounts is None:
+        raise HTTPException(status_code=503, detail="Service initializing, please retry")
+
+
 @router.get("", response_model=List[EmbyServerResponse])
 async def list_servers(user: str = Depends(get_current_user)):
     """List all Emby server accounts with status."""
+    _require_bridge()
     accounts = bridge.web_accounts.get_all()
     return [_account_data_to_response(aid, data) for aid, data in accounts.items()]
 
@@ -99,6 +106,7 @@ async def list_servers(user: str = Depends(get_current_user)):
 @router.get("/{account_id:path}", response_model=EmbyServerResponse)
 async def get_server(account_id: str, user: str = Depends(get_current_user)):
     """Get a single Emby server account detail."""
+    _require_bridge()
     data = bridge.web_accounts.get(account_id)
     if not data:
         raise HTTPException(status_code=404, detail="Server not found")
@@ -108,6 +116,7 @@ async def get_server(account_id: str, user: str = Depends(get_current_user)):
 @router.post("", response_model=EmbyServerResponse, status_code=status.HTTP_201_CREATED)
 async def create_server(req: EmbyServerCreate, user: str = Depends(get_current_user)):
     """Create a new Emby server account."""
+    _require_bridge()
     _validate_server_fields(url=req.url, time=req.time)
     account_id = _make_account_id(req.username, req.name, req.url)
 

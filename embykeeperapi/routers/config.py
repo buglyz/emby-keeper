@@ -36,7 +36,7 @@ async def update_config(req: GlobalConfigUpdate, user: str = Depends(get_current
     if not config._cache:
         raise HTTPException(status_code=503, detail="Config not loaded")
 
-    new_config = config._cache.model_copy()
+    new_config = config._cache.model_copy(deep=True)
 
     fields_set = _model_fields_set(req)
 

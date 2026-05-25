@@ -102,8 +102,12 @@ def validate_password(password: str) -> bool:
 def check_rate_limit(ip: str) -> bool:
     """Check if an IP has exceeded the failed login rate limit."""
     now = time.time()
+    # Periodic cleanup: remove stale IPs (no attempts in last hour)
+    if len(_failed_attempts) > 100:
+        stale = [k for k, v in _failed_attempts.items() if not v or now - v[-1] > 3600]
+        for k in stale:
+            del _failed_attempts[k]
     attempts = _failed_attempts.get(ip, [])
-    # Remove attempts older than 1 hour
     attempts = [t for t in attempts if now - t < 3600]
     _failed_attempts[ip] = attempts
     return len(attempts) < MAX_FAILED_PER_HOUR

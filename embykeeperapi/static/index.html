@@ -250,8 +250,9 @@
             <n-text style="font-size:18px;font-weight:600">服务器列表</n-text>
             <n-space>
               <n-button type="primary" @click="$router.push('/servers/new')">添加服务器</n-button>
-              <n-popconfirm @positive-click="handleWatchAll" content="确定要对所有已启用服务器执行保活吗？">
-                <n-button>全部保活</n-button>
+              <n-popconfirm @positive-click="handleWatchAll">
+                <template #trigger><n-button>全部保活</n-button></template>
+                确定要对所有已启用服务器执行保活吗？
               </n-popconfirm>
             </n-space>
           </div>
@@ -605,8 +606,9 @@
                 <n-button @click="handleToggle(!server.enabled)">
                   {{ server.enabled ? '禁用' : '启用' }}
                 </n-button>
-                <n-popconfirm @positive-click="handleDelete" content="确定删除此服务器吗？此操作不可恢复">
-                  <n-button type="error">删除</n-button>
+                <n-popconfirm @positive-click="handleDelete">
+                  <template #trigger><n-button type="error">删除</n-button></template>
+                  确定删除此服务器吗？此操作不可恢复
                 </n-popconfirm>
               </n-space>
             </n-card>
