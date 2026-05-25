@@ -101,22 +101,22 @@ def create_app() -> FastAPI:
     app.include_router(scheduler_router)
     app.include_router(config_router)
 
-    # Mount static files for SPA frontend
+    # Serve SPA frontend
     static_dir = Path(__file__).parent / "static"
     if static_dir.is_dir():
+        from starlette.responses import FileResponse, JSONResponse
+
         app.mount("/static", StaticFiles(directory=str(static_dir)), name="static")
 
-        # SPA catch-all route: serve index.html for any non-API path
-        from starlette.responses import FileResponse, JSONResponse
+        @app.get("/")
+        async def serve_root():
+            return FileResponse(str(static_dir / "index.html"))
 
         @app.get("/{path:path}")
         async def serve_spa(path: str):
-            if path.startswith("api/") or path.startswith("static/") or path == "healthz":
+            if path.startswith("api/") or path == "healthz":
                 return JSONResponse({"detail": "Not Found"}, status_code=404)
-            index_path = static_dir / "index.html"
-            if index_path.is_file():
-                return FileResponse(str(index_path))
-            return JSONResponse({"detail": "Not Found"}, status_code=404)
+            return FileResponse(str(static_dir / "index.html"))
 
     return app
 
