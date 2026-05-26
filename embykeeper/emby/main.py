@@ -19,6 +19,22 @@ from .api import Emby, EmbyPlayError, EmbyConnectError, EmbyRequestError, EmbyEr
 logger = logger.bind(scheme="embywatcher")
 
 
+def _default_url_port(scheme: str) -> Optional[int]:
+    if scheme == "https":
+        return 443
+    if scheme == "http":
+        return 80
+    return None
+
+
+def _same_emby_origin(account: EmbyAccount, parsed_url) -> bool:
+    if account.url.host != parsed_url.hostname:
+        return False
+    account_port = account.url.port or _default_url_port(account.url.scheme)
+    parsed_port = parsed_url.port or _default_url_port(parsed_url.scheme)
+    return account_port == parsed_port
+
+
 class EmbyManager:
     def __init__(self):
         self._tasks: Dict[str, asyncio.Task] = {}  # account_spec -> task
@@ -227,7 +243,7 @@ class EmbyManager:
         # 在config中查找匹配的emby配置
         account = None
         for a in config.emby.account:
-            if a.url.host == parsed.netloc:
+            if _same_emby_origin(a, parsed):
                 account = a
                 break
 
