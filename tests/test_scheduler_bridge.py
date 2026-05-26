@@ -2,6 +2,7 @@ import asyncio
 
 import pytest
 
+from embykeeper.cache import cache
 from embykeeper.config import config
 from embykeeperapi.crypto import encrypt_token
 from embykeeperapi.scheduler_bridge import SchedulerBridge
@@ -77,6 +78,69 @@ def test_trigger_watch_many_skips_disabled_and_independent_when_requested(tmp_pa
 
         assert result["status"] == "started"
         assert triggered == ["global@example.com"]
+
+        await bridge.shutdown()
+
+    asyncio.run(run_test())
+
+
+def test_prepare_emby_uses_stored_user_id(tmp_path):
+    async def run_test():
+        bridge = SchedulerBridge()
+        await bridge.initialize(tmp_path)
+
+        account_data = {
+            "url": "https://example.com",
+            "username": "alice",
+            "encrypted_token": encrypt_token("token-1", tmp_path),
+            "user_id": "user-1",
+            "enabled": True,
+        }
+
+        emby, _ = bridge._prepare_emby(account_data)
+
+        assert emby.token == "token-1"
+        assert emby.user_id == "user-1"
+        assert cache.get("emby.credential.example.com.alice") == {
+            "token": "token-1",
+            "userid": "user-1",
+        }
+
+        await bridge.shutdown()
+
+    asyncio.run(run_test())
+
+
+def test_trigger_login_remembers_user_id(tmp_path, monkeypatch):
+    async def run_test():
+        bridge = SchedulerBridge()
+        await bridge.initialize(tmp_path)
+
+        account_id = "alice@example.com"
+        bridge.add_account(
+            account_id,
+            {
+                "url": "https://example.com",
+                "username": "alice",
+                "encrypted_token": encrypt_token("token-1", tmp_path),
+                "enabled": True,
+            },
+        )
+
+        async def fake_authenticate(emby):
+            emby.set_credentials("token-1", "user-1")
+            return True
+
+        monkeypatch.setattr(bridge, "_authenticate_emby", fake_authenticate)
+
+        result = await bridge.trigger_login(account_id)
+
+        assert result["status"] == "success"
+        assert bridge.web_accounts.get(account_id)["user_id"] == "user-1"
+        assert cache.get("emby.credential.example.com.alice") == {
+            "token": "token-1",
+            "userid": "user-1",
+        }
 
         await bridge.shutdown()
 

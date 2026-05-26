@@ -1,15 +1,15 @@
 # Emby Keeper
 [![Docker API (amd64)](https://github.com/buglyz/emby-keeper/actions/workflows/docker-api-amd64.yml/badge.svg)](https://github.com/buglyz/emby-keeper/actions/workflows/docker-api-amd64.yml)
 
-一个美观、简洁、易用的图形化管理平台，用于管理和执行 Emby 服务器的自动签到与模拟观看保活任务。
+一个美观、简洁、易用的图形化管理平台，用于管理和执行 Emby 服务器的模拟观看保活任务。
 
 ## 功能特性
 
 - **图形化界面** — 现代化 Web UI，告别繁琐的命令行和 TOML 配置编辑
 - **多服务器管理** — 轻松添加、编辑、删除多个 Emby 服务器
 - **双认证模式** — 支持 AccessToken（推荐，更安全）和密码（一次性换取 Token，密码绝不保存）
-- **一键操作** — 每个服务器独立的"登录测试"、"保活"、"签到"按钮
-- **自动调度** — 后台定时执行保活和签到任务，支持自定义间隔和时间范围
+- **一键操作** — 每个服务器独立的"登录测试"、"保活"按钮
+- **自动调度** — 后台定时执行保活任务，支持自定义间隔和时间范围
 - **加密存储** — Token 使用 Fernet 对称加密存储，密钥从环境变量读取
 - **多平台部署** — 支持 HuggingFace Spaces、VPS Docker 一键部署
 
@@ -91,7 +91,6 @@ docker compose up -d
 
 - **仪表盘** — 查看所有服务器状态（在线/离线、Token 配置情况）
 - **一键保活** — 点击"保活"按钮触发模拟观看
-- **一键签到** — 配置签到插件 ID 后可触发签到
 - **计划任务** — 查看调度状态，支持立即执行
 - **全局配置** — 编辑代理、保活间隔等设置
 
@@ -113,7 +112,7 @@ docker compose up -d
 
 ```
 emby-keeper/
-├── embykeeper/          # 核心 CLI 工具（签到、保活、Telegram 机器人）
+├── embykeeper/          # Emby 保活核心与 CLI
 ├── embykeeperapi/       # FastAPI Web UI（图形化管理平台，默认入口）
 │   ├── app.py           # FastAPI 应用入口
 │   ├── auth.py          # JWT 认证

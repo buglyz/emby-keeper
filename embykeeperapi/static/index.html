@@ -121,7 +121,6 @@
       // Actions
       triggerLogin(id) { return this.post(this.serverPath(id, '/login')); },
       triggerWatch(id) { return this.post(this.serverPath(id, '/watch')); },
-      triggerCheckin(id) { return this.post(this.serverPath(id, '/checkin')); },
       watchAll() { return this.post('/api/servers/actions/watch-all'); },
 
       // Schedule & Status
@@ -286,7 +285,6 @@
                   <n-space justify="end">
                     <n-button size="small" @click.stop="handleLogin(s.id)" :loading="actionLoading[s.id]">登录测试</n-button>
                     <n-button size="small" type="primary" @click.stop="handleWatch(s.id)" :loading="actionLoading[s.id+'-w']">保活</n-button>
-                    <n-button v-if="s.checkin_plugin_id" size="small" @click.stop="handleCheckin(s.id)" :loading="actionLoading[s.id+'-c']">签到</n-button>
                   </n-space>
                 </template>
               </n-card>
@@ -329,15 +327,6 @@
           finally { actionLoading[id + '-w'] = false; }
         }
 
-        async function handleCheckin(id) {
-          actionLoading[id + '-c'] = true;
-          try {
-            const res = await API.triggerCheckin(id);
-            message.success(res.message || '签到已触发');
-          } catch (e) { message.error(e.message); }
-          finally { actionLoading[id + '-c'] = false; }
-        }
-
         async function handleWatchAll() {
           try {
             const res = await API.watchAll();
@@ -351,7 +340,7 @@
         });
         onUnmounted(() => { if (pollTimer) clearInterval(pollTimer); });
 
-        return { API, servers, status, loading, actionLoading, handleLogin, handleWatch, handleCheckin, handleWatchAll };
+        return { API, servers, status, loading, actionLoading, handleLogin, handleWatch, handleWatchAll };
       }
     };
 
@@ -405,11 +394,6 @@
               <n-input v-model:value="form.time_range" placeholder="保活时间范围 (如 <11:00AM,11:00PM>)" />
             </n-space>
 
-            <div class="form-section-title">签到插件</div>
-            <n-space vertical :size="12">
-              <n-input v-model:value="form.checkin_plugin_id" placeholder="签到插件 ID（可选，如 EmbyBoss）" />
-            </n-space>
-
             <div class="form-section-title">高级设置</div>
             <n-space vertical :size="12">
               <n-switch v-model:value="form.use_proxy"><template #checked>使用代理</template><template #unchecked>不使用代理</template></n-switch>
@@ -448,7 +432,7 @@
           time_min: 300, time_max: 600,
           allow_multiple: true, allow_stream: false, use_proxy: true,
           enabled: true, play_id: '',
-          interval_days: '', time_range: '', checkin_plugin_id: '',
+          interval_days: '', time_range: '',
           useragent: '', client: '', client_version: '', device: '', device_id: '',
         });
 
@@ -467,7 +451,6 @@
               form.play_id = server.play_id || '';
               form.interval_days = server.interval_days || '';
               form.time_range = server.time_range || '';
-              form.checkin_plugin_id = server.checkin_plugin_id || '';
               form.useragent = server.useragent || '';
               form.client = server.client || '';
               form.client_version = server.client_version || '';
@@ -521,7 +504,6 @@
             play_id: form.play_id || null,
             interval_days: form.interval_days || null,
             time_range: form.time_range || null,
-            checkin_plugin_id: form.checkin_plugin_id || null,
             useragent: form.useragent || null,
             client: form.client || null,
             client_version: form.client_version || null,
@@ -588,7 +570,6 @@
                 <n-descriptions-item label="允许多视频">{{ server.allow_multiple ? '是' : '否' }}</n-descriptions-item>
                 <n-descriptions-item label="保活间隔">{{ server.interval_days || '跟随全局' }}</n-descriptions-item>
                 <n-descriptions-item label="时间范围">{{ server.time_range || '跟随全局' }}</n-descriptions-item>
-                <n-descriptions-item label="签到插件">{{ server.checkin_plugin_id || '未配置' }}</n-descriptions-item>
                 <n-descriptions-item label="使用代理">{{ server.use_proxy ? '是' : '否' }}</n-descriptions-item>
                 <n-descriptions-item label="User-Agent">{{ server.useragent || '默认' }}</n-descriptions-item>
                 <n-descriptions-item label="客户端">{{ server.client || '默认' }}</n-descriptions-item>
@@ -602,7 +583,6 @@
               <n-space justify="center" :size="12">
                 <n-button type="primary" :loading="actionLoading.watch" @click="handleWatch">立即保活</n-button>
                 <n-button :loading="actionLoading.login" @click="handleLogin">登录测试</n-button>
-                <n-button v-if="server.checkin_plugin_id" :loading="actionLoading.checkin" @click="handleCheckin">立即签到</n-button>
                 <n-button @click="handleToggle(!server.enabled)">
                   {{ server.enabled ? '禁用' : '启用' }}
                 </n-button>
@@ -621,7 +601,7 @@
         const message = useMessage();
         const server = ref(null);
         const loading = ref(true);
-        const actionLoading = reactive({ watch: false, login: false, checkin: false });
+        const actionLoading = reactive({ watch: false, login: false });
 
         async function loadData() {
           try {
@@ -644,13 +624,6 @@
           finally { actionLoading.login = false; }
         }
 
-        async function handleCheckin() {
-          actionLoading.checkin = true;
-          try { const res = await API.triggerCheckin(route.params.id); message.success(res.message); }
-          catch (e) { message.error(e.message); }
-          finally { actionLoading.checkin = false; }
-        }
-
         async function handleToggle(enabled) {
           try {
             await API.toggleServer(route.params.id, enabled);
@@ -668,7 +641,7 @@
         }
 
         onMounted(loadData);
-        return { API, server, loading, actionLoading, handleWatch, handleLogin, handleCheckin, handleToggle, handleDelete };
+        return { API, server, loading, actionLoading, handleWatch, handleLogin, handleToggle, handleDelete };
       }
     };
 

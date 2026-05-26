@@ -1,6 +1,6 @@
 import asyncio
 import json
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Dict, List, Optional
 
@@ -91,6 +91,9 @@ class WebAccountData:
         encrypted_token = data.get("encrypted_token")
         return decrypt_token(encrypted_token, self.basedir) if encrypted_token else ""
 
+    def _get_account_user_id(self, data: dict) -> str:
+        return data.get("user_id") or data.get("userid") or ""
+
     def _to_emby_account(self, data: dict) -> EmbyAccount:
         account_dict = {
             "url": data["url"],
@@ -141,6 +144,32 @@ class SchedulerBridge:
         existing = self._account_status.setdefault(account_id, {})
         existing.update(fields)
 
+    def _cache_account_credentials(self, data: dict):
+        token = self.web_accounts._get_account_token(data)
+        if not token:
+            return
+
+        from embykeeper.cache import cache as credential_cache
+        from urllib.parse import urlparse
+
+        hostname = urlparse(data["url"]).hostname or ""
+        username = data["username"]
+        cache_data = {"token": token}
+        user_id = self.web_accounts._get_account_user_id(data)
+        if user_id:
+            cache_data["userid"] = user_id
+        credential_cache.set(f"emby.credential.{hostname}.{username}", cache_data)
+
+    def _remember_user_id(self, account_id: str, account_data: dict, emby):
+        user_id = getattr(emby, "user_id", None)
+        if not user_id or account_data.get("user_id") == user_id:
+            return
+
+        updated_id = self.web_accounts.update(account_id, {"user_id": user_id})
+        if updated_id:
+            account_data["user_id"] = user_id
+            self._cache_account_credentials(account_data)
+
     async def initialize(self, basedir: Path):
         """Initialize the scheduler bridge on app startup."""
         # Initialize web accounts store
@@ -181,14 +210,8 @@ class SchedulerBridge:
         web_accounts = self.web_accounts.to_emby_accounts()
 
         # Populate credential cache so the scheduler's Emby objects can find tokens
-        from embykeeper.cache import cache as credential_cache
-        for aid, data in self.web_accounts.get_all().items():
-            token = self.web_accounts._get_account_token(data)
-            if token:
-                from urllib.parse import urlparse
-                hostname = urlparse(data["url"]).hostname or ""
-                username = data["username"]
-                credential_cache.set(f"emby.credential.{hostname}.{username}", {"token": token})
+        for data in self.web_accounts.get_all().values():
+            self._cache_account_credentials(data)
 
         # Combine original CLI accounts + current web accounts
         all_accounts = self._base_emby_accounts + web_accounts
@@ -224,7 +247,10 @@ class SchedulerBridge:
 
         account = self.web_accounts._to_emby_account(account_data)
         emby = Emby(account)
-        emby.set_credentials(self.web_accounts._get_account_token(account_data))
+        emby.set_credentials(
+            self.web_accounts._get_account_token(account_data),
+            self.web_accounts._get_account_user_id(account_data),
+        )
         return emby, account
 
     async def _authenticate_emby(self, emby) -> bool:
@@ -245,12 +271,13 @@ class SchedulerBridge:
             from embykeeper.emby.api import EmbyError
 
             emby, account = self._prepare_emby(account_data)
-            now = datetime.utcnow()
+            now = datetime.now(timezone.utc)
             try:
                 if not await self._authenticate_emby(emby):
                     ctx.finish(RunStatus.FAIL, "Token authentication failed")
                     self._record_status(account_id, last_watch_time=now, last_watch_status="auth_failed", is_online=False)
                     return
+                self._remember_user_id(account_id, account_data, emby)
                 if account.play_id:
                     item = await emby.get_item(account.play_id)
                     if not item or "Id" not in item:
@@ -313,9 +340,10 @@ class SchedulerBridge:
         ctx.start(RunStatus.INITIALIZING)
 
         emby, _ = self._prepare_emby(account_data)
-        now = datetime.utcnow()
+        now = datetime.now(timezone.utc)
         try:
             if await self._authenticate_emby(emby):
+                self._remember_user_id(account_id, account_data, emby)
                 ctx.finish(RunStatus.SUCCESS, "Token authentication successful")
                 self._record_status(account_id, last_login_time=now, is_online=True)
                 return {"run_id": ctx.id, "status": "success", "message": "Token authentication successful"}
@@ -326,42 +354,6 @@ class SchedulerBridge:
         except Exception as e:
             ctx.finish(RunStatus.ERROR, f"Login error: {e}")
             self._record_status(account_id, last_login_time=now, is_online=False)
-            return {"run_id": ctx.id, "status": "error", "message": str(e)}
-
-    async def trigger_checkin(self, account_id: str) -> dict:
-        """Trigger a check-in for a specific account."""
-        account_data = self.web_accounts.get(account_id)
-        if not account_data:
-            return {"error": "Account not found"}
-
-        plugin_id = account_data.get("checkin_plugin_id")
-        if not plugin_id:
-            return {"error": "No check-in plugin configured for this account"}
-
-        from embykeeper.runinfo import RunContext, RunStatus
-
-        ctx = RunContext.prepare(description=f"Check-in: {account_id}")
-        ctx.start(RunStatus.INITIALIZING)
-
-        emby, _ = self._prepare_emby(account_data)
-        try:
-            if not await self._authenticate_emby(emby):
-                ctx.finish(RunStatus.FAIL, "Token authentication failed for check-in")
-                return {"run_id": ctx.id, "status": "failed", "message": "Token authentication failed"}
-
-            resp = await emby._request(
-                "POST",
-                f"/Plugins/{plugin_id}/CheckIn",
-            )
-
-            if resp.ok:
-                ctx.finish(RunStatus.SUCCESS, "Check-in successful")
-                return {"run_id": ctx.id, "status": "success", "message": "Check-in successful"}
-            else:
-                ctx.finish(RunStatus.FAIL, f"Check-in failed: HTTP {resp.status_code}")
-                return {"run_id": ctx.id, "status": "failed", "message": f"Check-in failed: HTTP {resp.status_code}"}
-        except Exception as e:
-            ctx.finish(RunStatus.ERROR, f"Check-in error: {e}")
             return {"run_id": ctx.id, "status": "error", "message": str(e)}
 
     def get_account_status(self, account_id: str) -> dict:

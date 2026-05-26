@@ -76,7 +76,6 @@ def _account_data_to_response(account_id: str, data: dict) -> EmbyServerResponse
         enabled=data.get("enabled", True),
         interval_days=data.get("interval_days"),
         time_range=data.get("time_range"),
-        checkin_plugin_id=data.get("checkin_plugin_id"),
         useragent=data.get("useragent"),
         client=data.get("client"),
         client_version=data.get("client_version"),
@@ -135,6 +134,7 @@ async def create_server(req: EmbyServerCreate, user: str = Depends(get_current_u
                 detail="access_token is required when auth_method is 'token'",
             )
         encrypted_token = encrypt_token(req.access_token, bridge.web_accounts.basedir)
+        user_id = None
     elif req.auth_method == "password":
         if not req.password:
             raise HTTPException(
@@ -168,6 +168,7 @@ async def create_server(req: EmbyServerCreate, user: str = Depends(get_current_u
                 detail="Failed to authenticate with Emby server. Check username and password.",
             )
         encrypted_token = encrypt_token(token_result, bridge.web_accounts.basedir)
+        user_id = emby.user_id
         logger.info(f"Successfully exchanged password for token for {account_id}")
     else:
         raise HTTPException(status_code=400, detail="auth_method must be 'token' or 'password'")
@@ -179,6 +180,7 @@ async def create_server(req: EmbyServerCreate, user: str = Depends(get_current_u
         "name": req.name,
         "auth_method": req.auth_method,
         "encrypted_token": encrypted_token,
+        "user_id": user_id,
         "time": req.time,
         "allow_multiple": req.allow_multiple,
         "allow_stream": req.allow_stream,
@@ -187,7 +189,6 @@ async def create_server(req: EmbyServerCreate, user: str = Depends(get_current_u
         "enabled": req.enabled,
         "interval_days": req.interval_days,
         "time_range": req.time_range,
-        "checkin_plugin_id": req.checkin_plugin_id,
         "useragent": req.useragent,
         "client": req.client,
         "client_version": req.client_version,
@@ -223,7 +224,7 @@ async def update_server(
     simple_fields = [
         "url", "username", "name", "time", "allow_multiple", "allow_stream",
         "use_proxy", "play_id", "enabled", "interval_days", "time_range",
-        "checkin_plugin_id", "useragent", "client", "client_version", "device", "device_id",
+        "useragent", "client", "client_version", "device", "device_id",
     ]
     for field in simple_fields:
         if field in fields_set:
@@ -242,6 +243,7 @@ async def update_server(
     if req.access_token:
         update_data["auth_method"] = "token"
         update_data["encrypted_token"] = encrypt_token(req.access_token, bridge.web_accounts.basedir)
+        update_data["user_id"] = None
     elif auth_method == "token" and existing.get("auth_method", "token") != "token":
         raise HTTPException(status_code=400, detail="access_token is required when auth_method is 'token'")
 
@@ -277,6 +279,7 @@ async def update_server(
             )
         update_data["auth_method"] = "password"
         update_data["encrypted_token"] = encrypt_token(token_result, bridge.web_accounts.basedir)
+        update_data["user_id"] = emby.user_id
     elif auth_method == "password" and existing.get("auth_method", "token") != "password":
         raise HTTPException(status_code=400, detail="password is required when auth_method is 'password'")
 
@@ -343,20 +346,6 @@ async def trigger_watch(account_id: str, user: str = Depends(get_current_user)):
         run_id=result.get("run_id", ""),
         status="started",
         message="Watch task started",
-    )
-
-
-@router.post("/{account_id:path}/checkin", response_model=ActionResponse)
-async def trigger_checkin(account_id: str, user: str = Depends(get_current_user)):
-    """Trigger a check-in (sign-in) action."""
-    _require_bridge()
-    result = await bridge.trigger_checkin(account_id)
-    if "error" in result:
-        raise HTTPException(status_code=400, detail=result["error"])
-    return ActionResponse(
-        run_id=result.get("run_id", ""),
-        status=result.get("status", "started"),
-        message=result.get("message", ""),
     )
 
 

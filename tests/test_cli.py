@@ -27,4 +27,17 @@ def test_version():
 def test_create_config(in_temp_dir: Path):
     result = runner.invoke(app, ["--example-config"])
     assert "这是一个配置文件范例" in result.stdout
+    assert "[emby]" in result.stdout
+    assert "[[emby.account]]" in result.stdout
+    assert 'method = "apprise"' in result.stdout
+    for removed in (
+        "Telegram",
+        "telegram",
+        "checkiner",
+        "registrar",
+        "Subsonic",
+        "subsonic",
+        "签到",
+    ):
+        assert removed not in result.stdout
     assert result.exit_code == 0

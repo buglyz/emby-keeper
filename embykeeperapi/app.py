@@ -74,7 +74,7 @@ def create_app() -> FastAPI:
 
     app = FastAPI(
         title="EmbyKeeper API",
-        description="Web management platform for Emby server keep-alive and sign-in",
+        description="Web management platform for Emby server keep-alive",
         version="0.1.0",
         root_path=prefix,
         lifespan=lifespan,

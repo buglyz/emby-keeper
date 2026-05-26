@@ -40,8 +40,6 @@ class EmbyServerCreate(BaseModel):
     enabled: Optional[bool] = Field(default=True, description="Whether this account is enabled")
     interval_days: Optional[str] = Field(default=None, description="Per-account interval override")
     time_range: Optional[str] = Field(default=None, description="Per-account time range override")
-    # Check-in plugin
-    checkin_plugin_id: Optional[str] = Field(default=None, description="Check-in plugin ID for sign-in")
     # Advanced settings
     useragent: Optional[str] = None
     client: Optional[str] = None
@@ -66,7 +64,6 @@ class EmbyServerUpdate(BaseModel):
     enabled: Optional[bool] = None
     interval_days: Optional[str] = None
     time_range: Optional[str] = None
-    checkin_plugin_id: Optional[str] = None
     useragent: Optional[str] = None
     client: Optional[str] = None
     client_version: Optional[str] = None
@@ -89,7 +86,6 @@ class EmbyServerResponse(BaseModel):
     enabled: Optional[bool] = True
     interval_days: Optional[str] = None
     time_range: Optional[str] = None
-    checkin_plugin_id: Optional[str] = None
     useragent: Optional[str] = None
     client: Optional[str] = None
     client_version: Optional[str] = None
