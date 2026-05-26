@@ -227,6 +227,14 @@ class Emby:
         self.set_credentials(self.token, user.get("Id"))
         return bool(self.user_id)
 
+    async def ensure_authenticated(self) -> bool:
+        """Ensure token and user id are available before account requests."""
+        if self.user_id:
+            return True
+        if self.token and await self.authenticate_with_token():
+            return True
+        return bool(await self.login())
+
     def build_headers(self):
         headers = {}
         auth_headers = {
@@ -235,8 +243,10 @@ class Emby:
             "DeviceId": self.env.device_id,
             "Version": self.env.client_version,
         }
+        if self.user_id:
+            auth_headers["UserId"] = self.user_id
         auth_header = ",".join([f"{k}={quote(str(v))}" for k, v in auth_headers.items()])
-        full_auth_header = f'MediaBrowser Token={self.token or ""},Emby UserId={self.run_id},{auth_header}'
+        full_auth_header = f'MediaBrowser Token={self.token or ""},{auth_header}'
         headers["User-Agent"] = self.useragent or self.env.useragent
         headers["Accept-Language"] = "zh-CN,zh-Hans;q=0.9"
         headers["Content-Type"] = "application/json"

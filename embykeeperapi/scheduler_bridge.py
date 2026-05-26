@@ -7,7 +7,7 @@ from typing import Dict, List, Optional
 from loguru import logger
 
 from embykeeper.config import config
-from embykeeper.schema import EmbyAccount
+from embykeeper.schema import Config, EmbyAccount
 
 from .crypto import decrypt_token
 
@@ -148,8 +148,15 @@ class SchedulerBridge:
 
         # Load existing config
         config.basedir = basedir
-        await config.reload_conf()
-        self._base_emby_accounts = list(config.emby.account)
+        config_file = basedir / "config.toml"
+        if config_file.is_file():
+            loaded = await config.reload_conf(config_file)
+        else:
+            loaded = False
+        if not loaded:
+            logger.warning("No valid config loaded; using defaults for API-managed accounts.")
+            config.set(Config())
+        self._base_emby_accounts = list(config.emby.account or [])
 
         # Merge web-managed accounts into the config
         self._merge_accounts()
@@ -276,6 +283,24 @@ class SchedulerBridge:
 
         return {"run_id": ctx.id, "status": "started"}
 
+    async def trigger_watch_many(self, unified_only: bool = False) -> dict:
+        """Trigger immediate watch tasks for enabled web-managed accounts."""
+        run_ids = []
+        for account_id, data in self.web_accounts.get_all().items():
+            if not data.get("enabled", True):
+                continue
+            if unified_only and (data.get("time_range") or data.get("interval_days")):
+                continue
+            result = await self.trigger_watch(account_id)
+            if result.get("run_id"):
+                run_ids.append(result["run_id"])
+
+        return {
+            "run_id": run_ids[0] if run_ids else "",
+            "status": "started" if run_ids else "skipped",
+            "message": f"Started {len(run_ids)} watch task(s)",
+        }
+
     async def trigger_login(self, account_id: str) -> dict:
         """Trigger an immediate login test for a specific account."""
         account_data = self.web_accounts.get(account_id)
@@ -345,9 +370,17 @@ class SchedulerBridge:
         if not account_data:
             return {}
 
-        is_running = account_id in self._running_tasks
+        manager_running = getattr(self.emby_manager, "_running", set()) if self.emby_manager else set()
+        is_running = account_id in self._running_tasks or account_id in manager_running
         has_token = bool(account_data.get("encrypted_token"))
         recorded = self._account_status.get(account_id, {})
+        next_schedule_time = None
+        if self.emby_manager:
+            scheduler = getattr(self.emby_manager, "_schedulers", {}).get(account_id)
+            if not scheduler and not (account_data.get("time_range") or account_data.get("interval_days")):
+                scheduler = getattr(self.emby_manager, "_schedulers", {}).get("unified")
+            if scheduler:
+                next_schedule_time = getattr(scheduler, "_next_time", None) or scheduler.next_time
 
         return {
             "has_token": has_token,
@@ -356,6 +389,7 @@ class SchedulerBridge:
             "last_login_time": recorded.get("last_login_time"),
             "last_watch_time": recorded.get("last_watch_time"),
             "last_watch_status": recorded.get("last_watch_status"),
+            "next_schedule_time": next_schedule_time,
         }
 
     def get_schedule_info(self) -> List[dict]:
@@ -364,8 +398,8 @@ class SchedulerBridge:
         if not self.emby_manager:
             return schedules
 
-        for sid, scheduler in self.emby_manager._schedulers.items():
-            account_spec = sid.replace("emby.watch.", "") if sid.startswith("emby.watch.") else sid
+        for account_spec, scheduler in self.emby_manager._schedulers.items():
+            schedule_id = getattr(scheduler, "sid", None) or account_spec
 
             interval_days = None
             if hasattr(scheduler, "days"):
@@ -380,18 +414,18 @@ class SchedulerBridge:
                 end = scheduler.end_time.strftime("%H:%M") if hasattr(scheduler.end_time, "strftime") else str(scheduler.end_time)
                 time_range = f"<{start},{end}>" if start != end else start
 
-            next_time = getattr(scheduler, "_next_time", None)
+            next_time = getattr(scheduler, "_next_time", None) or scheduler.next_time
 
             account_data = self.web_accounts.get(account_spec) if self.web_accounts else None
             enabled = account_data.get("enabled", True) if account_data else True
 
             schedules.append({
-                "id": sid,
+                "id": schedule_id,
                 "account_spec": account_spec,
                 "interval_days": interval_days,
                 "time_range": time_range,
                 "next_time": next_time,
-                "is_running": sid in self.emby_manager._running,
+                "is_running": account_spec in getattr(self.emby_manager, "_running", set()),
                 "enabled": enabled,
             })
         return schedules
@@ -415,8 +449,7 @@ class SchedulerBridge:
                 pass
         if self.emby_manager:
             try:
-                for task in list(getattr(self.emby_manager, "_tasks", {}).values()):
-                    task.cancel()
+                await self.emby_manager.shutdown()
             except Exception:
                 pass
 

@@ -1,4 +1,8 @@
+from pathlib import Path
+from collections.abc import MutableMapping
+
 from fastapi import APIRouter, Depends, HTTPException
+from tomlkit import document, dumps, parse
 
 from ..auth import get_current_user
 from ..models import GlobalConfigResponse, GlobalConfigUpdate
@@ -8,7 +12,52 @@ router = APIRouter(prefix="/api/config", tags=["config"])
 
 
 def _model_fields_set(model) -> set:
-    return getattr(model, "model_fields_set", getattr(model, "__fields_set__", set()))
+    fields_set = getattr(model, "model_fields_set", None)
+    if fields_set is not None:
+        return fields_set
+    return getattr(model, "__fields_set__", set())
+
+
+def _persist_global_config():
+    """Persist Web UI global settings without rewriting account secrets."""
+    config_file = Path(config.basedir) / "config.toml"
+    if config_file.is_file():
+        try:
+            doc = parse(config_file.read_text(encoding="utf-8"))
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=f"Failed to parse config.toml: {e}")
+    else:
+        doc = document()
+
+    if "emby" not in doc or not isinstance(doc["emby"], MutableMapping):
+        doc["emby"] = {}
+    doc["emby"]["time_range"] = config._cache.emby.time_range
+    doc["emby"]["interval_days"] = config._cache.emby.interval_days
+    doc["emby"]["concurrency"] = config._cache.emby.concurrency
+
+    if config._cache.proxy:
+        if "proxy" not in doc or not isinstance(doc["proxy"], MutableMapping):
+            doc["proxy"] = {}
+        proxy = config._cache.proxy
+        if proxy.hostname is None:
+            doc["proxy"].pop("hostname", None)
+        else:
+            doc["proxy"]["hostname"] = proxy.hostname
+        if proxy.port is None:
+            doc["proxy"].pop("port", None)
+        else:
+            doc["proxy"]["port"] = proxy.port
+        if proxy.scheme is None:
+            doc["proxy"].pop("scheme", None)
+        else:
+            doc["proxy"]["scheme"] = proxy.scheme
+    else:
+        doc.pop("proxy", None)
+
+    try:
+        config_file.write_text(dumps(doc), encoding="utf-8")
+    except OSError as e:
+        raise HTTPException(status_code=500, detail=f"Failed to write config.toml: {e}")
 
 
 @router.get("", response_model=GlobalConfigResponse)
@@ -60,6 +109,8 @@ async def update_config(req: GlobalConfigUpdate, user: str = Depends(get_current
             existing_proxy.scheme = req.proxy.scheme
         new_config.proxy = existing_proxy
 
-    config.set(new_config)
+    if not config.set(new_config):
+        raise HTTPException(status_code=400, detail="Invalid config")
+    _persist_global_config()
 
     return {"status": "updated"}

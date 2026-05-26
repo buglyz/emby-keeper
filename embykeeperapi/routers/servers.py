@@ -29,7 +29,10 @@ def _make_account_id(username: str, name: Optional[str], url: str) -> str:
 
 
 def _model_fields_set(model) -> set:
-    return getattr(model, "model_fields_set", getattr(model, "__fields_set__", set()))
+    fields_set = getattr(model, "model_fields_set", None)
+    if fields_set is not None:
+        return fields_set
+    return getattr(model, "__fields_set__", set())
 
 
 def _validate_server_fields(url: Optional[str] = None, time=None):
@@ -207,6 +210,7 @@ async def update_server(
     user: str = Depends(get_current_user),
 ):
     """Update an existing Emby server account."""
+    _require_bridge()
     existing = bridge.web_accounts.get(account_id)
     if not existing:
         raise HTTPException(status_code=404, detail="Server not found")
@@ -294,6 +298,7 @@ async def update_server(
 @router.delete("/{account_id:path}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_server(account_id: str, user: str = Depends(get_current_user)):
     """Delete an Emby server account."""
+    _require_bridge()
     if not bridge.web_accounts.get(account_id):
         raise HTTPException(status_code=404, detail="Server not found")
     bridge.delete_account(account_id)
@@ -306,6 +311,7 @@ async def toggle_server(
     user: str = Depends(get_current_user),
 ):
     """Enable or disable an Emby server account."""
+    _require_bridge()
     if not bridge.web_accounts.get(account_id):
         raise HTTPException(status_code=404, detail="Server not found")
     bridge.update_account(account_id, {"enabled": req.enabled})
@@ -315,6 +321,7 @@ async def toggle_server(
 @router.post("/{account_id:path}/login", response_model=ActionResponse)
 async def trigger_login(account_id: str, user: str = Depends(get_current_user)):
     """Trigger an immediate login test."""
+    _require_bridge()
     result = await bridge.trigger_login(account_id)
     if "error" in result:
         raise HTTPException(status_code=404, detail=result["error"])
@@ -328,6 +335,7 @@ async def trigger_login(account_id: str, user: str = Depends(get_current_user)):
 @router.post("/{account_id:path}/watch", response_model=ActionResponse)
 async def trigger_watch(account_id: str, user: str = Depends(get_current_user)):
     """Trigger an immediate simulate-watch."""
+    _require_bridge()
     result = await bridge.trigger_watch(account_id)
     if "error" in result:
         raise HTTPException(status_code=404, detail=result["error"])
@@ -341,6 +349,7 @@ async def trigger_watch(account_id: str, user: str = Depends(get_current_user)):
 @router.post("/{account_id:path}/checkin", response_model=ActionResponse)
 async def trigger_checkin(account_id: str, user: str = Depends(get_current_user)):
     """Trigger a check-in (sign-in) action."""
+    _require_bridge()
     result = await bridge.trigger_checkin(account_id)
     if "error" in result:
         raise HTTPException(status_code=400, detail=result["error"])
@@ -354,15 +363,10 @@ async def trigger_checkin(account_id: str, user: str = Depends(get_current_user)
 @router.post("/actions/watch-all", response_model=ActionResponse)
 async def watch_all(user: str = Depends(get_current_user)):
     """Trigger watch for all enabled accounts."""
-    run_ids = []
-    for account_id, data in bridge.web_accounts.get_all().items():
-        if data.get("enabled", True):
-            result = await bridge.trigger_watch(account_id)
-            if result.get("run_id"):
-                run_ids.append(result["run_id"])
-
+    _require_bridge()
+    result = await bridge.trigger_watch_many()
     return ActionResponse(
-        run_id=run_ids[0] if run_ids else "",
-        status="started" if run_ids else "skipped",
-        message=f"Started {len(run_ids)} watch task(s)",
+        run_id=result.get("run_id", ""),
+        status=result.get("status", "started"),
+        message=result.get("message", ""),
     )

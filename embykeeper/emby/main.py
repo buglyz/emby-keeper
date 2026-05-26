@@ -13,8 +13,6 @@ from embykeeper.runinfo import RunContext, RunStatus
 from embykeeper.var import console
 from embykeeper.schema import EmbyAccount
 
-from embykeeper.utils import AsyncTaskPool
-
 from .api import Emby, EmbyPlayError, EmbyConnectError, EmbyRequestError, EmbyError
 
 
@@ -24,11 +22,23 @@ logger = logger.bind(scheme="embywatcher")
 class EmbyManager:
     def __init__(self):
         self._tasks: Dict[str, asyncio.Task] = {}  # account_spec -> task
+        self._scheduler_tasks: Dict[str, asyncio.Task] = {}  # account_spec -> scheduler task
         self._schedulers: Dict[str, Scheduler] = {}  # account_spec -> scheduler
         self._running: Set[str] = set()  # Currently running account_specs
-        self._pool = AsyncTaskPool()
 
-        config.on_list_change("emby.account", self._handle_account_change)
+        self._account_change_handle = config.on_list_change("emby.account", self._handle_account_change)
+
+    def _start_scheduler(self, account_spec: str, scheduler: Scheduler):
+        if account_spec in self._scheduler_tasks:
+            self._scheduler_tasks[account_spec].cancel()
+        task = asyncio.create_task(scheduler.schedule(), name=account_spec)
+        self._scheduler_tasks[account_spec] = task
+
+        def cleanup(done_task: asyncio.Task):
+            if self._scheduler_tasks.get(account_spec) is done_task:
+                self._scheduler_tasks.pop(account_spec, None)
+
+        task.add_done_callback(cleanup)
 
     def _handle_account_change(self, added: List[EmbyAccount], removed: List[EmbyAccount]):
         """Handle account additions and removals"""
@@ -51,7 +61,7 @@ class EmbyManager:
                     # 新增独立账号, 添加其调度任务
                     scheduler = self.schedule_independent_account(account)
                     if scheduler:
-                        self._pool.add(scheduler.schedule())
+                        self._start_scheduler(self.get_spec(account), scheduler)
                         logger.info(f"新增的账号 {self.get_spec(account)} 的 Emby 保活计划任务已添加.")
                 else:
                     # 新增整体账号, 标记需要重新调度
@@ -68,6 +78,10 @@ class EmbyManager:
         if account_spec in self._schedulers:
             del self._schedulers[account_spec]
 
+        if account_spec in self._scheduler_tasks:
+            self._scheduler_tasks[account_spec].cancel()
+            del self._scheduler_tasks[account_spec]
+
         if account_spec in self._tasks:
             self._tasks[account_spec].cancel()
             del self._tasks[account_spec]
@@ -78,6 +92,10 @@ class EmbyManager:
         """Stop the unified scheduling task"""
         if "unified" in self._schedulers:
             del self._schedulers["unified"]
+
+        if "unified" in self._scheduler_tasks:
+            self._scheduler_tasks["unified"].cancel()
+            del self._scheduler_tasks["unified"]
 
         if "unified" in self._tasks:
             self._tasks["unified"].cancel()
@@ -140,7 +158,7 @@ class EmbyManager:
             description="Emby 保活任务",
         )
         self._schedulers["unified"] = scheduler
-        self._pool.add(scheduler.schedule())
+        self._start_scheduler("unified", scheduler)
 
     async def schedule_all(self, instant: bool = False):
         """Start scheduling emby watch for all accounts"""
@@ -152,13 +170,42 @@ class EmbyManager:
             if account.enabled and (account.time_range or account.interval_days):
                 scheduler = self.schedule_independent_account(account)
                 if scheduler:
-                    self._pool.add(scheduler.schedule())
+                    self._start_scheduler(self.get_spec(account), scheduler)
 
         if not self._schedulers:
             logger.info("没有需要执行的 Emby 保活任务")
             return None
 
-        await self._pool.wait()
+        while self._scheduler_tasks:
+            done, _ = await asyncio.wait(
+                list(self._scheduler_tasks.values()),
+                return_when=asyncio.FIRST_COMPLETED,
+            )
+            for task in done:
+                if task.cancelled():
+                    continue
+                try:
+                    task.result()
+                except Exception as e:
+                    logger.warning("Emby 保活计划任务异常退出.")
+                    show_exception(e, regular=False)
+                    if not config.nofail:
+                        raise
+
+    async def shutdown(self):
+        """Cancel scheduled and running Emby watch tasks cleanly."""
+        tasks = list(self._scheduler_tasks.values()) + list(self._tasks.values())
+        for task in tasks:
+            task.cancel()
+        if tasks:
+            await asyncio.gather(*tasks, return_exceptions=True)
+        self._scheduler_tasks.clear()
+        self._tasks.clear()
+        self._schedulers.clear()
+        self._running.clear()
+        if self._account_change_handle:
+            self._account_change_handle.__exit__(None, None, None)
+            self._account_change_handle = None
 
     async def play_url(self, url: str):
         parsed = urlparse(url)
@@ -193,7 +240,7 @@ class EmbyManager:
 
         emby = Emby(account)
         try:
-            if not await emby.login():
+            if not await emby.ensure_authenticated():
                 return ctx.finish(RunStatus.FAIL, "登陆失败")
             emby.log.info("使用以下 Headers:")
             console.rule("Headers")
@@ -243,23 +290,24 @@ class EmbyManager:
 
         async def watch_wrapper(account: EmbyAccount, sem):
             async with sem:
+                spec = self.get_spec(account)
+                self._running.add(spec)
                 try:
-                    emby = Emby(account)
-                except Exception:
-                    logger.error(f"初始化失败: {e}")
-                    show_exception(e, regular=False)
-                    return account, False
-                if not instant:
-                    wait = random.uniform(180, 360)
-                    emby.log.info(f"播放视频前随机等待 {wait:.0f} 秒.")
-                    await asyncio.sleep(wait)
-                try:
+                    try:
+                        emby = Emby(account)
+                    except Exception as e:
+                        logger.error(f"初始化失败: {e}")
+                        show_exception(e, regular=False)
+                        return account, False
+                    if not instant:
+                        wait = random.uniform(180, 360)
+                        emby.log.info(f"播放视频前随机等待 {wait:.0f} 秒.")
+                        await asyncio.sleep(wait)
                     if not account.play_id:
                         emby.log.info(f"正在登陆并获取首页视频项目.")
-                        if not emby.user_id:
-                            if not await emby.login():
-                                emby.log.warning(f"保活失败: 无法登陆.")
-                                return account, False
+                        if not await emby.ensure_authenticated():
+                            emby.log.warning(f"保活失败: 无法登陆.")
+                            return account, False
                         await emby.load_main_page()
                         if not emby.items:
                             emby.log.warning("保活失败: 无法获取首页中的视频项目")
@@ -269,10 +317,9 @@ class EmbyManager:
                         await asyncio.sleep(random.uniform(2, 5))
                     else:
                         emby.log.info(f"正在登陆并播放您指定的视频, ID 为 {account.play_id}.")
-                        if not emby.user_id:
-                            if not await emby.login():
-                                emby.log.warning(f"保活失败: 无法登陆.")
-                                return account, False
+                        if not await emby.ensure_authenticated():
+                            emby.log.warning(f"保活失败: 无法登陆.")
+                            return account, False
                         item = await emby.get_item(account.play_id)
                         if not "Id" in item:
                             emby.log.warning("保活失败: 无法获取视频项目")
@@ -289,6 +336,8 @@ class EmbyManager:
                     emby.log.warning(f"保活失败: {e}")
                     show_exception(e, regular=False)
                     return account, False
+                finally:
+                    self._running.discard(spec)
 
         for account in accounts:
             if account.enabled:

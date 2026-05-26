@@ -39,7 +39,10 @@ async def run_now(schedule_id: str, user: str = Depends(get_current_user)):
     """Force immediate execution of a scheduled task."""
     account_spec = schedule_id.replace("emby.watch.", "") if schedule_id.startswith("emby.watch.") else schedule_id
 
-    result = await bridge.trigger_watch(account_spec)
+    if account_spec in {"global", "unified"}:
+        result = await bridge.trigger_watch_many(unified_only=True)
+    else:
+        result = await bridge.trigger_watch(account_spec)
     if "error" in result:
         raise HTTPException(status_code=404, detail=result["error"])
     return {"run_id": result.get("run_id", ""), "status": "started"}
