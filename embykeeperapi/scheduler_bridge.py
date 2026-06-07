@@ -18,6 +18,14 @@ logger = logger.bind(scheme="embykeeperapi")
 WEB_ACCOUNTS_FILE = "web_accounts.json"
 
 
+def _is_valid_account_record(data) -> bool:
+    return (
+        isinstance(data, dict)
+        and bool(str(data.get("url") or "").strip())
+        and bool(str(data.get("username") or "").strip())
+    )
+
+
 def _backup_invalid_accounts_file(filepath: Path):
     timestamp = datetime.now(timezone.utc).strftime("%Y%m%d%H%M%S")
     backup_path = filepath.with_name(f"{filepath.name}.corrupt.{timestamp}")
@@ -48,7 +56,7 @@ class WebAccountData:
                     data = json.load(f)
                 if not isinstance(data, dict):
                     raise ValueError("web accounts data must be an object")
-                self._data = {k: v for k, v in data.items() if isinstance(v, dict)}
+                self._data = {k: v for k, v in data.items() if _is_valid_account_record(v)}
             except json.JSONDecodeError:
                 logger.warning("Web accounts file corrupted, starting fresh.")
                 _backup_invalid_accounts_file(filepath)
