@@ -1,9 +1,10 @@
 import asyncio
+from urllib.parse import urlparse
 
 import pytest
 
 from embykeeper.config import config
-from embykeeper.emby.main import EmbyManager
+from embykeeper.emby.main import EmbyManager, _extract_emby_item_id
 from embykeeper.schema import Config, EmbyAccount
 
 
@@ -68,6 +69,23 @@ def test_account_disable_cancels_independent_schedule(monkeypatch):
         assert scheduled_tasks[0].cancelled()
 
     asyncio.run(run_test())
+
+
+@pytest.mark.parametrize(
+    ("url", "item_id"),
+    [
+        ("https://example.com/web/#/details?id=item-1&serverId=server-1", "item-1"),
+        ("https://example.com/web/index.html#!/item?id=item-2&serverId=server-1", "item-2"),
+        ("https://example.com/web/index.html?id=item-3&serverId=server-1", "item-3"),
+        ("https://example.com/web/index.html?itemId=item-4", "item-4"),
+    ],
+)
+def test_extract_emby_item_id_from_supported_play_urls(url, item_id):
+    assert _extract_emby_item_id(urlparse(url)) == item_id
+
+
+def test_extract_emby_item_id_returns_none_for_invalid_url():
+    assert _extract_emby_item_id(urlparse("https://example.com/web/#/home")) is None
 
 
 def test_shutdown_unregisters_config_callback(monkeypatch):

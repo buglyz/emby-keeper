@@ -67,3 +67,6 @@ extend-exclude = '''
   # | .*.toml
 )
 '''
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

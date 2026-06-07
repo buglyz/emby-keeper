@@ -2,7 +2,7 @@ import asyncio
 from datetime import datetime
 import random
 import string
-from urllib.parse import quote
+from urllib.parse import quote, urlsplit, urlunsplit
 import uuid
 from typing import Iterable, List, Union, Optional
 import re
@@ -256,14 +256,66 @@ class Emby:
             headers["X-Emby-Token"] = self.token
         return headers
 
-    def _get_session(self) -> AsyncSession:
+    def _origin_url(self) -> str:
+        parsed = urlsplit(str(self.a.url))
+        return urlunsplit((parsed.scheme, parsed.netloc, "", "", ""))
+
+    def _base_url(self) -> str:
+        parsed = urlsplit(str(self.a.url))
+        path = parsed.path.rstrip("/")
+        return urlunsplit((parsed.scheme, parsed.netloc, path, "", "")).rstrip("/")
+
+    def _build_url(self, path: str) -> str:
+        path = str(path)
+        if path.startswith(("http://", "https://")):
+            return path
+
+        base_url = self._base_url()
+        if not path:
+            return base_url
+
+        if path.startswith("/"):
+            account_path = (self.a.url.path or "").rstrip("/")
+            if (
+                account_path
+                and account_path != "/"
+                and (path == account_path or path.startswith(f"{account_path}/"))
+            ):
+                return f"{self._origin_url()}{path}"
+            return f"{base_url}/{path.lstrip('/')}"
+
+        return f"{base_url}/{path}"
+
+    @staticmethod
+    def _default_url_port(scheme: str) -> Optional[int]:
+        if scheme == "https":
+            return 443
+        if scheme == "http":
+            return 80
+        return None
+
+    def _is_same_origin_url(self, url: str) -> bool:
+        parsed = urlsplit(str(url))
+        if not parsed.scheme or not parsed.netloc:
+            return True
+
+        account = urlsplit(str(self.a.url))
+        parsed_port = parsed.port or self._default_url_port(parsed.scheme)
+        account_port = account.port or self._default_url_port(account.scheme)
+        return (
+            parsed.scheme == account.scheme
+            and parsed.hostname == account.hostname
+            and parsed_port == account_port
+        )
+
+    def _get_session(self, headers: dict = None) -> AsyncSession:
         cookies = {}
         if self.cf_clearance:
             cookies["cf_clearance"] = self.cf_clearance
 
         return AsyncSession(
             verify=False,
-            headers=self.build_headers(),
+            headers=headers or self.build_headers(),
             cookies=cookies,
             proxy=get_proxy_str(self.proxy, curl=True),
             timeout=10.0,
@@ -274,44 +326,141 @@ class Emby:
 
     async def _request(self, method: str, path: str, _login=False, **kw) -> Response:
 
-        if path.startswith(("http://", "https://")):
-            url = path
-        else:
-            base_url = f"{self.a.url.scheme}://{self.a.url.host}:{self.a.url.port}"
-            url = f"{base_url}/{path.lstrip('/')}"
+        url = self._build_url(path)
+        is_stream = bool(kw.get("stream"))
+        headers = kw.pop("headers", None)
 
         last_err = None
         for _ in range(3):
+            session = self._get_session(headers=headers)
+            resp = None
+            stream_response_closed = False
             try:
-                async with self._get_session() as session:
+                if is_stream:
                     resp: Response = await session.request(method, url, **kw)
-                    if resp.status_code == 401 and self.a.username and self.a.password and not _login:
-                        if not await self.login():
-                            raise EmbyLoginError("无法登陆到服务器")
-                        continue
-                    elif resp.status_code in (502, 503, 504):
-                        await asyncio.sleep(random.random() * 2 + 0.5)
-                        continue
-                    elif resp.status_code == 403 and (
-                        "cf-wrapper" in resp.text or "Just a moment" in resp.text
-                    ):
-                        if self.cf_clearance:
-                            raise EmbyStatusError("访问失败: Cloudflare 验证码解析后依然有验证")
-                        await self.use_cfsolver()
-                        continue
-                    elif not resp.ok and not _login:
-                        raise EmbyStatusError(f"访问失败: 异常 HTTP 代码 {resp.status_code} (URL = {url})")
-                    else:
-                        return resp
+                else:
+                    async with session:
+                        resp: Response = await session.request(method, url, **kw)
+
+                if resp.status_code == 401 and self.a.username and self.a.password and not _login:
+                    if is_stream:
+                        await self._close_stream_response(resp, session)
+                        stream_response_closed = True
+                    if not await self.login():
+                        raise EmbyLoginError("无法登陆到服务器")
+                    continue
+                elif resp.status_code in (502, 503, 504):
+                    if is_stream:
+                        await self._close_stream_response(resp, session)
+                        stream_response_closed = True
+                    await asyncio.sleep(random.random() * 2 + 0.5)
+                    continue
+                elif resp.status_code == 403 and ("cf-wrapper" in resp.text or "Just a moment" in resp.text):
+                    if is_stream:
+                        await self._close_stream_response(resp, session)
+                        stream_response_closed = True
+                    if self.cf_clearance:
+                        raise EmbyStatusError("访问失败: Cloudflare 验证码解析后依然有验证")
+                    await self.use_cfsolver()
+                    continue
+                elif not resp.ok and not _login:
+                    if is_stream:
+                        await self._close_stream_response(resp, session)
+                        stream_response_closed = True
+                    raise EmbyStatusError(f"访问失败: 异常 HTTP 代码 {resp.status_code} (URL = {url})")
+                else:
+                    if is_stream:
+                        self._attach_stream_session(resp, session)
+                    return resp
             except RequestsError as e:
+                if is_stream and not stream_response_closed:
+                    await self._close_stream_response(resp, session)
                 last_err = e
                 await asyncio.sleep(random.random() + 0.5)
+            except Exception:
+                if is_stream and not stream_response_closed:
+                    await self._close_stream_response(resp, session)
+                raise
 
         if last_err:
             error_msg = re.sub(r"\s+See\s+.*?\s+first for more details\.\.?", "", str(last_err))
             raise EmbyConnectError(f"{last_err.__class__.__name__}: {error_msg}")
         else:
             raise EmbyConnectError(f'连接到 "{url}" 重试超限')
+
+    @staticmethod
+    async def _close_stream_response(resp: Optional[Response], session: AsyncSession):
+        try:
+            if resp is not None:
+                quit_now = getattr(resp, "quit_now", None)
+                if quit_now:
+                    quit_now.set()
+                await resp.aclose()
+        finally:
+            await session.close()
+
+    @staticmethod
+    def _attach_stream_session(resp: Response, session: AsyncSession):
+        original_aclose = resp.aclose
+        closed = False
+
+        async def aclose():
+            nonlocal closed
+            if closed:
+                return
+            closed = True
+            try:
+                quit_now = getattr(resp, "quit_now", None)
+                if quit_now:
+                    quit_now.set()
+                await original_aclose()
+            finally:
+                await session.close()
+
+        resp.aclose = aclose
+        return resp
+
+    def _build_stream_headers(self, play_session_id: str, length: int, include_auth: bool = True) -> dict:
+        headers = self.build_headers() if include_auth else {"Accept": "*/*"}
+        headers.pop("Content-Type", None)
+        headers.update(
+            {
+                "Range": f"bytes={length}-",
+                "User-Agent": "VLC/3.0.21 LibVLC/3.0.21",
+                "Accept-Language": "en_US",
+                "X-Playback-Session-Id": play_session_id,
+            }
+        )
+        return headers
+
+    @staticmethod
+    def _first_media_source(playback_info: dict) -> dict:
+        media_sources = playback_info.get("MediaSources") or []
+        if not media_sources:
+            raise EmbyPlayError("服务器未返回可播放媒体源")
+        for media_source in media_sources:
+            if media_source.get("DirectStreamUrl"):
+                return media_source
+        for media_source in media_sources:
+            if media_source.get("TranscodingUrl"):
+                return media_source
+        return media_sources[0]
+
+    @staticmethod
+    def _media_source_id(media_source: dict) -> str:
+        return media_source.get("Id") or "".join(
+            random.choice(string.ascii_lowercase + string.digits) for _ in range(32)
+        )
+
+    @staticmethod
+    def _audio_stream_index(media_source: dict) -> Optional[int]:
+        audio_stream_index = media_source.get("DefaultAudioStreamIndex")
+        if audio_stream_index is not None:
+            return audio_stream_index
+        for stream_info in media_source.get("MediaStreams", []):
+            if stream_info.get("Type") == "Audio" and stream_info.get("Index") is not None:
+                return stream_info["Index"]
+        return None
 
     async def use_cfsolver(self):
         from embykeeper.cloudflare import get_cf_clearance
@@ -503,16 +652,19 @@ class Emby:
             }
         }
 
-        resp = await self._request(
-            method="GET",
-            path=f"/Videos/{iid}/AdditionalParts",
-            params=dict(
-                Fields="PrimaryImageAspectRatio,UserData,CanDelete",
-                IncludeItemTypes="Playlist,BoxSet",
-                Recursive=True,
-                SortBy="SortName",
-            ),
-        )
+        try:
+            await self._request(
+                method="GET",
+                path=f"/Videos/{iid}/AdditionalParts",
+                params=dict(
+                    Fields="PrimaryImageAspectRatio,UserData,CanDelete",
+                    IncludeItemTypes="Playlist,BoxSet",
+                    Recursive=True,
+                    SortBy="SortName",
+                ),
+            )
+        except EmbyRequestError as e:
+            self.log.debug(f"获取视频附加部分失败, 将继续尝试播放: {e}")
 
         resp = await self._request(
             method="POST",
@@ -522,21 +674,25 @@ class Emby:
                 IsPlayback=False,
                 MaxStreamingBitrate=40000000,
                 StartTimeTicks=0,
-                UserID=self.user_id,
+                UserId=self.user_id,
             ),
             json=playback_info_data,
         )
         playback_info = resp.json()
 
         play_session_id = playback_info.get("PlaySessionId", "")
-        if "MediaSources" in playback_info:
-            media_source_id = playback_info["MediaSources"][0]["Id"]
-            direct_stream_url = playback_info["MediaSources"][0].get("DirectStreamUrl", None)
-        else:
-            media_source_id = "".join(
-                random.choice(string.ascii_lowercase + string.digits) for _ in range(32)
-            )
-            direct_stream_url = None
+        media_source = self._first_media_source(playback_info)
+        media_source_id = self._media_source_id(media_source)
+        stream_url = media_source.get("DirectStreamUrl") or media_source.get("TranscodingUrl")
+        play_method = (
+            "Transcode"
+            if media_source.get("TranscodingUrl") and not media_source.get("DirectStreamUrl")
+            else "DirectStream"
+        )
+        audio_stream_index = self._audio_stream_index(media_source)
+        subtitle_stream_index = media_source.get("DefaultSubtitleStreamIndex")
+        live_stream_id = media_source.get("LiveStreamId")
+        playback_start_ticks = int(datetime.now().timestamp() // 10 * 10 * 10000000)
 
         await asyncio.sleep(random.uniform(1, 3))
 
@@ -549,18 +705,21 @@ class Emby:
                 IsPlayback = False
                 AutoOpenLiveStream = False
 
+            playback_params = dict(
+                AutoOpenLiveStream=AutoOpenLiveStream,
+                IsPlayback=IsPlayback,
+                MaxStreamingBitrate=42000000,
+                MediaSourceId=str(media_source_id),
+                StartTimeTicks=0,
+                UserId=self.user_id,
+            )
+            if audio_stream_index is not None:
+                playback_params["AudioStreamIndex"] = audio_stream_index
+
             resp = await self._request(
                 method="POST",
                 path=f"/Items/{iid}/PlaybackInfo",
-                params=dict(
-                    AudioStreamIndex=1,
-                    AutoOpenLiveStream=AutoOpenLiveStream,
-                    IsPlayback=IsPlayback,
-                    MaxStreamingBitrate=42000000,
-                    MediaSourceId=str(media_source_id),
-                    StartTimeTicks=0,
-                    UserID=self.user_id,
-                ),
+                params=playback_params,
                 json=playback_info_data,
             )
 
@@ -569,15 +728,17 @@ class Emby:
                 "SubtitleOffset": 0,
                 "MaxStreamingBitrate": 420000000,
                 "MediaSourceId": str(media_source_id),
-                "SubtitleStreamIndex": -1,
+                "SubtitleStreamIndex": subtitle_stream_index if subtitle_stream_index is not None else -1,
                 "VolumeLevel": 100,
                 "PlaybackRate": 1,
-                "PlaybackStartTimeTicks": int(datetime.now().timestamp() // 10 * 10 * 10000000),
+                "PlaybackStartTimeTicks": playback_start_ticks,
                 "PositionTicks": tick,
                 "PlaySessionId": play_session_id,
             }
+            if live_stream_id:
+                data["LiveStreamId"] = live_stream_id
             if update:
-                data["EventName"] = "timeupdate"
+                data["EventName"] = "TimeUpdate"
             if stop:
                 queue = []
             else:
@@ -590,8 +751,9 @@ class Emby:
                     "PlaylistIndex": 0,
                     "ItemId": str(iid),
                     "RepeatMode": "RepeatNone",
-                    "AudioStreamIndex": -1,
-                    "PlayMethod": "DirectStream",
+                    "AudioStreamIndex": audio_stream_index if audio_stream_index is not None else -1,
+                    "QueueableMediaTypes": ["Video"],
+                    "PlayMethod": play_method,
                     "CanSeek": True,
                     "IsPaused": False,
                 }
@@ -599,22 +761,44 @@ class Emby:
             return data
 
         async def stream():
-            url = direct_stream_url or f"/Videos/{iid}/stream"
+            container = media_source.get("Container")
+            url = stream_url or f"/Videos/{iid}/stream{f'.{container}' if container else ''}"
+            stream_params = None
+            if not stream_url:
+                stream_params = {
+                    "Static": "true",
+                    "DeviceId": self.env.device_id,
+                    "MediaSourceId": str(media_source_id),
+                    "PlaySessionId": play_session_id,
+                }
+                if self.token:
+                    stream_params["api_key"] = self.token
+                if audio_stream_index is not None:
+                    stream_params["AudioStreamIndex"] = audio_stream_index
             length = 0
             last_err_time = datetime.now()
             while True:
-                resp = await self._request(
-                    method="GET",
-                    path=url,
-                    stream=True,
-                    max_recv_speed=1024,
-                    timeout=None,
-                    headers={
-                        "Range": f"bytes={length}-",
-                        "User-Agent": "VLC/3.0.21 LibVLC/3.0.21",
-                        "X-Playback-Session-Id": play_session_id,
-                    },
-                )
+                try:
+                    resp = await self._request(
+                        method="GET",
+                        path=url,
+                        params=stream_params,
+                        stream=True,
+                        max_recv_speed=1024,
+                        timeout=None,
+                        headers=self._build_stream_headers(
+                            play_session_id,
+                            length,
+                            include_auth=self._is_same_origin_url(url),
+                        ),
+                    )
+                except EmbyStatusError as e:
+                    if length > 0 and "416" in str(e):
+                        self.log.debug("流媒体文件已读取到末尾, 将从头继续模拟访问.")
+                        length = 0
+                        await asyncio.sleep(random.uniform(1, 3))
+                        continue
+                    raise
                 try:
                     async for i in resp.aiter_content(chunk_size=1024):
                         length += len(i)
@@ -636,10 +820,12 @@ class Emby:
         rt = random.uniform(5, 10)
         self.log.info(f'开始模拟加载视频 "{truncate_str(iname, 10)}" ({rt:.0f} 秒).')
         await asyncio.sleep(rt)
+        self._raise_stream_error(stream_task)
         self.log.info(f'开始发送视频 "{truncate_str(iname, 10)}" 发送进度.')
         Emby.playing_count += 1
         try:
             await asyncio.sleep(random.uniform(1, 3))
+            self._raise_stream_error(stream_task)
             try:
                 resp = await self._request(
                     method="POST",
@@ -669,6 +855,7 @@ class Emby:
                 st = min(10, t)
                 await asyncio.sleep(st)
                 t -= st
+                self._raise_stream_error(stream_task)
                 tick = int((time - t) * 10000000)
                 payload = get_playing_data(tick, update=True)
                 try:
@@ -697,16 +884,27 @@ class Emby:
 
         try:
             final_percentage = random.uniform(0.95, 1.0)
-            final_tick = int((time * final_percentage) // 10 * 10 * 10000000)
+            final_tick = int(time * final_percentage * 10000000)
             await self._request(
                 method="POST",
-                path="/Sessions/Playing/Progress",
+                path="/Sessions/Playing/Stopped",
                 json=get_playing_data(final_tick, stop=True),
             )
             self.log.info(f"播放完成, 共 {time:.0f} 秒.")
             return True
         except Exception as e:
             raise EmbyPlayError(f"由于连接错误或服务器错误无法停止播放: {e}")
+
+    @staticmethod
+    def _raise_stream_error(stream_task: asyncio.Task):
+        if not stream_task.done():
+            return
+        try:
+            stream_task.result()
+        except asyncio.CancelledError:
+            raise
+        except Exception as e:
+            raise EmbyPlayError(f"访问流媒体文件失败: {e}")
 
     async def load_main_page(self):
         views = await self._request(

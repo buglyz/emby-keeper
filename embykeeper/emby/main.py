@@ -15,7 +15,6 @@ from embykeeper.schema import EmbyAccount
 
 from .api import Emby, EmbyPlayError, EmbyConnectError, EmbyRequestError, EmbyError
 
-
 logger = logger.bind(scheme="embywatcher")
 
 
@@ -33,6 +32,22 @@ def _same_emby_origin(account: EmbyAccount, parsed_url) -> bool:
     account_port = account.url.port or _default_url_port(account.url.scheme)
     parsed_port = parsed_url.port or _default_url_port(parsed_url.scheme)
     return account_port == parsed_port
+
+
+def _extract_emby_item_id(parsed_url) -> Optional[str]:
+    query_groups = [parse_qs(parsed_url.query)]
+    fragment = parsed_url.fragment
+    if "?" in fragment:
+        query_groups.append(parse_qs(fragment.split("?", 1)[1]))
+    elif fragment.startswith("?"):
+        query_groups.append(parse_qs(fragment[1:]))
+
+    for params in query_groups:
+        for key in ("id", "itemId", "ItemId"):
+            values = params.get(key)
+            if values and values[0]:
+                return values[0]
+    return None
 
 
 class EmbyManager:
@@ -225,20 +240,12 @@ class EmbyManager:
 
     async def play_url(self, url: str):
         parsed = urlparse(url)
-
-        fragment_parts = parsed.fragment.split("?", 1)
-        if len(fragment_parts) > 1:
-            params = parse_qs(fragment_parts[1])
-        else:
-            params = {}
-
-        if not params.get("id"):
+        iid = _extract_emby_item_id(parsed)
+        if not iid:
             logger.error(
                 "无效的 URL 格式, 无法解析视频 ID. 应为类似:\nhttps://example.com/web/#/details?id=xxx&serverId=xxx"
             )
             return False
-
-        iid = params["id"][0]
 
         # 在config中查找匹配的emby配置
         account = None

@@ -4,6 +4,7 @@ import pytest
 
 from embykeeper.cache import cache
 from embykeeper.config import config
+from embykeeper.emby.api import Emby
 from embykeeperapi.crypto import encrypt_token
 from embykeeperapi.scheduler_bridge import SchedulerBridge
 
@@ -141,6 +142,60 @@ def test_trigger_login_remembers_user_id(tmp_path, monkeypatch):
             "token": "token-1",
             "userid": "user-1",
         }
+
+        await bridge.shutdown()
+
+    asyncio.run(run_test())
+
+
+def test_trigger_watch_uses_stored_credentials_and_play_id(tmp_path, monkeypatch):
+    async def run_test():
+        bridge = SchedulerBridge()
+        await bridge.initialize(tmp_path)
+
+        account_id = "alice@example.com"
+        bridge.add_account(
+            account_id,
+            {
+                "url": "https://example.com",
+                "username": "alice",
+                "encrypted_token": encrypt_token("token-1", tmp_path),
+                "user_id": "user-1",
+                "play_id": "item-1",
+                "enabled": True,
+            },
+        )
+
+        seen = []
+
+        async def fake_authenticate(emby):
+            seen.append(("auth", emby.token, emby.user_id))
+            return True
+
+        async def fake_get_item(self, item_id):
+            seen.append(("get_item", self.token, self.user_id, item_id))
+            return {"Id": item_id, "Name": "Movie", "MediaType": "Video", "RunTimeTicks": 10000000}
+
+        async def fake_watch(self):
+            seen.append(("watch", self.token, self.user_id, sorted(self.items)))
+            return True
+
+        monkeypatch.setattr(bridge, "_authenticate_emby", fake_authenticate)
+        monkeypatch.setattr(Emby, "get_item", fake_get_item)
+        monkeypatch.setattr(Emby, "watch", fake_watch)
+
+        result = await bridge.trigger_watch(account_id)
+        assert result["status"] == "started"
+
+        task = bridge._running_tasks[account_id]
+        await task
+
+        assert seen == [
+            ("auth", "token-1", "user-1"),
+            ("get_item", "token-1", "user-1", "item-1"),
+            ("watch", "token-1", "user-1", ["item-1"]),
+        ]
+        assert bridge.get_account_status(account_id)["last_watch_status"] == "success"
 
         await bridge.shutdown()
 
