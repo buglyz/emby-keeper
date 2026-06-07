@@ -1,6 +1,7 @@
 import asyncio
 
 import pytest
+from fastapi import HTTPException
 
 from embykeeper.config import config
 from embykeeper.emby.api import Emby
@@ -144,6 +145,127 @@ def test_update_password_server_reuses_existing_connection_settings(tmp_path, mo
                 "device_id": "device-1",
                 "useragent": "Fileball/1.3.30",
             }
+        finally:
+            await reset_bridge()
+
+    asyncio.run(run_test())
+
+
+def test_create_server_rejects_invalid_interval_without_saving(tmp_path):
+    async def run_test():
+        config.basedir = tmp_path
+        config.set(Config())
+        await bridge.initialize(tmp_path)
+
+        try:
+            with pytest.raises(HTTPException) as exc:
+                await create_server(
+                    EmbyServerCreate(
+                        url="https://example.com",
+                        username="alice",
+                        auth_method="token",
+                        access_token="token-1",
+                        interval_days="<12,7>",
+                    ),
+                    user="tester",
+                )
+
+            assert exc.value.status_code == 400
+            assert bridge.web_accounts.get("alice@example.com") is None
+        finally:
+            await reset_bridge()
+
+    asyncio.run(run_test())
+
+
+def test_update_server_rejects_invalid_schedule_settings_without_mutating_account(tmp_path):
+    async def run_test():
+        config.basedir = tmp_path
+        config.set(Config())
+        await bridge.initialize(tmp_path)
+
+        account_id = "alice@example.com"
+        bridge.add_account(
+            account_id,
+            {
+                "url": "https://example.com",
+                "username": "alice",
+                "encrypted_token": encrypt_token("token-old", tmp_path),
+                "interval_days": "7",
+            },
+        )
+
+        try:
+            with pytest.raises(HTTPException) as exc:
+                await update_server(
+                    account_id,
+                    EmbyServerUpdate(time_range="<bad"),
+                    user="tester",
+                )
+
+            assert exc.value.status_code == 400
+            assert bridge.web_accounts.get(account_id)["interval_days"] == "7"
+            assert "time_range" not in bridge.web_accounts.get(account_id)
+        finally:
+            await reset_bridge()
+
+    asyncio.run(run_test())
+
+
+def test_create_server_rejects_invalid_schedule_settings(tmp_path):
+    async def run_test():
+        config.basedir = tmp_path
+        config.set(Config())
+        await bridge.initialize(tmp_path)
+
+        try:
+            with pytest.raises(HTTPException) as exc:
+                await create_server(
+                    EmbyServerCreate(
+                        url="https://example.com",
+                        username="alice",
+                        auth_method="token",
+                        access_token="token-1",
+                        interval_days="<9,3>",
+                        time_range="8:00AM",
+                    ),
+                    user="tester",
+                )
+
+            assert exc.value.status_code == 400
+            assert bridge.web_accounts.get_all() == {}
+        finally:
+            await reset_bridge()
+
+    asyncio.run(run_test())
+
+
+def test_update_server_rejects_invalid_schedule_settings(tmp_path):
+    async def run_test():
+        config.basedir = tmp_path
+        config.set(Config())
+        await bridge.initialize(tmp_path)
+        account_id = "alice@example.com"
+        bridge.add_account(
+            account_id,
+            {
+                "url": "https://example.com",
+                "username": "alice",
+                "encrypted_token": encrypt_token("token-1", tmp_path),
+                "enabled": True,
+            },
+        )
+
+        try:
+            with pytest.raises(HTTPException) as exc:
+                await update_server(
+                    account_id,
+                    EmbyServerUpdate(interval_days="7", time_range="not-a-time"),
+                    user="tester",
+                )
+
+            assert exc.value.status_code == 400
+            assert bridge.web_accounts.get(account_id).get("time_range") is None
         finally:
             await reset_bridge()
 

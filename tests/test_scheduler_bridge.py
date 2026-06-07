@@ -6,7 +6,7 @@ from embykeeper.cache import cache
 from embykeeper.config import config
 from embykeeper.emby.api import Emby
 from embykeeperapi.crypto import encrypt_token
-from embykeeperapi.scheduler_bridge import SchedulerBridge
+from embykeeperapi.scheduler_bridge import SchedulerBridge, WebAccountData
 
 
 @pytest.fixture(autouse=True)
@@ -56,6 +56,32 @@ def test_api_bridge_uses_defaults_without_config_file(tmp_path):
     asyncio.run(run_test())
 
 
+def test_web_account_data_ignores_invalid_json_shapes(tmp_path):
+    accounts_file = tmp_path / "web_accounts.json"
+    accounts_file.write_text(
+        '[{"url":"https://example.com","username":"alice"}]',
+        encoding="utf-8",
+    )
+
+    accounts = WebAccountData(tmp_path)
+
+    assert accounts.get_all() == {}
+
+
+def test_web_account_data_filters_non_object_accounts(tmp_path):
+    accounts_file = tmp_path / "web_accounts.json"
+    accounts_file.write_text(
+        '{"alice@example.com":{"url":"https://example.com","username":"alice"},"bad":"value"}',
+        encoding="utf-8",
+    )
+
+    accounts = WebAccountData(tmp_path)
+
+    assert accounts.get_all() == {
+        "alice@example.com": {"url": "https://example.com", "username": "alice"}
+    }
+
+
 def test_trigger_watch_many_skips_disabled_and_independent_when_requested(tmp_path, monkeypatch):
     async def run_test():
         bridge = SchedulerBridge()
@@ -79,6 +105,42 @@ def test_trigger_watch_many_skips_disabled_and_independent_when_requested(tmp_pa
 
         assert result["status"] == "started"
         assert triggered == ["global@example.com"]
+
+        await bridge.shutdown()
+
+    asyncio.run(run_test())
+
+
+def test_global_schedule_change_reschedules_running_tasks(tmp_path):
+    async def run_test():
+        bridge = SchedulerBridge()
+        await bridge.initialize(tmp_path)
+
+        bridge.add_account(
+            "alice@example.com",
+            {
+                "url": "https://example.com",
+                "username": "alice",
+                "encrypted_token": encrypt_token("token-1", tmp_path),
+                "enabled": True,
+            },
+        )
+
+        old_scheduler = bridge.emby_manager._schedulers["unified"]
+        old_task = bridge.emby_manager._scheduler_tasks["unified"]
+
+        new_config = config._cache.model_copy(
+            update={"emby": config._cache.emby.model_copy(update={"time_range": "<10:00AM,11:00AM>"})}
+        )
+        assert config.set(new_config) is True
+
+        new_scheduler = bridge.emby_manager._schedulers["unified"]
+
+        assert new_scheduler is not old_scheduler
+        assert bridge.emby_manager._scheduler_tasks["unified"] is not old_task
+        assert old_task.cancelling() > 0
+        assert new_scheduler.start_time.hour == 10
+        assert new_scheduler.end_time.hour == 11
 
         await bridge.shutdown()
 

@@ -6,51 +6,67 @@ from cryptography.fernet import Fernet
 
 
 _fernet_instance = None
+FERNET_KEY_FILE = "secret.key"
+
+
+def _derive_fernet_key(secret: bytes) -> bytes:
+    """Derive a valid Fernet key from arbitrary secret bytes."""
+    from cryptography.hazmat.primitives import hashes
+    from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
+
+    salt = b"embykeeper-fernet-salt"
+    kdf = PBKDF2HMAC(
+        algorithm=hashes.SHA256(),
+        length=32,
+        salt=salt,
+        iterations=480000,
+    )
+    raw_key = kdf.derive(secret)
+    return base64.urlsafe_b64encode(raw_key)
+
+
+def _write_key(key_file: Path, key: bytes):
+    key_file.write_bytes(key)
+    try:
+        os.chmod(key_file, 0o600)
+    except OSError:
+        pass
 
 
 def _get_key(basedir: Path) -> bytes:
     """Get or generate the Fernet encryption key."""
     env_secret = os.environ.get("EK_SECRET")
     if env_secret:
-        # EK_SECRET must be a base64url-encoded 32-byte key
         key = env_secret.encode()
-        # Validate it's a proper Fernet key
         try:
             Fernet(key)
         except Exception:
-            # If invalid, derive a valid key from the secret string
-            from cryptography.hazmat.primitives import hashes
-            from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
-            salt = b"embykeeper-fernet-salt"
-            kdf = PBKDF2HMAC(
-                algorithm=hashes.SHA256(),
-                length=32,
-                salt=salt,
-                iterations=480000,
-            )
-            raw_key = kdf.derive(env_secret.encode())
-            key = base64.urlsafe_b64encode(raw_key)
+            key = _derive_fernet_key(env_secret.encode())
         return key
     # Auto-generate and store in basedir
-    key_file = basedir / "secret.key"
+    key_file = basedir / FERNET_KEY_FILE
     if key_file.is_file():
-        return key_file.read_bytes().strip()
+        key = key_file.read_bytes().strip()
+        try:
+            Fernet(key)
+            return key
+        except Exception:
+            return _derive_fernet_key(key)
     key = Fernet.generate_key()
-    key_file.write_bytes(key)
-    try:
-        os.chmod(key_file, 0o600)
-    except OSError:
-        pass
+    _write_key(key_file, key)
     return key
 
 
 def get_fernet(basedir: Path) -> Fernet:
     """Get the Fernet instance for encryption/decryption."""
     global _fernet_instance
-    if _fernet_instance is None:
+    basedir = Path(basedir).resolve()
+    env_secret = os.environ.get("EK_SECRET")
+    cache_key = ("env", env_secret) if env_secret else ("file", str(basedir))
+    if _fernet_instance is None or _fernet_instance[0] != cache_key:
         key = _get_key(basedir)
-        _fernet_instance = Fernet(key)
-    return _fernet_instance
+        _fernet_instance = (cache_key, Fernet(key))
+    return _fernet_instance[1]
 
 
 def encrypt_token(plain_token: str, basedir: Path) -> str:

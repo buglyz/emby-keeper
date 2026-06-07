@@ -18,6 +18,20 @@ logger = logger.bind(scheme="embykeeperapi")
 WEB_ACCOUNTS_FILE = "web_accounts.json"
 
 
+def _backup_invalid_accounts_file(filepath: Path):
+    timestamp = datetime.now(timezone.utc).strftime("%Y%m%d%H%M%S")
+    backup_path = filepath.with_name(f"{filepath.name}.corrupt.{timestamp}")
+    counter = 1
+    while backup_path.exists():
+        backup_path = filepath.with_name(f"{filepath.name}.corrupt.{timestamp}.{counter}")
+        counter += 1
+    try:
+        filepath.replace(backup_path)
+        logger.warning(f"Backed up invalid web accounts file to {backup_path.name}.")
+    except OSError as e:
+        logger.warning(f"Failed to back up invalid web accounts file: {e}")
+
+
 class WebAccountData:
     """Manages Emby accounts created via the web UI."""
 
@@ -31,9 +45,20 @@ class WebAccountData:
         if filepath.is_file():
             try:
                 with open(filepath, "r", encoding="utf-8") as f:
-                    self._data = json.load(f)
-            except (json.JSONDecodeError, OSError):
+                    data = json.load(f)
+                if not isinstance(data, dict):
+                    raise ValueError("web accounts data must be an object")
+                self._data = {k: v for k, v in data.items() if isinstance(v, dict)}
+            except json.JSONDecodeError:
                 logger.warning("Web accounts file corrupted, starting fresh.")
+                _backup_invalid_accounts_file(filepath)
+                self._data = {}
+            except OSError:
+                logger.warning("Failed to read web accounts file, starting fresh.")
+                self._data = {}
+            except ValueError as e:
+                logger.warning(f"Web accounts file invalid: {e}; starting fresh.")
+                _backup_invalid_accounts_file(filepath)
                 self._data = {}
 
     def _save(self):

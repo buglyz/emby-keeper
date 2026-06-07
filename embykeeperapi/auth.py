@@ -13,6 +13,7 @@ from jose import JWTError, jwt
 
 ALGORITHM = "HS256"
 DEFAULT_EXPIRE_DAYS = 7
+JWT_SECRET_FILE = "jwt_secret.key"
 
 security = HTTPBearer()
 
@@ -45,13 +46,23 @@ def init_jwt_secret_from_basedir(basedir):
         return
     from pathlib import Path
 
-    key_file = Path(basedir) / "secret.key"
+    basedir = Path(basedir)
+    key_file = basedir / JWT_SECRET_FILE
     if key_file.is_file():
         key_bytes = key_file.read_bytes().strip()
         JWT_SECRET = hashlib.sha256(key_bytes).hexdigest()
     else:
-        JWT_SECRET = hashlib.sha256(secrets.token_bytes(32)).hexdigest()
-        key_file.write_bytes(JWT_SECRET.encode())
+        legacy_key_file = basedir / "secret.key"
+        if legacy_key_file.is_file():
+            key_bytes = legacy_key_file.read_bytes().strip()
+        else:
+            key_bytes = secrets.token_bytes(32)
+        JWT_SECRET = hashlib.sha256(key_bytes).hexdigest()
+        key_file.write_bytes(key_bytes)
+        try:
+            os.chmod(key_file, 0o600)
+        except OSError:
+            pass
 
 
 def create_jwt(subject: str = "admin", expire_days: int = DEFAULT_EXPIRE_DAYS) -> str:

@@ -33,12 +33,30 @@ def test_frontend_fallback_checks_actual_naive_ui_global():
 def test_frontend_vendor_assets_are_packaged_locally():
     html = STATIC_INDEX.read_text(encoding="utf-8")
 
+    assert "window.EK_VENDOR_PATH = `${window.EK_BASE_PATH}/static/vendor/`" in html
+    assert "window.EK_LOAD_VENDOR = function (filename)" in html
     for filename in (
         "vue.global.prod.js",
         "naive-ui.prod.js",
         "vue-router.global.prod.js",
     ):
         path = STATIC_VENDOR / filename
-        assert f"/static/vendor/{filename}" in html
+        assert f"window.EK_LOAD_VENDOR('{filename}')" in html
+        assert f'src="/static/vendor/{filename}"' not in html
         assert path.is_file()
         assert path.stat().st_size > 10_000
+
+
+def test_frontend_api_base_respects_reverse_proxy_prefix():
+    html = STATIC_INDEX.read_text(encoding="utf-8")
+
+    assert "window.EK_BASE_PATH = basePath === '/' ? '' : basePath" in html
+    assert "const routeSuffix =" in html
+    assert "function getApiBasePath()" in html
+    assert "if (typeof window.EK_BASE_PATH === 'string') return window.EK_BASE_PATH" in html
+    assert "const marker = '/static/vendor/'" in html
+    assert "localVendorScript.src.indexOf(marker)" in html
+    assert "if (basePath) return basePath" in html
+    assert "const API_BASE_PATH = getApiBasePath()" in html
+    assert "baseUrl: `${window.location.origin}${API_BASE_PATH}`" in html
+    assert "baseUrl: window.location.origin" not in html

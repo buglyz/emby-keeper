@@ -58,6 +58,33 @@ class EmbyManager:
         self._running: Set[str] = set()  # Currently running account_specs
 
         self._account_change_handle = config.on_list_change("emby.account", self._handle_account_change)
+        self._schedule_change_handles = [
+            config.on_change("emby.time_range", self._handle_schedule_config_change),
+            config.on_change("emby.interval_days", self._handle_schedule_config_change),
+        ]
+
+    def _reschedule_accounts(self):
+        """Rebuild all scheduler tasks from the current Emby account config."""
+        account_specs = list(self._schedulers.keys())
+        for account_spec in account_specs:
+            if account_spec == "unified":
+                self.stop_unified_accounts()
+            else:
+                self.stop_account(account_spec)
+
+        self.schedule_unified_accounts()
+        for account in config.emby.account:
+            if account.enabled and (account.time_range or account.interval_days):
+                scheduler = self.schedule_independent_account(account)
+                if scheduler:
+                    self._start_scheduler(self.get_spec(account), scheduler)
+
+    def _handle_schedule_config_change(self, old, new):
+        """Handle global Emby schedule changes without requiring a restart."""
+        if old == new:
+            return
+        self._reschedule_accounts()
+        logger.info("Emby 保活全局计划设置已更新, 已重新调度保活任务.")
 
     def _start_scheduler(self, account_spec: str, scheduler: Scheduler):
         if account_spec in self._scheduler_tasks:
@@ -237,6 +264,9 @@ class EmbyManager:
         if self._account_change_handle:
             self._account_change_handle.__exit__(None, None, None)
             self._account_change_handle = None
+        for handle in self._schedule_change_handles:
+            handle.__exit__(None, None, None)
+        self._schedule_change_handles = []
 
     async def play_url(self, url: str):
         parsed = urlparse(url)

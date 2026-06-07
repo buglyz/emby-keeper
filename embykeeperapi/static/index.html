@@ -4,11 +4,23 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Emby Keeper</title>
-  <script src="/static/vendor/vue.global.prod.js"></script>
+  <script>
+    (function () {
+      const path = window.location.pathname.replace(/\/$/, '');
+      const routeSuffix = /(?:\/(?:login|schedule|config)(?:\/.*)?|\/servers(?:\/.*)?)$/;
+      const basePath = path.replace(routeSuffix, '');
+      window.EK_BASE_PATH = basePath === '/' ? '' : basePath;
+      window.EK_VENDOR_PATH = `${window.EK_BASE_PATH}/static/vendor/`;
+      window.EK_LOAD_VENDOR = function (filename) {
+        document.write(`<script src="${window.EK_VENDOR_PATH}${filename}"><\/script>`);
+      };
+    }());
+  </script>
+  <script>window.EK_LOAD_VENDOR('vue.global.prod.js')</script>
   <script>if(typeof Vue==='undefined'){document.write('<script src="https://cdn.jsdelivr.net/npm/vue@3/dist/vue.global.prod.js"><\/script>')}</script>
-  <script src="/static/vendor/naive-ui.prod.js"></script>
+  <script>window.EK_LOAD_VENDOR('naive-ui.prod.js')</script>
   <script>if(typeof naive!=='undefined'&&typeof naiveUI==='undefined'){window.naiveUI=naive}if(typeof naiveUI==='undefined'){document.write('<script src="https://cdn.jsdelivr.net/npm/naive-ui@2/dist/index.prod.js"><\/script>')}</script>
-  <script src="/static/vendor/vue-router.global.prod.js"></script>
+  <script>window.EK_LOAD_VENDOR('vue-router.global.prod.js')</script>
   <script>if(typeof VueRouter==='undefined'){document.write('<script src="https://cdn.jsdelivr.net/npm/vue-router@4/dist/vue-router.global.prod.js"><\/script>')}</script>
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -72,8 +84,24 @@
     } = naiveUI;
 
     // ============ API Service ============
+    function getApiBasePath() {
+      if (typeof window.EK_BASE_PATH === 'string') return window.EK_BASE_PATH;
+      const origin = window.location.origin;
+      const marker = '/static/vendor/';
+      const localVendorScript = Array.from(document.scripts).find((script) => (
+        script.src.startsWith(origin) && script.src.includes(marker)
+      ));
+      if (localVendorScript) {
+        const basePath = localVendorScript.src.slice(origin.length, localVendorScript.src.indexOf(marker));
+        if (basePath) return basePath;
+      }
+      const path = window.location.pathname.replace(/\/$/, '');
+      return path === '/' ? '' : path;
+    }
+
+    const API_BASE_PATH = getApiBasePath();
     const API = {
-      baseUrl: window.location.origin,
+      baseUrl: `${window.location.origin}${API_BASE_PATH}`,
       _getHeaders() {
         const token = sessionStorage.getItem('ek_jwt');
         return { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' };

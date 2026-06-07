@@ -13,6 +13,8 @@ from ..models import (
 )
 from ..scheduler_bridge import bridge
 from ..crypto import encrypt_token
+from ..validation import validate_schedule_fields
+from embykeeper.config import config
 
 logger = logger.bind(scheme="embykeeperapi")
 
@@ -66,6 +68,15 @@ def _validate_server_fields(url: Optional[str] = None, time=None):
         elif isinstance(time, int):
             if time < 0:
                 raise HTTPException(status_code=400, detail="time must be non-negative")
+
+
+def _validate_account_schedule(interval_days=None, time_range=None):
+    if interval_days is None and time_range is None:
+        return
+    validate_schedule_fields(
+        interval_days if interval_days is not None else config.emby.interval_days,
+        time_range if time_range is not None else config.emby.time_range,
+    )
 
 
 def _make_temp_account_kwargs(
@@ -161,6 +172,7 @@ async def create_server(req: EmbyServerCreate, user: str = Depends(get_current_u
     """Create a new Emby server account."""
     _require_bridge()
     _validate_server_fields(url=req.url, time=req.time)
+    _validate_account_schedule(req.interval_days, req.time_range)
     account_id = _make_account_id(req.username, req.name, req.url)
 
     # Check for duplicate
@@ -286,6 +298,12 @@ async def update_server(
             if field in {"url", "username"} and not value:
                 raise HTTPException(status_code=400, detail=f"{field} cannot be empty")
             update_data[field] = value
+
+    if "interval_days" in fields_set or "time_range" in fields_set:
+        _validate_account_schedule(
+            update_data.get("interval_days", existing.get("interval_days")),
+            update_data.get("time_range", existing.get("time_range")),
+        )
 
     auth_method = req.auth_method
     if auth_method is not None:

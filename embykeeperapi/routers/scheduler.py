@@ -9,6 +9,12 @@ from ..scheduler_bridge import bridge
 router = APIRouter(tags=["scheduler & status"])
 
 
+def _require_bridge():
+    """Ensure the scheduler bridge is initialized before serving runtime data."""
+    if bridge.web_accounts is None:
+        raise HTTPException(status_code=503, detail="Service initializing, please retry")
+
+
 @router.get("/healthz")
 async def healthz():
     """Health check endpoint (no auth required)."""
@@ -18,6 +24,7 @@ async def healthz():
 @router.get("/api/schedule", response_model=List[ScheduleInfo])
 async def list_schedule(user: str = Depends(get_current_user)):
     """List all scheduled tasks with next-run times."""
+    _require_bridge()
     schedules = bridge.get_schedule_info()
     return [
         ScheduleInfo(
@@ -37,6 +44,7 @@ async def list_schedule(user: str = Depends(get_current_user)):
 @router.post("/api/schedule/{schedule_id:path}/run-now")
 async def run_now(schedule_id: str, user: str = Depends(get_current_user)):
     """Force immediate execution of a scheduled task."""
+    _require_bridge()
     account_spec = schedule_id.replace("emby.watch.", "") if schedule_id.startswith("emby.watch.") else schedule_id
 
     if account_spec in {"global", "unified"}:
@@ -51,8 +59,7 @@ async def run_now(schedule_id: str, user: str = Depends(get_current_user)):
 @router.get("/api/status", response_model=DashboardStatus)
 async def get_dashboard_status(user: str = Depends(get_current_user)):
     """Get dashboard overview status."""
-    if not bridge.web_accounts:
-        return DashboardStatus()
+    _require_bridge()
 
     accounts = bridge.web_accounts.get_all()
     total = len(accounts)
