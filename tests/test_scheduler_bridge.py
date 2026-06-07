@@ -78,7 +78,7 @@ def test_api_bridge_skips_malformed_web_account_credentials(tmp_path):
 
         try:
             assert bridge.get_schedule_info() == []
-            assert bridge.get_account_status("broken")["has_token"] is True
+            assert bridge.get_account_status("broken") == {}
         finally:
             await bridge.shutdown()
 
@@ -127,6 +127,26 @@ def test_web_account_data_filters_non_object_accounts(tmp_path):
         "alice@example.com": {"url": "https://example.com", "username": "alice"}
     }
     assert not list(tmp_path.glob("web_accounts.json.corrupt.*"))
+
+
+def test_web_account_data_filters_accounts_missing_required_fields(tmp_path):
+    accounts_file = tmp_path / "web_accounts.json"
+    accounts_file.write_text(
+        json.dumps(
+            {
+                "alice@example.com": {"url": "https://example.com", "username": "alice"},
+                "missing-username": {"url": "https://example.com"},
+                "blank-url": {"url": "   ", "username": "bob"},
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    accounts = WebAccountData(tmp_path)
+
+    assert accounts.get_all() == {
+        "alice@example.com": {"url": "https://example.com", "username": "alice"}
+    }
 
 
 def test_web_account_data_keeps_memory_unchanged_when_save_fails(tmp_path, monkeypatch):
