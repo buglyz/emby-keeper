@@ -1,5 +1,6 @@
 import asyncio
 import json
+from copy import deepcopy
 from datetime import datetime, timezone
 from pathlib import Path
 from tempfile import NamedTemporaryFile
@@ -99,15 +100,15 @@ class WebAccountData:
             raise
 
     def get_all(self) -> Dict[str, dict]:
-        return {account_id: data.copy() for account_id, data in self._data.items()}
+        return deepcopy(self._data)
 
     def get(self, account_id: str) -> Optional[dict]:
         data = self._data.get(account_id)
-        return data.copy() if data is not None else None
+        return deepcopy(data) if data is not None else None
 
     def add(self, account_id: str, data: dict):
-        next_data = self._data.copy()
-        next_data[account_id] = data
+        next_data = deepcopy(self._data)
+        next_data[account_id] = deepcopy(data)
         self._save(next_data)
         self._data = next_data
 
@@ -119,14 +120,14 @@ class WebAccountData:
         if target_id != account_id and target_id in self._data:
             return None
 
-        account_data = self._data[account_id].copy()
+        account_data = deepcopy(self._data[account_id])
         for k, v in data.items():
             if v is None:
                 account_data.pop(k, None)
             else:
-                account_data[k] = v
+                account_data[k] = deepcopy(v)
 
-        next_data = self._data.copy()
+        next_data = deepcopy(self._data)
         if target_id != account_id:
             del next_data[account_id]
         next_data[target_id] = account_data
@@ -136,7 +137,7 @@ class WebAccountData:
 
     def delete(self, account_id: str):
         if account_id in self._data:
-            next_data = self._data.copy()
+            next_data = deepcopy(self._data)
             del next_data[account_id]
             self._save(next_data)
             self._data = next_data

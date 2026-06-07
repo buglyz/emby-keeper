@@ -303,6 +303,49 @@ def test_web_account_data_returns_copies(tmp_path):
     assert accounts.get("alice@example.com") == {"username": "alice"}
 
 
+def test_web_account_data_isolates_mutable_account_data(tmp_path):
+    accounts = WebAccountData(tmp_path)
+    source = {
+        "username": "alice",
+        "time": [300, 600],
+        "metadata": {"device": "phone"},
+    }
+
+    accounts.add("alice@example.com", source)
+    source["time"][0] = 1
+    source["metadata"]["device"] = "tablet"
+
+    account = accounts.get("alice@example.com")
+    account["time"][1] = 2
+    account["metadata"]["device"] = "desktop"
+
+    all_accounts = accounts.get_all()
+    all_accounts["alice@example.com"]["time"][0] = 3
+    all_accounts["alice@example.com"]["metadata"]["device"] = "tv"
+
+    assert accounts.get("alice@example.com") == {
+        "username": "alice",
+        "time": [300, 600],
+        "metadata": {"device": "phone"},
+    }
+
+
+def test_web_account_data_update_isolates_mutable_values(tmp_path):
+    accounts = WebAccountData(tmp_path)
+    accounts.add("alice@example.com", {"username": "alice", "time": [300, 600]})
+    update = {"time": [120, 240], "metadata": {"device": "phone"}}
+
+    assert accounts.update("alice@example.com", update) == "alice@example.com"
+    update["time"][0] = 1
+    update["metadata"]["device"] = "tablet"
+
+    assert accounts.get("alice@example.com") == {
+        "username": "alice",
+        "time": [120, 240],
+        "metadata": {"device": "phone"},
+    }
+
+
 def test_trigger_watch_many_skips_disabled_and_independent_when_requested(tmp_path, monkeypatch):
     async def run_test():
         bridge = SchedulerBridge()
