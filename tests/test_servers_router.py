@@ -230,6 +230,32 @@ def test_create_server_rejects_blank_username_without_saving(tmp_path):
     asyncio.run(run_test())
 
 
+def test_create_server_rejects_blank_token_without_saving(tmp_path):
+    async def run_test():
+        config.basedir = tmp_path
+        config.set(Config())
+        await bridge.initialize(tmp_path)
+
+        try:
+            with pytest.raises(HTTPException) as exc:
+                await create_server(
+                    EmbyServerCreate(
+                        url="https://example.com",
+                        username="alice",
+                        auth_method="token",
+                        access_token="   ",
+                    ),
+                    user="tester",
+                )
+
+            assert exc.value.status_code == 400
+            assert bridge.web_accounts.get_all() == {}
+        finally:
+            await reset_bridge()
+
+    asyncio.run(run_test())
+
+
 def test_update_server_rejects_invalid_schedule_settings_without_mutating_account(tmp_path):
     async def run_test():
         config.basedir = tmp_path
@@ -290,6 +316,40 @@ def test_update_server_rejects_blank_required_text_without_mutating_account(tmp_
 
             assert exc.value.status_code == 400
             assert bridge.web_accounts.get(account_id)["username"] == "alice"
+        finally:
+            await reset_bridge()
+
+    asyncio.run(run_test())
+
+
+def test_update_server_rejects_blank_credentials_without_mutating_account(tmp_path):
+    async def run_test():
+        config.basedir = tmp_path
+        config.set(Config())
+        await bridge.initialize(tmp_path)
+
+        account_id = "alice@example.com"
+        bridge.add_account(
+            account_id,
+            {
+                "url": "https://example.com",
+                "username": "alice",
+                "encrypted_token": encrypt_token("token-old", tmp_path),
+                "auth_method": "token",
+            },
+        )
+        original = bridge.web_accounts.get(account_id).copy()
+
+        try:
+            with pytest.raises(HTTPException) as exc:
+                await update_server(
+                    account_id,
+                    EmbyServerUpdate(access_token="   "),
+                    user="tester",
+                )
+
+            assert exc.value.status_code == 400
+            assert bridge.web_accounts.get(account_id) == original
         finally:
             await reset_bridge()
 

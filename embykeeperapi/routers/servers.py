@@ -187,19 +187,11 @@ async def create_server(req: EmbyServerCreate, user: str = Depends(get_current_u
 
     # Handle auth method
     if req.auth_method == "token":
-        if not req.access_token:
-            raise HTTPException(
-                status_code=400,
-                detail="access_token is required when auth_method is 'token'",
-            )
+        _validate_required_text("access_token", req.access_token)
         encrypted_token = encrypt_token(req.access_token, bridge.web_accounts.basedir)
         user_id = None
     elif req.auth_method == "password":
-        if not req.password:
-            raise HTTPException(
-                status_code=400,
-                detail="password is required when auth_method is 'password'",
-            )
+        _validate_required_text("password", req.password)
         # Exchange password for token via Emby API (one-time use)
         from embykeeper.emby.api import Emby
         from embykeeper.schema import EmbyAccount
@@ -312,22 +304,34 @@ async def update_server(
         )
 
     auth_method = req.auth_method
+    has_access_token = (
+        "access_token" in fields_set
+        and req.access_token is not None
+        and bool(req.access_token.strip())
+    )
+    has_password = (
+        "password" in fields_set
+        and req.password is not None
+        and bool(req.password.strip())
+    )
     if auth_method is not None:
         if auth_method not in {"token", "password"}:
             raise HTTPException(status_code=400, detail="auth_method must be 'token' or 'password'")
-        if auth_method != existing.get("auth_method", "token") and not (req.access_token or req.password):
+        if auth_method != existing.get("auth_method", "token") and not (has_access_token or has_password):
             raise HTTPException(
                 status_code=400, detail="New credentials are required when changing auth_method"
             )
 
-    if req.access_token:
+    if "access_token" in fields_set:
+        _validate_required_text("access_token", req.access_token)
         update_data["auth_method"] = "token"
         update_data["encrypted_token"] = encrypt_token(req.access_token, bridge.web_accounts.basedir)
         update_data["user_id"] = None
     elif auth_method == "token" and existing.get("auth_method", "token") != "token":
         raise HTTPException(status_code=400, detail="access_token is required when auth_method is 'token'")
 
-    if req.password:
+    if "password" in fields_set:
+        _validate_required_text("password", req.password)
         from embykeeper.emby.api import Emby
         from embykeeper.schema import EmbyAccount
 
