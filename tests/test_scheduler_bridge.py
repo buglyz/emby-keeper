@@ -132,6 +132,19 @@ def test_web_account_data_file_is_owner_only(tmp_path):
     assert mode == 0o600
 
 
+def test_web_account_data_returns_copies(tmp_path):
+    accounts = WebAccountData(tmp_path)
+    accounts.add("alice@example.com", {"username": "alice"})
+
+    account = accounts.get("alice@example.com")
+    account["username"] = "changed"
+
+    all_accounts = accounts.get_all()
+    all_accounts["alice@example.com"]["username"] = "changed-again"
+
+    assert accounts.get("alice@example.com") == {"username": "alice"}
+
+
 def test_trigger_watch_many_skips_disabled_and_independent_when_requested(tmp_path, monkeypatch):
     async def run_test():
         bridge = SchedulerBridge()

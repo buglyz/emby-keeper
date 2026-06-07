@@ -81,10 +81,11 @@ class WebAccountData:
             raise
 
     def get_all(self) -> Dict[str, dict]:
-        return self._data.copy()
+        return {account_id: data.copy() for account_id, data in self._data.items()}
 
     def get(self, account_id: str) -> Optional[dict]:
-        return self._data.get(account_id)
+        data = self._data.get(account_id)
+        return data.copy() if data is not None else None
 
     def add(self, account_id: str, data: dict):
         next_data = self._data.copy()
