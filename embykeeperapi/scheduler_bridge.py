@@ -11,7 +11,6 @@ from embykeeper.schema import Config, EmbyAccount
 
 from .crypto import decrypt_token
 
-
 logger = logger.bind(scheme="embykeeperapi")
 
 
@@ -192,12 +191,11 @@ class SchedulerBridge:
 
         # Create EmbyManager
         from embykeeper.emby.main import EmbyManager
+
         self.emby_manager = EmbyManager()
 
         # Start scheduled tasks in background (schedule_all blocks forever)
-        self._scheduler_task = asyncio.create_task(
-            self.emby_manager.schedule_all(instant=False)
-        )
+        self._scheduler_task = asyncio.create_task(self.emby_manager.schedule_all(instant=False))
 
         self._initialized = True
         logger.info("Scheduler bridge initialized.")
@@ -217,9 +215,9 @@ class SchedulerBridge:
         all_accounts = self._base_emby_accounts + web_accounts
 
         # Update config
-        new_config = config._cache.model_copy(update={
-            "emby": config._cache.emby.model_copy(update={"account": all_accounts})
-        })
+        new_config = config._cache.model_copy(
+            update={"emby": config._cache.emby.model_copy(update={"account": all_accounts})}
+        )
         config.set(new_config)
 
     def add_account(self, account_id: str, data: dict):
@@ -227,7 +225,9 @@ class SchedulerBridge:
         self.web_accounts.add(account_id, data)
         self._merge_accounts()
 
-    def update_account(self, account_id: str, data: dict, new_account_id: Optional[str] = None) -> Optional[str]:
+    def update_account(
+        self, account_id: str, data: dict, new_account_id: Optional[str] = None
+    ) -> Optional[str]:
         """Update an existing account via the web API."""
         updated_id = self.web_accounts.update(account_id, data, new_account_id)
         if updated_id:
@@ -261,6 +261,13 @@ class SchedulerBridge:
         account_data = self.web_accounts.get(account_id)
         if not account_data:
             return {"error": "Account not found"}
+        existing_task = self._running_tasks.get(account_id)
+        if existing_task and not existing_task.done():
+            return {
+                "run_id": "",
+                "status": "running",
+                "message": "Watch task already running",
+            }
 
         from embykeeper.runinfo import RunContext, RunStatus
 
@@ -275,7 +282,9 @@ class SchedulerBridge:
             try:
                 if not await self._authenticate_emby(emby):
                     ctx.finish(RunStatus.FAIL, "Token authentication failed")
-                    self._record_status(account_id, last_watch_time=now, last_watch_status="auth_failed", is_online=False)
+                    self._record_status(
+                        account_id, last_watch_time=now, last_watch_status="auth_failed", is_online=False
+                    )
                     return
                 self._remember_user_id(account_id, account_data, emby)
                 if account.play_id:
@@ -293,7 +302,9 @@ class SchedulerBridge:
                         return
                 if await emby.watch():
                     ctx.finish(RunStatus.SUCCESS, "Watch successful")
-                    self._record_status(account_id, last_watch_time=now, last_watch_status="success", is_online=True)
+                    self._record_status(
+                        account_id, last_watch_time=now, last_watch_status="success", is_online=True
+                    )
                 else:
                     ctx.finish(RunStatus.FAIL, "Watch failed")
                     self._record_status(account_id, last_watch_time=now, last_watch_status="failed")
@@ -306,9 +317,14 @@ class SchedulerBridge:
 
         task = asyncio.create_task(run_watch(), name=f"watch-{account_id}")
         self._running_tasks[account_id] = task
-        task.add_done_callback(lambda _: self._running_tasks.pop(account_id, None))
 
-        return {"run_id": ctx.id, "status": "started"}
+        def cleanup(done_task: asyncio.Task):
+            if self._running_tasks.get(account_id) is done_task:
+                self._running_tasks.pop(account_id, None)
+
+        task.add_done_callback(cleanup)
+
+        return {"run_id": ctx.id, "status": "started", "message": "Watch task started"}
 
     async def trigger_watch_many(self, unified_only: bool = False) -> dict:
         """Trigger immediate watch tasks for enabled web-managed accounts."""
@@ -402,8 +418,16 @@ class SchedulerBridge:
 
             time_range = None
             if hasattr(scheduler, "start_time") and scheduler.start_time:
-                start = scheduler.start_time.strftime("%H:%M") if hasattr(scheduler.start_time, "strftime") else str(scheduler.start_time)
-                end = scheduler.end_time.strftime("%H:%M") if hasattr(scheduler.end_time, "strftime") else str(scheduler.end_time)
+                start = (
+                    scheduler.start_time.strftime("%H:%M")
+                    if hasattr(scheduler.start_time, "strftime")
+                    else str(scheduler.start_time)
+                )
+                end = (
+                    scheduler.end_time.strftime("%H:%M")
+                    if hasattr(scheduler.end_time, "strftime")
+                    else str(scheduler.end_time)
+                )
                 time_range = f"<{start},{end}>" if start != end else start
 
             next_time = getattr(scheduler, "_next_time", None) or scheduler.next_time
@@ -411,15 +435,17 @@ class SchedulerBridge:
             account_data = self.web_accounts.get(account_spec) if self.web_accounts else None
             enabled = account_data.get("enabled", True) if account_data else True
 
-            schedules.append({
-                "id": schedule_id,
-                "account_spec": account_spec,
-                "interval_days": interval_days,
-                "time_range": time_range,
-                "next_time": next_time,
-                "is_running": account_spec in getattr(self.emby_manager, "_running", set()),
-                "enabled": enabled,
-            })
+            schedules.append(
+                {
+                    "id": schedule_id,
+                    "account_spec": account_spec,
+                    "interval_days": interval_days,
+                    "time_range": time_range,
+                    "next_time": next_time,
+                    "is_running": account_spec in getattr(self.emby_manager, "_running", set()),
+                    "enabled": enabled,
+                }
+            )
         return schedules
 
     async def shutdown(self):

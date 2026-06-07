@@ -222,9 +222,22 @@ async def update_server(
     fields_set = _model_fields_set(req)
 
     simple_fields = [
-        "url", "username", "name", "time", "allow_multiple", "allow_stream",
-        "use_proxy", "play_id", "enabled", "interval_days", "time_range",
-        "useragent", "client", "client_version", "device", "device_id",
+        "url",
+        "username",
+        "name",
+        "time",
+        "allow_multiple",
+        "allow_stream",
+        "use_proxy",
+        "play_id",
+        "enabled",
+        "interval_days",
+        "time_range",
+        "useragent",
+        "client",
+        "client_version",
+        "device",
+        "device_id",
     ]
     for field in simple_fields:
         if field in fields_set:
@@ -238,7 +251,9 @@ async def update_server(
         if auth_method not in {"token", "password"}:
             raise HTTPException(status_code=400, detail="auth_method must be 'token' or 'password'")
         if auth_method != existing.get("auth_method", "token") and not (req.access_token or req.password):
-            raise HTTPException(status_code=400, detail="New credentials are required when changing auth_method")
+            raise HTTPException(
+                status_code=400, detail="New credentials are required when changing auth_method"
+            )
 
     if req.access_token:
         update_data["auth_method"] = "token"
@@ -344,8 +359,8 @@ async def trigger_watch(account_id: str, user: str = Depends(get_current_user)):
         raise HTTPException(status_code=404, detail=result["error"])
     return ActionResponse(
         run_id=result.get("run_id", ""),
-        status="started",
-        message="Watch task started",
+        status=result.get("status", "started"),
+        message=result.get("message", "Watch task started"),
     )
 
 

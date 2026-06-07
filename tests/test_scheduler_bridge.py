@@ -200,3 +200,103 @@ def test_trigger_watch_uses_stored_credentials_and_play_id(tmp_path, monkeypatch
         await bridge.shutdown()
 
     asyncio.run(run_test())
+
+
+def test_trigger_watch_returns_running_for_duplicate_account_task(tmp_path):
+    async def run_test():
+        bridge = SchedulerBridge()
+        await bridge.initialize(tmp_path)
+
+        account_id = "alice@example.com"
+        bridge.add_account(
+            account_id,
+            {
+                "url": "https://example.com",
+                "username": "alice",
+                "encrypted_token": encrypt_token("token-1", tmp_path),
+                "enabled": True,
+            },
+        )
+
+        blocker = asyncio.Event()
+        task = asyncio.create_task(blocker.wait())
+        bridge._running_tasks[account_id] = task
+
+        result = await bridge.trigger_watch(account_id)
+
+        assert result == {
+            "run_id": "",
+            "status": "running",
+            "message": "Watch task already running",
+        }
+        assert bridge._running_tasks[account_id] is task
+
+        blocker.set()
+        await task
+        await bridge.shutdown()
+
+    asyncio.run(run_test())
+
+
+def test_trigger_watch_cleanup_preserves_newer_task_for_same_account(tmp_path, monkeypatch):
+    async def run_test():
+        bridge = SchedulerBridge()
+        await bridge.initialize(tmp_path)
+
+        account_id = "alice@example.com"
+        bridge.add_account(
+            account_id,
+            {
+                "url": "https://example.com",
+                "username": "alice",
+                "encrypted_token": encrypt_token("token-1", tmp_path),
+                "user_id": "user-1",
+                "play_id": "item-1",
+                "enabled": True,
+            },
+        )
+
+        first_can_finish = asyncio.Event()
+        second_can_finish = asyncio.Event()
+        calls = 0
+
+        async def fake_authenticate(_emby):
+            return True
+
+        async def fake_get_item(self, item_id):
+            return {"Id": item_id, "Name": "Movie", "MediaType": "Video", "RunTimeTicks": 10000000}
+
+        async def fake_watch(_self):
+            nonlocal calls
+            calls += 1
+            if calls == 1:
+                await first_can_finish.wait()
+            else:
+                await second_can_finish.wait()
+            return True
+
+        monkeypatch.setattr(bridge, "_authenticate_emby", fake_authenticate)
+        monkeypatch.setattr(Emby, "get_item", fake_get_item)
+        monkeypatch.setattr(Emby, "watch", fake_watch)
+
+        await bridge.trigger_watch(account_id)
+        first_task = bridge._running_tasks[account_id]
+
+        bridge._running_tasks.pop(account_id)
+        await bridge.trigger_watch(account_id)
+        second_task = bridge._running_tasks[account_id]
+
+        assert first_task is not second_task
+
+        first_can_finish.set()
+        await first_task
+
+        assert bridge._running_tasks[account_id] is second_task
+
+        second_can_finish.set()
+        await second_task
+        assert account_id not in bridge._running_tasks
+
+        await bridge.shutdown()
+
+    asyncio.run(run_test())
