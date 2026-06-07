@@ -39,6 +39,13 @@ def _get_jwt_secret() -> str:
 JWT_SECRET = _get_jwt_secret()
 
 
+def _chmod_secret_file(path):
+    try:
+        os.chmod(path, 0o600)
+    except OSError:
+        pass
+
+
 def init_jwt_secret_from_basedir(basedir):
     """Re-derive JWT secret using persistent key file when no env vars are set."""
     global JWT_SECRET
@@ -50,6 +57,10 @@ def init_jwt_secret_from_basedir(basedir):
     key_file = basedir / JWT_SECRET_FILE
     if key_file.is_file():
         key_bytes = key_file.read_bytes().strip()
+        if not key_bytes:
+            key_bytes = secrets.token_bytes(32)
+            key_file.write_bytes(key_bytes)
+        _chmod_secret_file(key_file)
         JWT_SECRET = hashlib.sha256(key_bytes).hexdigest()
     else:
         legacy_key_file = basedir / "secret.key"
@@ -59,10 +70,7 @@ def init_jwt_secret_from_basedir(basedir):
             key_bytes = secrets.token_bytes(32)
         JWT_SECRET = hashlib.sha256(key_bytes).hexdigest()
         key_file.write_bytes(key_bytes)
-        try:
-            os.chmod(key_file, 0o600)
-        except OSError:
-            pass
+        _chmod_secret_file(key_file)
 
 
 def create_jwt(subject: str = "admin", expire_days: int = DEFAULT_EXPIRE_DAYS) -> str:

@@ -1,5 +1,9 @@
+import hashlib
+import stat
+
 from cryptography.fernet import Fernet
 
+import embykeeperapi.auth as auth
 from embykeeperapi.auth import init_jwt_secret_from_basedir
 from embykeeperapi.crypto import decrypt_token, encrypt_token, reset_fernet
 
@@ -16,6 +20,34 @@ def test_jwt_secret_file_does_not_break_fernet_key_generation(tmp_path, monkeypa
     assert (tmp_path / "jwt_secret.key").is_file()
     assert (tmp_path / "secret.key").is_file()
     assert decrypt_token(encrypted, tmp_path) == "emby-token"
+
+
+def test_existing_jwt_secret_file_is_owner_only(tmp_path, monkeypatch):
+    for key in ("EK_SECRET", "EK_WEBPASS", "EK_TOKEN"):
+        monkeypatch.delenv(key, raising=False)
+    key_file = tmp_path / "jwt_secret.key"
+    key_file.write_bytes(b"jwt-secret")
+    key_file.chmod(0o644)
+
+    init_jwt_secret_from_basedir(tmp_path)
+
+    assert stat.S_IMODE(key_file.stat().st_mode) == 0o600
+    assert auth.JWT_SECRET == hashlib.sha256(b"jwt-secret").hexdigest()
+
+
+def test_empty_jwt_secret_file_is_replaced(tmp_path, monkeypatch):
+    for key in ("EK_SECRET", "EK_WEBPASS", "EK_TOKEN"):
+        monkeypatch.delenv(key, raising=False)
+    key_file = tmp_path / "jwt_secret.key"
+    key_file.write_bytes(b"")
+
+    init_jwt_secret_from_basedir(tmp_path)
+
+    key_bytes = key_file.read_bytes()
+    assert key_bytes
+    assert stat.S_IMODE(key_file.stat().st_mode) == 0o600
+    assert auth.JWT_SECRET == hashlib.sha256(key_bytes).hexdigest()
+    assert auth.JWT_SECRET != hashlib.sha256(b"").hexdigest()
 
 
 def test_legacy_non_fernet_secret_key_is_stably_derived(tmp_path, monkeypatch):
