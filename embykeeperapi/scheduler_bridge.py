@@ -143,6 +143,13 @@ class SchedulerBridge:
         existing = self._account_status.setdefault(account_id, {})
         existing.update(fields)
 
+    def _get_running_task(self, account_id: str) -> Optional[asyncio.Task]:
+        task = self._running_tasks.get(account_id)
+        if task and task.done():
+            self._running_tasks.pop(account_id, None)
+            return None
+        return task
+
     def _cache_account_credentials(self, data: dict):
         token = self.web_accounts._get_account_token(data)
         if not token:
@@ -261,7 +268,7 @@ class SchedulerBridge:
         account_data = self.web_accounts.get(account_id)
         if not account_data:
             return {"error": "Account not found"}
-        existing_task = self._running_tasks.get(account_id)
+        existing_task = self._get_running_task(account_id)
         if existing_task and not existing_task.done():
             return {
                 "run_id": "",
@@ -379,7 +386,7 @@ class SchedulerBridge:
             return {}
 
         manager_running = getattr(self.emby_manager, "_running", set()) if self.emby_manager else set()
-        is_running = account_id in self._running_tasks or account_id in manager_running
+        is_running = self._get_running_task(account_id) is not None or account_id in manager_running
         has_token = bool(account_data.get("encrypted_token"))
         recorded = self._account_status.get(account_id, {})
         next_schedule_time = None

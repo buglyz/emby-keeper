@@ -8,6 +8,7 @@ from typing import Iterable, List, Union, Optional
 import re
 
 from loguru import logger
+from curl_cffi import CurlHttpVersion
 from curl_cffi.requests import AsyncSession, Response, RequestsError
 from pydantic import BaseModel, ValidationError
 
@@ -220,6 +221,12 @@ class Emby:
     async def authenticate_with_token(self) -> bool:
         if not self.token:
             return False
+        if self.user_id:
+            resp = await self._request("GET", f"/Users/{self.user_id}", _login=True)
+            if resp.status_code == 200:
+                user = resp.json()
+                self.set_credentials(self.token, user.get("Id") or self.user_id)
+                return True
         resp = await self._request("GET", "/Users/Me", _login=True)
         if resp.status_code != 200:
             return False
@@ -786,6 +793,7 @@ class Emby:
                         stream=True,
                         max_recv_speed=1024,
                         timeout=None,
+                        http_version=CurlHttpVersion.V1_1,
                         headers=self._build_stream_headers(
                             play_session_id,
                             length,

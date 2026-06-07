@@ -4,6 +4,7 @@ import pytest
 
 from embykeeper.cache import cache
 from embykeeper.config import config
+from curl_cffi import CurlHttpVersion
 from curl_cffi.requests import RequestsError
 
 from embykeeper.emby.api import Emby, EmbyPlayError, EmbyStatusError
@@ -60,6 +61,27 @@ def test_token_only_account_authenticates_without_password(monkeypatch):
     assert asyncio.run(emby.ensure_authenticated()) is True
     assert emby.user_id == "user-1"
     assert login_called is False
+
+
+def test_token_authentication_uses_stored_user_id(monkeypatch):
+    account = EmbyAccount(url="https://example.com", username="alice")
+    emby = Emby(account)
+    emby.set_credentials("token-1", "user-1")
+
+    requests = []
+
+    async def fake_request(method, path, _login=False, **kwargs):
+        requests.append((method, path, _login))
+        assert method == "GET"
+        assert path == "/Users/user-1"
+        assert _login is True
+        return DummyResponse({"Id": "user-1"})
+
+    monkeypatch.setattr(emby, "_request", fake_request)
+
+    assert asyncio.run(emby.authenticate_with_token()) is True
+    assert requests == [("GET", "/Users/user-1", True)]
+    assert emby.user_id == "user-1"
 
 
 def test_authorization_header_uses_real_user_id_only():
@@ -283,6 +305,14 @@ def test_play_uses_authenticated_user_and_reports_progress(monkeypatch):
         assert "/Sessions/Playing/Progress" in paths
         assert "/Sessions/Playing/Stopped" in paths
         assert "/emby/Videos/item-1/stream" in paths
+
+        stream_requests = [
+            kwargs
+            for method, path, kwargs in requests
+            if method == "GET" and path == "/emby/Videos/item-1/stream"
+        ]
+        assert stream_requests
+        assert all(kwargs["http_version"] == CurlHttpVersion.V1_1 for kwargs in stream_requests)
 
         playback_info_params = [
             kwargs["params"]
