@@ -18,6 +18,15 @@ logger = logger.bind(scheme="embykeeperapi")
 
 router = APIRouter(prefix="/api/servers", tags=["servers"])
 
+EMBY_ACCOUNT_ENV_FIELDS = [
+    "use_proxy",
+    "useragent",
+    "client",
+    "client_version",
+    "device",
+    "device_id",
+]
+
 
 def _make_account_id(username: str, name: Optional[str], url: str) -> str:
     """Generate account ID matching EmbyManager.get_spec pattern."""
@@ -57,6 +66,38 @@ def _validate_server_fields(url: Optional[str] = None, time=None):
         elif isinstance(time, int):
             if time < 0:
                 raise HTTPException(status_code=400, detail="time must be non-negative")
+
+
+def _make_temp_account_kwargs(
+    *,
+    url: str,
+    username: str,
+    password: str,
+    name: Optional[str] = None,
+    source=None,
+    existing: Optional[dict] = None,
+    updates: Optional[dict] = None,
+) -> dict:
+    temp_kwargs = {
+        "url": url,
+        "username": username,
+        "password": password,
+    }
+    if name is not None:
+        temp_kwargs["name"] = name
+
+    for field in EMBY_ACCOUNT_ENV_FIELDS:
+        value = None
+        if updates and field in updates:
+            value = updates[field]
+        elif existing and field in existing:
+            value = existing[field]
+        elif source is not None:
+            value = getattr(source, field, None)
+        if value is not None:
+            temp_kwargs[field] = value
+
+    return temp_kwargs
 
 
 def _account_data_to_response(account_id: str, data: dict) -> EmbyServerResponse:
@@ -145,13 +186,13 @@ async def create_server(req: EmbyServerCreate, user: str = Depends(get_current_u
         from embykeeper.emby.api import Emby
         from embykeeper.schema import EmbyAccount
 
-        temp_kwargs = {
-            "url": req.url,
-            "username": req.username,
-            "password": req.password,
-        }
-        if req.name is not None:
-            temp_kwargs["name"] = req.name
+        temp_kwargs = _make_temp_account_kwargs(
+            url=req.url,
+            username=req.username,
+            password=req.password,
+            name=req.name,
+            source=req,
+        )
         temp_account = EmbyAccount(**temp_kwargs)
         emby = Emby(temp_account)
         try:
@@ -270,13 +311,14 @@ async def update_server(
         username = update_data.get("username") or existing["username"]
         name = update_data.get("name", existing.get("name"))
 
-        temp_kwargs = {
-            "url": url,
-            "username": username,
-            "password": req.password,
-        }
-        if name is not None:
-            temp_kwargs["name"] = name
+        temp_kwargs = _make_temp_account_kwargs(
+            url=url,
+            username=username,
+            password=req.password,
+            name=name,
+            existing=existing,
+            updates=update_data,
+        )
         temp_account = EmbyAccount(**temp_kwargs)
         emby = Emby(temp_account)
         try:

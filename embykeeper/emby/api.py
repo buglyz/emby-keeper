@@ -218,6 +218,34 @@ class Emby:
             cache_data["userid"] = user_id
         cache.set(f"emby.credential.{self.hostname}.{self.a.username}", cache_data)
 
+    async def _discover_user_id_from_sessions(self) -> Optional[str]:
+        resp = await self._request("GET", "/Sessions", _login=True)
+        if resp.status_code != 200:
+            return None
+
+        try:
+            sessions = resp.json()
+        except Exception:
+            return None
+        if not isinstance(sessions, list):
+            return None
+
+        username = (self.a.username or "").casefold()
+        candidates = []
+        for session in sessions:
+            if not isinstance(session, dict):
+                continue
+            user_id = session.get("UserId")
+            if not user_id:
+                continue
+            if username and str(session.get("UserName", "")).casefold() != username:
+                continue
+            if session.get("DeviceId") == self.env.device_id:
+                return user_id
+            candidates.append(user_id)
+
+        return candidates[0] if candidates else None
+
     async def authenticate_with_token(self) -> bool:
         if not self.token:
             return False
@@ -228,10 +256,19 @@ class Emby:
                 self.set_credentials(self.token, user.get("Id") or self.user_id)
                 return True
         resp = await self._request("GET", "/Users/Me", _login=True)
+        if resp.status_code == 200:
+            user = resp.json()
+            self.set_credentials(self.token, user.get("Id"))
+            return bool(self.user_id)
+
+        user_id = await self._discover_user_id_from_sessions()
+        if not user_id:
+            return False
+        resp = await self._request("GET", f"/Users/{user_id}", _login=True)
         if resp.status_code != 200:
             return False
         user = resp.json()
-        self.set_credentials(self.token, user.get("Id"))
+        self.set_credentials(self.token, user.get("Id") or user_id)
         return bool(self.user_id)
 
     async def ensure_authenticated(self) -> bool:

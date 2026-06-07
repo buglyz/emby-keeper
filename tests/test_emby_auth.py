@@ -84,6 +84,43 @@ def test_token_authentication_uses_stored_user_id(monkeypatch):
     assert emby.user_id == "user-1"
 
 
+def test_token_authentication_discovers_user_id_from_sessions(monkeypatch):
+    account = EmbyAccount(url="https://example.com", username="alice", device_id="device-1")
+    emby = Emby(account)
+    emby.set_credentials("token-1")
+
+    requests = []
+
+    async def fake_request(method, path, _login=False, **kwargs):
+        requests.append((method, path, _login))
+        assert method == "GET"
+        assert _login is True
+        if path == "/Users/Me":
+            resp = DummyResponse({})
+            resp.status_code = 500
+            resp.ok = False
+            return resp
+        if path == "/Sessions":
+            return DummyResponse(
+                [
+                    {"UserId": "other-user", "UserName": "bob", "DeviceId": "device-1"},
+                    {"UserId": "user-1", "UserName": "alice", "DeviceId": "device-1"},
+                ]
+            )
+        assert path == "/Users/user-1"
+        return DummyResponse({"Id": "user-1"})
+
+    monkeypatch.setattr(emby, "_request", fake_request)
+
+    assert asyncio.run(emby.authenticate_with_token()) is True
+    assert requests == [
+        ("GET", "/Users/Me", True),
+        ("GET", "/Sessions", True),
+        ("GET", "/Users/user-1", True),
+    ]
+    assert emby.user_id == "user-1"
+
+
 def test_authorization_header_uses_real_user_id_only():
     account = EmbyAccount(
         url="https://example.com",
