@@ -58,6 +58,7 @@ async def lifespan(app: FastAPI):
         await bridge.initialize(basedir)
     except Exception as e:
         logger.error(f"Failed to initialize scheduler bridge: {e}")
+        await bridge.shutdown()
         # Continue anyway - the API can work without the scheduler
 
     yield
