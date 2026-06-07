@@ -18,6 +18,7 @@ def test_jwt_secret_file_does_not_break_fernet_key_generation(tmp_path, monkeypa
     encrypted = encrypt_token("emby-token", tmp_path)
 
     assert (tmp_path / "jwt_secret.key").is_file()
+    assert not (tmp_path / "jwt_secret.key.tmp").exists()
     assert (tmp_path / "secret.key").is_file()
     assert decrypt_token(encrypted, tmp_path) == "emby-token"
 
@@ -45,6 +46,7 @@ def test_empty_jwt_secret_file_is_replaced(tmp_path, monkeypatch):
 
     key_bytes = key_file.read_bytes()
     assert key_bytes
+    assert not (tmp_path / "jwt_secret.key.tmp").exists()
     assert stat.S_IMODE(key_file.stat().st_mode) == 0o600
     assert auth.JWT_SECRET == hashlib.sha256(key_bytes).hexdigest()
     assert auth.JWT_SECRET != hashlib.sha256(b"").hexdigest()
