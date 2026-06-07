@@ -68,6 +68,10 @@ class WebAccountData:
         try:
             with open(tmp_path, "w", encoding="utf-8") as f:
                 json.dump(payload, f, ensure_ascii=False, indent=2)
+            try:
+                tmp_path.chmod(0o600)
+            except OSError:
+                pass
             tmp_path.replace(filepath)
         except OSError:
             try:

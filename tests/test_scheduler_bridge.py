@@ -1,4 +1,5 @@
 import asyncio
+import stat
 
 import pytest
 
@@ -120,6 +121,15 @@ def test_web_account_data_keeps_memory_unchanged_when_save_fails(tmp_path, monke
     with pytest.raises(OSError):
         accounts.delete("alice@example.com")
     assert accounts.get("alice@example.com") == {"username": "alice"}
+
+
+def test_web_account_data_file_is_owner_only(tmp_path):
+    accounts = WebAccountData(tmp_path)
+    accounts.add("alice@example.com", {"username": "alice"})
+
+    mode = stat.S_IMODE((tmp_path / "web_accounts.json").stat().st_mode)
+
+    assert mode == 0o600
 
 
 def test_trigger_watch_many_skips_disabled_and_independent_when_requested(tmp_path, monkeypatch):
