@@ -197,6 +197,77 @@ def test_global_schedule_change_reschedules_running_tasks(tmp_path):
     asyncio.run(run_test())
 
 
+def test_renaming_account_cancels_running_manual_task(tmp_path):
+    async def run_test():
+        bridge = SchedulerBridge()
+        await bridge.initialize(tmp_path)
+
+        account_id = "alice@example.com"
+        new_account_id = "alice@renamed"
+        bridge.add_account(
+            account_id,
+            {
+                "url": "https://example.com",
+                "username": "alice",
+                "encrypted_token": encrypt_token("token-1", tmp_path),
+                "enabled": True,
+            },
+        )
+
+        blocker = asyncio.Event()
+        task = asyncio.create_task(blocker.wait())
+        bridge._running_tasks[account_id] = task
+
+        try:
+            assert bridge.update_account(account_id, {"name": "renamed"}, new_account_id) == new_account_id
+            assert account_id not in bridge._running_tasks
+            assert new_account_id not in bridge._running_tasks
+            assert task.cancelling() > 0
+
+            with pytest.raises(asyncio.CancelledError):
+                await task
+        finally:
+            await bridge.shutdown()
+
+    asyncio.run(run_test())
+
+
+def test_deleting_account_cancels_running_manual_task_and_status(tmp_path):
+    async def run_test():
+        bridge = SchedulerBridge()
+        await bridge.initialize(tmp_path)
+
+        account_id = "alice@example.com"
+        bridge.add_account(
+            account_id,
+            {
+                "url": "https://example.com",
+                "username": "alice",
+                "encrypted_token": encrypt_token("token-1", tmp_path),
+                "enabled": True,
+            },
+        )
+        bridge._record_status(account_id, is_online=True)
+
+        blocker = asyncio.Event()
+        task = asyncio.create_task(blocker.wait())
+        bridge._running_tasks[account_id] = task
+
+        try:
+            bridge.delete_account(account_id)
+
+            assert account_id not in bridge._running_tasks
+            assert account_id not in bridge._account_status
+            assert task.cancelling() > 0
+
+            with pytest.raises(asyncio.CancelledError):
+                await task
+        finally:
+            await bridge.shutdown()
+
+    asyncio.run(run_test())
+
+
 def test_prepare_emby_uses_stored_user_id(tmp_path):
     async def run_test():
         bridge = SchedulerBridge()

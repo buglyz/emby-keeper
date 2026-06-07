@@ -186,6 +186,11 @@ class SchedulerBridge:
             return None
         return task
 
+    def _cancel_running_task(self, account_id: str):
+        task = self._running_tasks.pop(account_id, None)
+        if task and not task.done():
+            task.cancel()
+
     def _cache_account_credentials(self, data: dict):
         token = self.web_accounts._get_account_token(data)
         if not token:
@@ -274,6 +279,8 @@ class SchedulerBridge:
         """Update an existing account via the web API."""
         updated_id = self.web_accounts.update(account_id, data, new_account_id)
         if updated_id:
+            if updated_id != account_id:
+                self._cancel_running_task(account_id)
             if updated_id != account_id and account_id in self._account_status:
                 self._account_status[updated_id] = self._account_status.pop(account_id)
             self._merge_accounts()
@@ -282,6 +289,7 @@ class SchedulerBridge:
     def delete_account(self, account_id: str):
         """Delete an account via the web API."""
         self.web_accounts.delete(account_id)
+        self._cancel_running_task(account_id)
         self._account_status.pop(account_id, None)
         self._merge_accounts()
 
