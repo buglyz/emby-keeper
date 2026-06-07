@@ -1,3 +1,5 @@
-# Vendor JS files are downloaded during Docker build
-# Do not commit them to git
+# Keep the browser runtime files available for source, HF, and dev deployments.
 *.js
+!vue.global.prod.js
+!naive-ui.prod.js
+!vue-router.global.prod.js
