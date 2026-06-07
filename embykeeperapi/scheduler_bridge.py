@@ -61,12 +61,13 @@ class WebAccountData:
                 _backup_invalid_accounts_file(filepath)
                 self._data = {}
 
-    def _save(self):
+    def _save(self, data: Optional[Dict[str, dict]] = None):
         filepath = self.basedir / WEB_ACCOUNTS_FILE
         tmp_path = filepath.with_suffix(f"{filepath.suffix}.tmp")
+        payload = self._data if data is None else data
         try:
             with open(tmp_path, "w", encoding="utf-8") as f:
-                json.dump(self._data, f, ensure_ascii=False, indent=2)
+                json.dump(payload, f, ensure_ascii=False, indent=2)
             tmp_path.replace(filepath)
         except OSError:
             try:
@@ -82,8 +83,10 @@ class WebAccountData:
         return self._data.get(account_id)
 
     def add(self, account_id: str, data: dict):
-        self._data[account_id] = data
-        self._save()
+        next_data = self._data.copy()
+        next_data[account_id] = data
+        self._save(next_data)
+        self._data = next_data
 
     def update(self, account_id: str, data: dict, new_account_id: Optional[str] = None) -> Optional[str]:
         if account_id not in self._data:
@@ -100,16 +103,20 @@ class WebAccountData:
             else:
                 account_data[k] = v
 
+        next_data = self._data.copy()
         if target_id != account_id:
-            del self._data[account_id]
-        self._data[target_id] = account_data
-        self._save()
+            del next_data[account_id]
+        next_data[target_id] = account_data
+        self._save(next_data)
+        self._data = next_data
         return target_id
 
     def delete(self, account_id: str):
         if account_id in self._data:
-            del self._data[account_id]
-            self._save()
+            next_data = self._data.copy()
+            del next_data[account_id]
+            self._save(next_data)
+            self._data = next_data
 
     def _get_account_token(self, data: dict) -> str:
         encrypted_token = data.get("encrypted_token")

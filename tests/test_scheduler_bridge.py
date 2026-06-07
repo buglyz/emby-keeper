@@ -100,6 +100,28 @@ def test_web_account_data_filters_non_object_accounts(tmp_path):
     assert not list(tmp_path.glob("web_accounts.json.corrupt.*"))
 
 
+def test_web_account_data_keeps_memory_unchanged_when_save_fails(tmp_path, monkeypatch):
+    accounts = WebAccountData(tmp_path)
+    accounts.add("alice@example.com", {"username": "alice"})
+
+    def fail_save(_data=None):
+        raise OSError("disk full")
+
+    monkeypatch.setattr(accounts, "_save", fail_save)
+
+    with pytest.raises(OSError):
+        accounts.add("bob@example.com", {"username": "bob"})
+    assert accounts.get_all() == {"alice@example.com": {"username": "alice"}}
+
+    with pytest.raises(OSError):
+        accounts.update("alice@example.com", {"username": "alice2"})
+    assert accounts.get("alice@example.com") == {"username": "alice"}
+
+    with pytest.raises(OSError):
+        accounts.delete("alice@example.com")
+    assert accounts.get("alice@example.com") == {"username": "alice"}
+
+
 def test_trigger_watch_many_skips_disabled_and_independent_when_requested(tmp_path, monkeypatch):
     async def run_test():
         bridge = SchedulerBridge()
