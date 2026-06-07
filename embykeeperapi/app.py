@@ -35,6 +35,13 @@ class ProxyFixMiddleware(BaseHTTPMiddleware):
         return response
 
 
+def _normalize_root_path(prefix: str) -> str:
+    prefix = (prefix or "").strip()
+    if not prefix or prefix == "/":
+        return ""
+    return "/" + prefix.strip("/")
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Initialize scheduler bridge on startup, cleanup on shutdown."""
@@ -71,7 +78,7 @@ async def lifespan(app: FastAPI):
 
 def create_app() -> FastAPI:
     """Create and configure the FastAPI application."""
-    prefix = os.environ.get("EK_BASE_PREFIX", "")
+    prefix = _normalize_root_path(os.environ.get("EK_BASE_PREFIX", ""))
 
     app = FastAPI(
         title="EmbyKeeper API",

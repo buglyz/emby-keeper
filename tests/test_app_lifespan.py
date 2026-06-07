@@ -1,6 +1,8 @@
 import asyncio
 
-from embykeeperapi.app import lifespan
+import pytest
+
+from embykeeperapi.app import _normalize_root_path, lifespan
 from embykeeperapi.scheduler_bridge import bridge
 
 
@@ -18,3 +20,17 @@ def test_lifespan_resets_bridge_when_initialize_fails(tmp_path, monkeypatch):
             assert bridge._initialized is False
 
     asyncio.run(run_test())
+
+
+@pytest.mark.parametrize(
+    ("value", "expected"),
+    [
+        ("", ""),
+        ("/", ""),
+        ("emby", "/emby"),
+        ("/emby/", "/emby"),
+        ("//nested/app//", "/nested/app"),
+    ],
+)
+def test_normalize_root_path(value, expected):
+    assert _normalize_root_path(value) == expected
