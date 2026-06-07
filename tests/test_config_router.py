@@ -66,6 +66,7 @@ password = "secret"
         assert data["proxy"] == {"hostname": "127.0.0.1", "port": 1080, "scheme": "socks5"}
         assert stat.S_IMODE(config_file.stat().st_mode) == 0o600
         assert not (tmp_path / "config.toml.tmp").exists()
+        assert not list(tmp_path.glob(".config.toml.*.tmp"))
 
     asyncio.run(run_test())
     config.reset()
@@ -78,7 +79,7 @@ def test_write_text_atomic_preserves_existing_file_when_replace_fails(tmp_path, 
     original_replace = type(config_file).replace
 
     def fail_replace(self, target):
-        if self == config_file.with_suffix(".toml.tmp"):
+        if target == config_file:
             raise OSError("replace failed")
         return original_replace(self, target)
 
@@ -89,6 +90,7 @@ def test_write_text_atomic_preserves_existing_file_when_replace_fails(tmp_path, 
 
     assert config_file.read_text(encoding="utf-8") == "old-content"
     assert not config_file.with_suffix(".toml.tmp").exists()
+    assert not list(tmp_path.glob(".config.toml.*.tmp"))
 
 
 def test_update_config_rejects_invalid_runtime_values(tmp_path):

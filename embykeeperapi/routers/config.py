@@ -1,5 +1,6 @@
 from pathlib import Path
 from collections.abc import MutableMapping
+from tempfile import NamedTemporaryFile
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import ValidationError
@@ -22,19 +23,29 @@ def _model_fields_set(model) -> set:
 
 
 def _write_text_atomic(path: Path, content: str):
-    tmp_path = path.with_suffix(f"{path.suffix}.tmp")
+    tmp_path = None
     try:
-        tmp_path.write_text(content, encoding="utf-8")
+        with NamedTemporaryFile(
+            "w",
+            encoding="utf-8",
+            dir=path.parent,
+            prefix=f".{path.name}.",
+            suffix=".tmp",
+            delete=False,
+        ) as tmp:
+            tmp.write(content)
+            tmp_path = Path(tmp.name)
         try:
             tmp_path.chmod(0o600)
         except OSError:
             pass
         tmp_path.replace(path)
     except OSError:
-        try:
-            tmp_path.unlink(missing_ok=True)
-        except OSError:
-            pass
+        if tmp_path is not None:
+            try:
+                tmp_path.unlink(missing_ok=True)
+            except OSError:
+                pass
         raise
 
 
