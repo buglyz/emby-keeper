@@ -197,15 +197,26 @@ class SchedulerBridge:
             return
 
         from embykeeper.cache import cache as credential_cache
-        from urllib.parse import urlparse
 
-        hostname = urlparse(data["url"]).hostname or ""
-        username = data["username"]
         cache_data = {"token": token}
         user_id = self.web_accounts._get_account_user_id(data)
         if user_id:
             cache_data["userid"] = user_id
-        credential_cache.set(f"emby.credential.{hostname}.{username}", cache_data)
+        credential_cache.set(self._account_credential_cache_key(data), cache_data)
+
+    def _account_credential_cache_key(self, data: dict) -> str:
+        from urllib.parse import urlparse
+
+        hostname = urlparse(data["url"]).hostname or ""
+        return f"emby.credential.{hostname}.{data['username']}"
+
+    def _clear_account_credentials(self, data: dict):
+        from embykeeper.cache import cache as credential_cache
+
+        try:
+            credential_cache.delete(self._account_credential_cache_key(data))
+        except Exception as e:
+            logger.warning(f"Failed to clear old Emby credential cache: {type(e).__name__}")
 
     def _remember_user_id(self, account_id: str, account_data: dict, emby):
         user_id = getattr(emby, "user_id", None)
@@ -277,10 +288,12 @@ class SchedulerBridge:
         self, account_id: str, data: dict, new_account_id: Optional[str] = None
     ) -> Optional[str]:
         """Update an existing account via the web API."""
+        old_data = self.web_accounts.get(account_id)
         updated_id = self.web_accounts.update(account_id, data, new_account_id)
         if updated_id:
-            if updated_id != account_id:
-                self._cancel_running_task(account_id)
+            if old_data:
+                self._clear_account_credentials(old_data)
+            self._cancel_running_task(account_id)
             if updated_id != account_id and account_id in self._account_status:
                 self._account_status[updated_id] = self._account_status.pop(account_id)
             self._merge_accounts()
@@ -288,7 +301,10 @@ class SchedulerBridge:
 
     def delete_account(self, account_id: str):
         """Delete an account via the web API."""
+        old_data = self.web_accounts.get(account_id)
         self.web_accounts.delete(account_id)
+        if old_data:
+            self._clear_account_credentials(old_data)
         self._cancel_running_task(account_id)
         self._account_status.pop(account_id, None)
         self._merge_accounts()

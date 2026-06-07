@@ -232,6 +232,39 @@ def test_renaming_account_cancels_running_manual_task(tmp_path):
     asyncio.run(run_test())
 
 
+def test_updating_account_cancels_running_manual_task(tmp_path):
+    async def run_test():
+        bridge = SchedulerBridge()
+        await bridge.initialize(tmp_path)
+
+        account_id = "alice@example.com"
+        bridge.add_account(
+            account_id,
+            {
+                "url": "https://example.com",
+                "username": "alice",
+                "encrypted_token": encrypt_token("token-1", tmp_path),
+                "enabled": True,
+            },
+        )
+
+        blocker = asyncio.Event()
+        task = asyncio.create_task(blocker.wait())
+        bridge._running_tasks[account_id] = task
+
+        try:
+            assert bridge.update_account(account_id, {"play_id": "item-2"}) == account_id
+            assert account_id not in bridge._running_tasks
+            assert task.cancelling() > 0
+
+            with pytest.raises(asyncio.CancelledError):
+                await task
+        finally:
+            await bridge.shutdown()
+
+    asyncio.run(run_test())
+
+
 def test_deleting_account_cancels_running_manual_task_and_status(tmp_path):
     async def run_test():
         bridge = SchedulerBridge()
@@ -262,6 +295,73 @@ def test_deleting_account_cancels_running_manual_task_and_status(tmp_path):
 
             with pytest.raises(asyncio.CancelledError):
                 await task
+        finally:
+            await bridge.shutdown()
+
+    asyncio.run(run_test())
+
+
+def test_update_account_replaces_old_credential_cache(tmp_path):
+    async def run_test():
+        bridge = SchedulerBridge()
+        await bridge.initialize(tmp_path)
+
+        account_id = "alice@old.example"
+        new_account_id = "bob@new.example"
+        bridge.add_account(
+            account_id,
+            {
+                "url": "https://old.example",
+                "username": "alice",
+                "encrypted_token": encrypt_token("token-old", tmp_path),
+                "enabled": True,
+            },
+        )
+
+        assert cache.get("emby.credential.old.example.alice") == {"token": "token-old"}
+
+        try:
+            updated_id = bridge.update_account(
+                account_id,
+                {
+                    "url": "https://new.example",
+                    "username": "bob",
+                    "encrypted_token": encrypt_token("token-new", tmp_path),
+                },
+                new_account_id,
+            )
+
+            assert updated_id == new_account_id
+            assert cache.get("emby.credential.old.example.alice") is None
+            assert cache.get("emby.credential.new.example.bob") == {"token": "token-new"}
+        finally:
+            await bridge.shutdown()
+
+    asyncio.run(run_test())
+
+
+def test_delete_account_clears_credential_cache(tmp_path):
+    async def run_test():
+        bridge = SchedulerBridge()
+        await bridge.initialize(tmp_path)
+
+        account_id = "alice@example.com"
+        bridge.add_account(
+            account_id,
+            {
+                "url": "https://example.com",
+                "username": "alice",
+                "encrypted_token": encrypt_token("token-1", tmp_path),
+                "enabled": True,
+            },
+        )
+
+        assert cache.get("emby.credential.example.com.alice") == {"token": "token-1"}
+
+        try:
+            bridge.delete_account(account_id)
+
+            assert cache.get("emby.credential.example.com.alice") is None
         finally:
             await bridge.shutdown()
 
