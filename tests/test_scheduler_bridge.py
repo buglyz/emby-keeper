@@ -1,4 +1,5 @@
 import asyncio
+import json
 import stat
 
 import pytest
@@ -53,6 +54,33 @@ def test_api_bridge_uses_defaults_without_config_file(tmp_path):
         assert schedules[0]["next_time"] is not None
 
         await bridge.shutdown()
+
+    asyncio.run(run_test())
+
+
+def test_api_bridge_skips_malformed_web_account_credentials(tmp_path):
+    async def run_test():
+        accounts_file = tmp_path / "web_accounts.json"
+        accounts_file.write_text(
+            json.dumps(
+                {
+                    "broken": {
+                        "url": "https://example.com",
+                        "encrypted_token": encrypt_token("token-1", tmp_path),
+                    }
+                }
+            ),
+            encoding="utf-8",
+        )
+
+        bridge = SchedulerBridge()
+        await bridge.initialize(tmp_path)
+
+        try:
+            assert bridge.get_schedule_info() == []
+            assert bridge.get_account_status("broken")["has_token"] is True
+        finally:
+            await bridge.shutdown()
 
     asyncio.run(run_test())
 

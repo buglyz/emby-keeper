@@ -203,19 +203,28 @@ class SchedulerBridge:
         user_id = self.web_accounts._get_account_user_id(data)
         if user_id:
             cache_data["userid"] = user_id
-        credential_cache.set(self._account_credential_cache_key(data), cache_data)
+        cache_key = self._account_credential_cache_key(data)
+        if not cache_key:
+            return
+        credential_cache.set(cache_key, cache_data)
 
-    def _account_credential_cache_key(self, data: dict) -> str:
+    def _account_credential_cache_key(self, data: dict) -> Optional[str]:
         from urllib.parse import urlparse
 
-        hostname = urlparse(data["url"]).hostname or ""
-        return f"emby.credential.{hostname}.{data['username']}"
+        url = data.get("url")
+        username = data.get("username")
+        if not url or not username:
+            return None
+        hostname = urlparse(url).hostname or ""
+        return f"emby.credential.{hostname}.{username}"
 
     def _clear_account_credentials(self, data: dict):
         from embykeeper.cache import cache as credential_cache
 
         try:
-            credential_cache.delete(self._account_credential_cache_key(data))
+            cache_key = self._account_credential_cache_key(data)
+            if cache_key:
+                credential_cache.delete(cache_key)
         except Exception as e:
             logger.warning(f"Failed to clear old Emby credential cache: {type(e).__name__}")
 
