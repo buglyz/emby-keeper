@@ -48,3 +48,36 @@ def test_scheduler_routes_return_503_before_bridge_initializes(handler, args):
         assert exc.value.status_code == 503
 
     asyncio.run(run_test())
+
+
+@pytest.mark.parametrize(
+    ("schedule_id", "bridge_result"),
+    [
+        (
+            "alice@example.com",
+            {"run_id": "", "status": "running", "message": "Watch task already running"},
+        ),
+        (
+            "unified",
+            {"run_id": "", "status": "skipped", "message": "Started 0 watch task(s)"},
+        ),
+    ],
+)
+def test_run_now_preserves_bridge_status(schedule_id, bridge_result, monkeypatch):
+    async def run_test():
+        bridge.web_accounts = object()
+
+        async def fake_trigger_watch(account_id):
+            assert account_id == schedule_id
+            return bridge_result
+
+        async def fake_trigger_watch_many(unified_only=False):
+            assert unified_only is True
+            return bridge_result
+
+        monkeypatch.setattr(bridge, "trigger_watch", fake_trigger_watch)
+        monkeypatch.setattr(bridge, "trigger_watch_many", fake_trigger_watch_many)
+
+        assert await run_now(schedule_id, user="tester") == bridge_result
+
+    asyncio.run(run_test())

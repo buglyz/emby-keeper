@@ -53,7 +53,11 @@ async def run_now(schedule_id: str, user: str = Depends(get_current_user)):
         result = await bridge.trigger_watch(account_spec)
     if "error" in result:
         raise HTTPException(status_code=404, detail=result["error"])
-    return {"run_id": result.get("run_id", ""), "status": "started"}
+    return {
+        "run_id": result.get("run_id", ""),
+        "status": result.get("status", "started"),
+        "message": result.get("message", ""),
+    }
 
 
 @router.get("/api/status", response_model=DashboardStatus)
