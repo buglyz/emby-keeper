@@ -56,7 +56,7 @@ def test_api_bridge_uses_defaults_without_config_file(tmp_path):
     asyncio.run(run_test())
 
 
-def test_web_account_data_ignores_invalid_json_shapes(tmp_path):
+def test_web_account_data_backs_up_invalid_json_shapes(tmp_path):
     accounts_file = tmp_path / "web_accounts.json"
     accounts_file.write_text(
         '[{"url":"https://example.com","username":"alice"}]',
@@ -66,6 +66,23 @@ def test_web_account_data_ignores_invalid_json_shapes(tmp_path):
     accounts = WebAccountData(tmp_path)
 
     assert accounts.get_all() == {}
+    assert not accounts_file.exists()
+    backups = list(tmp_path.glob("web_accounts.json.corrupt.*"))
+    assert len(backups) == 1
+    assert backups[0].read_text(encoding="utf-8") == '[{"url":"https://example.com","username":"alice"}]'
+
+
+def test_web_account_data_backs_up_corrupt_json(tmp_path):
+    accounts_file = tmp_path / "web_accounts.json"
+    accounts_file.write_text('{"alice":', encoding="utf-8")
+
+    accounts = WebAccountData(tmp_path)
+
+    assert accounts.get_all() == {}
+    assert not accounts_file.exists()
+    backups = list(tmp_path.glob("web_accounts.json.corrupt.*"))
+    assert len(backups) == 1
+    assert backups[0].read_text(encoding="utf-8") == '{"alice":'
 
 
 def test_web_account_data_filters_non_object_accounts(tmp_path):
@@ -80,6 +97,7 @@ def test_web_account_data_filters_non_object_accounts(tmp_path):
     assert accounts.get_all() == {
         "alice@example.com": {"url": "https://example.com", "username": "alice"}
     }
+    assert not list(tmp_path.glob("web_accounts.json.corrupt.*"))
 
 
 def test_trigger_watch_many_skips_disabled_and_independent_when_requested(tmp_path, monkeypatch):
