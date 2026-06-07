@@ -262,6 +262,32 @@ def test_web_account_data_file_is_owner_only(tmp_path):
     mode = stat.S_IMODE((tmp_path / "web_accounts.json").stat().st_mode)
 
     assert mode == 0o600
+    assert not (tmp_path / "web_accounts.json.tmp").exists()
+    assert not list(tmp_path.glob(".web_accounts.json.*.tmp"))
+
+
+def test_web_account_data_save_preserves_existing_file_when_replace_fails(tmp_path, monkeypatch):
+    accounts = WebAccountData(tmp_path)
+    accounts.add("alice@example.com", {"url": "https://example.com", "username": "alice"})
+    accounts_file = tmp_path / "web_accounts.json"
+
+    original_replace = type(accounts_file).replace
+
+    def fail_replace(self, target):
+        if target == accounts_file:
+            raise OSError("replace failed")
+        return original_replace(self, target)
+
+    monkeypatch.setattr(type(accounts_file), "replace", fail_replace)
+
+    with pytest.raises(OSError):
+        accounts._save({"bob@example.com": {"url": "https://example.com", "username": "bob"}})
+
+    assert json.loads(accounts_file.read_text(encoding="utf-8")) == {
+        "alice@example.com": {"url": "https://example.com", "username": "alice"}
+    }
+    assert not (tmp_path / "web_accounts.json.tmp").exists()
+    assert not list(tmp_path.glob(".web_accounts.json.*.tmp"))
 
 
 def test_web_account_data_returns_copies(tmp_path):

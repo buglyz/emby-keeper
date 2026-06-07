@@ -2,6 +2,7 @@ import asyncio
 import json
 from datetime import datetime, timezone
 from pathlib import Path
+from tempfile import NamedTemporaryFile
 from typing import Dict, List, Optional
 
 from loguru import logger
@@ -71,21 +72,30 @@ class WebAccountData:
 
     def _save(self, data: Optional[Dict[str, dict]] = None):
         filepath = self.basedir / WEB_ACCOUNTS_FILE
-        tmp_path = filepath.with_suffix(f"{filepath.suffix}.tmp")
+        tmp_path = None
         payload = self._data if data is None else data
         try:
-            with open(tmp_path, "w", encoding="utf-8") as f:
-                json.dump(payload, f, ensure_ascii=False, indent=2)
+            with NamedTemporaryFile(
+                "w",
+                encoding="utf-8",
+                dir=filepath.parent,
+                prefix=f".{filepath.name}.",
+                suffix=".tmp",
+                delete=False,
+            ) as tmp:
+                json.dump(payload, tmp, ensure_ascii=False, indent=2)
+                tmp_path = Path(tmp.name)
             try:
                 tmp_path.chmod(0o600)
             except OSError:
                 pass
             tmp_path.replace(filepath)
         except OSError:
-            try:
-                tmp_path.unlink(missing_ok=True)
-            except OSError:
-                pass
+            if tmp_path is not None:
+                try:
+                    tmp_path.unlink(missing_ok=True)
+                except OSError:
+                    pass
             raise
 
     def get_all(self) -> Dict[str, dict]:
