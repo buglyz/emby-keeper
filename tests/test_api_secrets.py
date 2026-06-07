@@ -101,6 +101,21 @@ def test_legacy_non_fernet_secret_key_is_stably_derived(tmp_path, monkeypatch):
     assert (tmp_path / "secret.key").read_bytes() == legacy_key
 
 
+def test_empty_fernet_secret_key_is_replaced(tmp_path, monkeypatch):
+    for key in ("EK_SECRET", "EK_WEBPASS", "EK_TOKEN"):
+        monkeypatch.delenv(key, raising=False)
+    key_file = tmp_path / "secret.key"
+    key_file.write_bytes(b"")
+
+    reset_fernet()
+    encrypted = encrypt_token("emby-token", tmp_path)
+
+    key = key_file.read_bytes()
+    assert key
+    Fernet(key)
+    assert decrypt_token(encrypted, tmp_path) == "emby-token"
+
+
 def test_existing_valid_fernet_secret_key_is_used_as_is(tmp_path, monkeypatch):
     for key in ("EK_SECRET", "EK_WEBPASS", "EK_TOKEN"):
         monkeypatch.delenv(key, raising=False)

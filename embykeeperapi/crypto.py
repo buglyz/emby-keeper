@@ -61,6 +61,10 @@ def _get_key(basedir: Path) -> bytes:
     if key_file.is_file():
         key = key_file.read_bytes().strip()
         _chmod_key_file(key_file)
+        if not key:
+            key = Fernet.generate_key()
+            _write_key(key_file, key)
+            return key
         try:
             Fernet(key)
             return key
