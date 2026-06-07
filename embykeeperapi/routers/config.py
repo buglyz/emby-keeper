@@ -2,11 +2,13 @@ from pathlib import Path
 from collections.abc import MutableMapping
 
 from fastapi import APIRouter, Depends, HTTPException
+from pydantic import ValidationError
 from tomlkit import document, dumps, parse
 
 from ..auth import get_current_user
 from ..models import GlobalConfigResponse, GlobalConfigUpdate
 from embykeeper.config import config
+from embykeeper.schema import ProxyConfig
 
 router = APIRouter(prefix="/api/config", tags=["config"])
 
@@ -97,8 +99,6 @@ async def update_config(req: GlobalConfigUpdate, user: str = Depends(get_current
         new_config.emby.concurrency = req.emby_concurrency
 
     if "proxy" in fields_set and req.proxy is not None:
-        from embykeeper.schema import ProxyConfig
-
         existing_proxy = new_config.proxy or ProxyConfig()
         proxy_fields_set = _model_fields_set(req.proxy)
         if "hostname" in proxy_fields_set:
@@ -107,7 +107,22 @@ async def update_config(req: GlobalConfigUpdate, user: str = Depends(get_current
             existing_proxy.port = req.proxy.port
         if "scheme" in proxy_fields_set:
             existing_proxy.scheme = req.proxy.scheme
-        new_config.proxy = existing_proxy
+        if (
+            existing_proxy.hostname is not None
+            or existing_proxy.port is not None
+            or existing_proxy.scheme is not None
+        ):
+            new_config.proxy = existing_proxy
+        else:
+            new_config.proxy = None
+
+    if new_config.emby.concurrency is not None and new_config.emby.concurrency <= 0:
+        raise HTTPException(status_code=400, detail="emby_concurrency must be greater than 0")
+    if new_config.proxy is not None:
+        try:
+            new_config.proxy = ProxyConfig.model_validate(new_config.proxy.model_dump(exclude_none=True))
+        except ValidationError as e:
+            raise HTTPException(status_code=400, detail=e.errors()[0]["msg"])
 
     if not config.set(new_config):
         raise HTTPException(status_code=400, detail="Invalid config")

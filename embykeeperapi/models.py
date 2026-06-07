@@ -130,15 +130,15 @@ class ScheduleInfo(BaseModel):
 
 class ProxyConfigUpdate(BaseModel):
     hostname: Optional[str] = None
-    port: Optional[int] = None
-    scheme: Optional[str] = None
+    port: Optional[int] = Field(default=None, gt=0)
+    scheme: Optional[str] = Field(default=None, pattern="^(socks5|http)$")
 
 
 class GlobalConfigUpdate(BaseModel):
     proxy: Optional[ProxyConfigUpdate] = None
     emby_time_range: Optional[str] = None
     emby_interval_days: Optional[str] = None
-    emby_concurrency: Optional[int] = None
+    emby_concurrency: Optional[int] = Field(default=None, gt=0)
 
 
 class GlobalConfigResponse(BaseModel):

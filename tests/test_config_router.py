@@ -1,6 +1,8 @@
 import asyncio
 
+import pytest
 import tomli as tomllib
+from fastapi import HTTPException
 
 from embykeeper.config import config
 from embykeeper.schema import Config
@@ -60,6 +62,82 @@ password = "secret"
         assert data["emby"]["concurrency"] == 2
         assert data["emby"]["account"][0]["username"] == "alice"
         assert data["proxy"] == {"hostname": "127.0.0.1", "port": 1080, "scheme": "socks5"}
+
+    asyncio.run(run_test())
+    config.reset()
+
+
+def test_update_config_rejects_invalid_runtime_values(tmp_path):
+    async def run_test():
+        config.basedir = tmp_path
+        config.set(Config(emby={"concurrency": 1}))
+
+        invalid_req = GlobalConfigUpdate.model_construct(
+            emby_concurrency=0,
+            _fields_set={"emby_concurrency"},
+        )
+
+        with pytest.raises(HTTPException) as exc:
+            await update_config(invalid_req, user="tester")
+
+        assert exc.value.status_code == 400
+        assert config._cache.emby.concurrency == 1
+
+    asyncio.run(run_test())
+    config.reset()
+
+
+def test_update_config_rejects_invalid_proxy_runtime_values(tmp_path):
+    async def run_test():
+        config.basedir = tmp_path
+        config.set(Config())
+
+        invalid_proxy = ProxyConfigUpdate.model_construct(
+            port=0,
+            _fields_set={"port"},
+        )
+        invalid_req = GlobalConfigUpdate.model_construct(
+            proxy=invalid_proxy,
+            _fields_set={"proxy"},
+        )
+
+        with pytest.raises(HTTPException) as exc:
+            await update_config(invalid_req, user="tester")
+
+        assert exc.value.status_code == 400
+        assert config._cache.proxy is None
+
+    asyncio.run(run_test())
+    config.reset()
+
+
+def test_update_config_removes_proxy_when_all_proxy_fields_are_empty(tmp_path):
+    async def run_test():
+        config_file = tmp_path / "config.toml"
+        config_file.write_text(
+            """
+[proxy]
+hostname = "127.0.0.1"
+port = 1080
+scheme = "socks5"
+""".strip(),
+            encoding="utf-8",
+        )
+        config.basedir = tmp_path
+        config.set(
+            Config(proxy={"hostname": "127.0.0.1", "port": 1080, "scheme": "socks5"})
+        )
+
+        await update_config(
+            GlobalConfigUpdate(
+                proxy=ProxyConfigUpdate(hostname=None, port=None, scheme=None),
+            ),
+            user="tester",
+        )
+
+        assert config._cache.proxy is None
+        data = tomllib.loads(config_file.read_text(encoding="utf-8"))
+        assert "proxy" not in data
 
     asyncio.run(run_test())
     config.reset()
