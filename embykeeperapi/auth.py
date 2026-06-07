@@ -82,8 +82,8 @@ def init_jwt_secret_from_basedir(basedir):
             key_bytes = legacy_key_file.read_bytes().strip()
         else:
             key_bytes = secrets.token_bytes(32)
-        JWT_SECRET = hashlib.sha256(key_bytes).hexdigest()
         _write_secret_file_atomic(key_file, key_bytes)
+        JWT_SECRET = hashlib.sha256(key_bytes).hexdigest()
 
 
 def create_jwt(subject: str = "admin", expire_days: int = DEFAULT_EXPIRE_DAYS) -> str:

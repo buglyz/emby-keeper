@@ -1,6 +1,7 @@
 import hashlib
 import stat
 
+import pytest
 from cryptography.fernet import Fernet
 
 import embykeeperapi.auth as auth
@@ -52,6 +53,25 @@ def test_empty_jwt_secret_file_is_replaced(tmp_path, monkeypatch):
     assert stat.S_IMODE(key_file.stat().st_mode) == 0o600
     assert auth.JWT_SECRET == hashlib.sha256(key_bytes).hexdigest()
     assert auth.JWT_SECRET != hashlib.sha256(b"").hexdigest()
+
+
+def test_new_jwt_secret_write_failure_keeps_runtime_secret(tmp_path, monkeypatch):
+    for key in ("EK_SECRET", "EK_WEBPASS", "EK_TOKEN"):
+        monkeypatch.delenv(key, raising=False)
+    old_secret = auth.JWT_SECRET
+
+    def fail_write(_path, _key_bytes):
+        raise OSError("disk full")
+
+    monkeypatch.setattr(auth, "_write_secret_file_atomic", fail_write)
+
+    try:
+        with pytest.raises(OSError):
+            init_jwt_secret_from_basedir(tmp_path)
+
+        assert auth.JWT_SECRET == old_secret
+    finally:
+        auth.JWT_SECRET = old_secret
 
 
 def test_legacy_non_fernet_secret_key_is_stably_derived(tmp_path, monkeypatch):
