@@ -74,6 +74,19 @@ def test_new_jwt_secret_write_failure_keeps_runtime_secret(tmp_path, monkeypatch
         auth.JWT_SECRET = old_secret
 
 
+def test_empty_legacy_secret_key_does_not_create_fixed_jwt_secret(tmp_path, monkeypatch):
+    for key in ("EK_SECRET", "EK_WEBPASS", "EK_TOKEN"):
+        monkeypatch.delenv(key, raising=False)
+    (tmp_path / "secret.key").write_bytes(b"")
+
+    init_jwt_secret_from_basedir(tmp_path)
+
+    key_bytes = (tmp_path / "jwt_secret.key").read_bytes()
+    assert key_bytes
+    assert auth.JWT_SECRET == hashlib.sha256(key_bytes).hexdigest()
+    assert auth.JWT_SECRET != hashlib.sha256(b"").hexdigest()
+
+
 def test_legacy_non_fernet_secret_key_is_stably_derived(tmp_path, monkeypatch):
     for key in ("EK_SECRET", "EK_WEBPASS", "EK_TOKEN"):
         monkeypatch.delenv(key, raising=False)
