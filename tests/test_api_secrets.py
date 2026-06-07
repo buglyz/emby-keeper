@@ -20,6 +20,8 @@ def test_jwt_secret_file_does_not_break_fernet_key_generation(tmp_path, monkeypa
     assert (tmp_path / "jwt_secret.key").is_file()
     assert not (tmp_path / "jwt_secret.key.tmp").exists()
     assert (tmp_path / "secret.key").is_file()
+    assert not (tmp_path / "secret.key.tmp").exists()
+    assert stat.S_IMODE((tmp_path / "secret.key").stat().st_mode) == 0o600
     assert decrypt_token(encrypted, tmp_path) == "emby-token"
 
 
@@ -70,9 +72,12 @@ def test_existing_valid_fernet_secret_key_is_used_as_is(tmp_path, monkeypatch):
     for key in ("EK_SECRET", "EK_WEBPASS", "EK_TOKEN"):
         monkeypatch.delenv(key, raising=False)
     key = Fernet.generate_key()
-    (tmp_path / "secret.key").write_bytes(key)
+    key_file = tmp_path / "secret.key"
+    key_file.write_bytes(key)
+    key_file.chmod(0o644)
 
     reset_fernet()
     encrypted = encrypt_token("emby-token", tmp_path)
 
+    assert stat.S_IMODE(key_file.stat().st_mode) == 0o600
     assert Fernet(key).decrypt(encrypted.encode()).decode() == "emby-token"

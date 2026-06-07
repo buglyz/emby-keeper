@@ -26,7 +26,20 @@ def _derive_fernet_key(secret: bytes) -> bytes:
 
 
 def _write_key(key_file: Path, key: bytes):
-    key_file.write_bytes(key)
+    tmp_path = key_file.with_suffix(f"{key_file.suffix}.tmp")
+    try:
+        tmp_path.write_bytes(key)
+        os.chmod(tmp_path, 0o600)
+        tmp_path.replace(key_file)
+    except OSError:
+        try:
+            tmp_path.unlink(missing_ok=True)
+        except OSError:
+            pass
+        raise
+
+
+def _chmod_key_file(key_file: Path):
     try:
         os.chmod(key_file, 0o600)
     except OSError:
@@ -47,6 +60,7 @@ def _get_key(basedir: Path) -> bytes:
     key_file = basedir / FERNET_KEY_FILE
     if key_file.is_file():
         key = key_file.read_bytes().strip()
+        _chmod_key_file(key_file)
         try:
             Fernet(key)
             return key
