@@ -248,6 +248,9 @@ class SchedulerBridge:
 
     async def initialize(self, basedir: Path):
         """Initialize the scheduler bridge on app startup."""
+        if self._initialized or self._scheduler_task or self.emby_manager:
+            await self.shutdown()
+
         # Initialize web accounts store
         self.web_accounts = WebAccountData(basedir)
 
@@ -555,6 +558,14 @@ class SchedulerBridge:
                 await self.emby_manager.shutdown()
             except Exception:
                 pass
+
+        self.emby_manager = None
+        self.web_accounts = None
+        self._base_emby_accounts = []
+        self._running_tasks = {}
+        self._account_status = {}
+        self._scheduler_task = None
+        self._initialized = False
 
 
 # Global singleton

@@ -58,6 +58,90 @@ def test_api_bridge_uses_defaults_without_config_file(tmp_path):
     asyncio.run(run_test())
 
 
+def test_api_bridge_initialize_twice_replaces_scheduler_state(tmp_path):
+    async def run_test():
+        bridge = SchedulerBridge()
+        await bridge.initialize(tmp_path)
+        old_task = bridge._scheduler_task
+        old_manager = bridge.emby_manager
+
+        await bridge.initialize(tmp_path)
+
+        assert old_task.done()
+        assert bridge._scheduler_task is not old_task
+        assert bridge.emby_manager is not old_manager
+
+        await bridge.shutdown()
+
+    asyncio.run(run_test())
+
+
+def test_api_bridge_shutdown_resets_runtime_state(tmp_path):
+    async def run_test():
+        bridge = SchedulerBridge()
+        await bridge.initialize(tmp_path)
+
+        await bridge.shutdown()
+
+        assert bridge.emby_manager is None
+        assert bridge.web_accounts is None
+        assert bridge._scheduler_task is None
+        assert bridge._initialized is False
+
+    asyncio.run(run_test())
+
+
+def test_initialize_twice_replaces_previous_bridge_state(tmp_path):
+    async def run_test():
+        first_dir = tmp_path / "first"
+        second_dir = tmp_path / "second"
+        first_dir.mkdir()
+        second_dir.mkdir()
+
+        bridge = SchedulerBridge()
+        await bridge.initialize(first_dir)
+        first_scheduler_task = bridge._scheduler_task
+
+        bridge.add_account(
+            "alice@example.com",
+            {
+                "url": "https://example.com",
+                "username": "alice",
+                "encrypted_token": encrypt_token("token-1", first_dir),
+                "enabled": True,
+            },
+        )
+
+        await bridge.initialize(second_dir)
+
+        assert first_scheduler_task.done()
+        assert bridge.web_accounts.basedir == second_dir
+        assert bridge.web_accounts.get_all() == {}
+
+        await bridge.shutdown()
+
+    asyncio.run(run_test())
+
+
+def test_shutdown_resets_bridge_state(tmp_path):
+    async def run_test():
+        bridge = SchedulerBridge()
+        await bridge.initialize(tmp_path)
+        bridge._record_status("alice@example.com", is_online=True)
+
+        await bridge.shutdown()
+
+        assert bridge.emby_manager is None
+        assert bridge.web_accounts is None
+        assert bridge._base_emby_accounts == []
+        assert bridge._running_tasks == {}
+        assert bridge._account_status == {}
+        assert bridge._scheduler_task is None
+        assert bridge._initialized is False
+
+    asyncio.run(run_test())
+
+
 def test_api_bridge_skips_malformed_web_account_credentials(tmp_path):
     async def run_test():
         accounts_file = tmp_path / "web_accounts.json"
