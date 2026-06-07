@@ -25,6 +25,10 @@ def _write_text_atomic(path: Path, content: str):
     tmp_path = path.with_suffix(f"{path.suffix}.tmp")
     try:
         tmp_path.write_text(content, encoding="utf-8")
+        try:
+            tmp_path.chmod(0o600)
+        except OSError:
+            pass
         tmp_path.replace(path)
     except OSError:
         try:

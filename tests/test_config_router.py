@@ -1,4 +1,5 @@
 import asyncio
+import stat
 
 import pytest
 import tomli as tomllib
@@ -63,6 +64,7 @@ password = "secret"
         assert data["emby"]["concurrency"] == 2
         assert data["emby"]["account"][0]["username"] == "alice"
         assert data["proxy"] == {"hostname": "127.0.0.1", "port": 1080, "scheme": "socks5"}
+        assert stat.S_IMODE(config_file.stat().st_mode) == 0o600
         assert not (tmp_path / "config.toml.tmp").exists()
 
     asyncio.run(run_test())
