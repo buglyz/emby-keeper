@@ -70,6 +70,11 @@ def _validate_server_fields(url: Optional[str] = None, time=None):
                 raise HTTPException(status_code=400, detail="time must be non-negative")
 
 
+def _validate_required_text(field: str, value: Optional[str]):
+    if value is None or not value.strip():
+        raise HTTPException(status_code=400, detail=f"{field} cannot be empty")
+
+
 def _validate_account_schedule(interval_days=None, time_range=None):
     if interval_days is None and time_range is None:
         return
@@ -172,6 +177,7 @@ async def create_server(req: EmbyServerCreate, user: str = Depends(get_current_u
     """Create a new Emby server account."""
     _require_bridge()
     _validate_server_fields(url=req.url, time=req.time)
+    _validate_required_text("username", req.username)
     _validate_account_schedule(req.interval_days, req.time_range)
     account_id = _make_account_id(req.username, req.name, req.url)
 
@@ -295,8 +301,8 @@ async def update_server(
     for field in simple_fields:
         if field in fields_set:
             value = getattr(req, field)
-            if field in {"url", "username"} and not value:
-                raise HTTPException(status_code=400, detail=f"{field} cannot be empty")
+            if field in {"url", "username"}:
+                _validate_required_text(field, value)
             update_data[field] = value
 
     if "interval_days" in fields_set or "time_range" in fields_set:
