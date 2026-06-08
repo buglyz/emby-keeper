@@ -158,10 +158,16 @@ class Config(ConfigModel):
             values.pop(field, None)
 
         if "emby" in values and isinstance(values["emby"], list):
+            accounts = []
             for account in values["emby"]:
+                if not isinstance(account, dict):
+                    accounts.append(account)
+                    continue
+                account = account.copy()
                 if "ua" in account:
                     account["useragent"] = account.pop("ua")
-            values["emby"] = {"account": values["emby"]}
+                accounts.append(account)
+            values["emby"] = {"account": accounts}
 
         if "notifier" in values:
             notifier_value = values["notifier"]
