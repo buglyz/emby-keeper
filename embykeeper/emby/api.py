@@ -335,7 +335,7 @@ class Emby:
         for session in sessions:
             if not isinstance(session, dict):
                 continue
-            user_id = session.get("UserId")
+            user_id = self._normalize_user_id(session.get("UserId"))
             if not user_id:
                 continue
             if username and str(session.get("UserName", "")).casefold() != username:
