@@ -44,6 +44,12 @@ def test_scheduler_from_str_accepts_valid_interval_range():
     assert scheduler.end_time.hour == 9
 
 
+def test_scheduler_from_str_accepts_integer_interval():
+    scheduler = Scheduler.from_str(noop, interval_days=7, time_range="8:00AM")
+
+    assert scheduler.days == 7
+
+
 def test_scheduler_uses_random_interval_from_range(monkeypatch):
     seen = {}
 
