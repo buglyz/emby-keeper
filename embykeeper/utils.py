@@ -300,7 +300,7 @@ def format_byte_human(B: float):
     TB = float(KB**4)  # 1,099,511,627,776
 
     if B < KB:
-        return "{0} {1}".format(B, "Bytes" if 0 == B > 1 else "Byte")
+        return "{0:g} {1}".format(B, "Byte" if B == 1 else "Bytes")
     elif KB <= B < MB:
         return "{0:.2f} KB".format(B / KB)
     elif MB <= B < GB:
