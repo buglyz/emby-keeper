@@ -426,6 +426,44 @@ def test_web_account_data_trims_required_fields_from_legacy_file(tmp_path):
     }
 
 
+def test_web_account_data_normalizes_legacy_boolean_fields(tmp_path):
+    accounts_file = tmp_path / "web_accounts.json"
+    accounts_file.write_text(
+        json.dumps(
+            {
+                "alice@example.com": {
+                    "url": "https://example.com",
+                    "username": "alice",
+                    "enabled": "false",
+                    "allow_stream": "true",
+                    "use_proxy": "0",
+                    "allow_multiple": "maybe",
+                }
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    accounts = WebAccountData(tmp_path)
+
+    expected = {
+        "alice@example.com": {
+            "url": "https://example.com",
+            "username": "alice",
+            "enabled": False,
+            "allow_stream": True,
+            "use_proxy": False,
+        }
+    }
+    assert accounts.get_all() == expected
+    assert json.loads(accounts_file.read_text(encoding="utf-8")) == expected
+    backups = list(tmp_path.glob("web_accounts.json.corrupt.*"))
+    assert len(backups) == 1
+    assert (
+        json.loads(backups[0].read_text(encoding="utf-8"))["alice@example.com"]["allow_multiple"] == "maybe"
+    )
+
+
 def test_web_account_data_keeps_memory_unchanged_when_save_fails(tmp_path, monkeypatch):
     accounts = WebAccountData(tmp_path)
     accounts.add("alice@example.com", {"username": "alice"})

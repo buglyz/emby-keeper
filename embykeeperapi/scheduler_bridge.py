@@ -18,6 +18,22 @@ logger = logger.bind(scheme="embykeeperapi")
 
 # Web-managed account data store
 WEB_ACCOUNTS_FILE = "web_accounts.json"
+WEB_ACCOUNT_BOOL_FIELDS = {"allow_multiple", "allow_stream", "use_proxy", "enabled"}
+_DROP_FIELD = object()
+
+
+def _sanitize_optional_bool(value):
+    if value is None:
+        return _DROP_FIELD
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, str):
+        normalized = value.strip().casefold()
+        if normalized in {"true", "1", "yes", "on"}:
+            return True
+        if normalized in {"false", "0", "no", "off"}:
+            return False
+    return _DROP_FIELD
 
 
 def _sanitize_account_record(data) -> Optional[dict]:
@@ -32,6 +48,14 @@ def _sanitize_account_record(data) -> Optional[dict]:
         if not value:
             return None
         sanitized[field] = value
+    for field in WEB_ACCOUNT_BOOL_FIELDS:
+        if field not in sanitized:
+            continue
+        value = _sanitize_optional_bool(sanitized[field])
+        if value is _DROP_FIELD:
+            sanitized.pop(field, None)
+        else:
+            sanitized[field] = value
     return sanitized
 
 
