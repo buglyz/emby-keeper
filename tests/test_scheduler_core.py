@@ -1,3 +1,4 @@
+import asyncio
 from datetime import datetime
 
 import pytest
@@ -57,3 +58,21 @@ def test_scheduler_uses_random_interval_from_range(monkeypatch):
 
     assert scheduler.next_time == datetime(2026, 1, 1, 8, 0)
     assert seen["interval_days"] == 9
+
+
+def test_scheduler_with_zero_days_runs_once(monkeypatch):
+    async def run_test():
+        calls = 0
+
+        async def func(_ctx):
+            nonlocal calls
+            calls += 1
+
+        scheduler = Scheduler(func, days=0, start_time=None, end_time=None)
+        monkeypatch.setattr(scheduler, "_get_next_time", lambda: datetime.now())
+
+        await asyncio.wait_for(scheduler.schedule(), timeout=1)
+
+        assert calls == 1
+
+    asyncio.run(run_test())

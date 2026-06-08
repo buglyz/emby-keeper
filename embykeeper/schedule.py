@@ -220,5 +220,5 @@ class Scheduler:
             self._next_time = None
 
             # If days is 0, break the loop after one execution
-            if isinstance(self.days, (list, tuple)) and self.days[0] == 0:
+            if self.days == 0 or (isinstance(self.days, (list, tuple)) and self.days[0] == 0):
                 break
