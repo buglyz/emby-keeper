@@ -28,7 +28,8 @@ from embykeeper.schema import EmbyConfig, NotifierConfig, ProxyConfig
 router = APIRouter(prefix="/api/config", tags=["config"])
 logger = logger.bind(scheme="embykeeperapi")
 REDACTED_VALUE = "***REDACTED***"
-SECRET_CONFIG_KEYS = {"password", "apprise_uri", "mongodb", "token", "access_token", "secret"}
+SECRET_CONFIG_KEYS = {"password", "apprise_uri", "mongodb", "token", "access_token", "encrypted_token", "secret"}
+SECRET_CONFIG_KEY_PARTS = ("token", "secret", "password", "credential", "apikey", "api_key")
 
 
 def _model_fields_set(model) -> set:
@@ -160,10 +161,15 @@ def _web_accounts_file_path() -> Path:
     return Path(config.basedir) / "web_accounts.json"
 
 
+def _is_secret_key(key) -> bool:
+    normalized = str(key).lower()
+    return normalized in SECRET_CONFIG_KEYS or any(part in normalized for part in SECRET_CONFIG_KEY_PARTS)
+
+
 def _redact_toml_value(value):
     if isinstance(value, MutableMapping):
         for key in list(value.keys()):
-            if str(key).lower() in SECRET_CONFIG_KEYS:
+            if _is_secret_key(key):
                 value[key] = REDACTED_VALUE
             else:
                 _redact_toml_value(value[key])
@@ -179,15 +185,18 @@ def _redact_config_toml(content: str) -> str:
 
 
 def _redact_web_accounts(accounts: dict) -> dict:
-    redacted = {}
-    for account_id, account in accounts.items():
-        if not isinstance(account, dict):
-            continue
-        item = dict(account)
-        if item.get("encrypted_token"):
-            item["encrypted_token"] = REDACTED_VALUE
-        redacted[account_id] = item
-    return redacted
+    return _redact_plain_mapping(accounts)
+
+
+def _redact_plain_mapping(value):
+    if isinstance(value, dict):
+        redacted = {}
+        for key, item in value.items():
+            redacted[key] = REDACTED_VALUE if _is_secret_key(key) else _redact_plain_mapping(item)
+        return redacted
+    if isinstance(value, list):
+        return [_redact_plain_mapping(item) for item in value]
+    return value
 
 
 def _persist_global_config(next_config=None):
@@ -304,21 +313,22 @@ async def create_config_backup(user: str = Depends(get_current_user)):
         raise HTTPException(status_code=500, detail="Failed to create unique backup directory")
 
     copied = []
-    for source in (_config_file_path(), _web_accounts_file_path()):
-        if not source.is_file():
-            continue
-        target = backup_dir / source.name
-        try:
+    try:
+        for source in (_config_file_path(), _web_accounts_file_path()):
+            if not source.is_file():
+                continue
+            target = backup_dir / source.name
             shutil.copy2(source, target)
-        except OSError as e:
-            raise HTTPException(status_code=500, detail=f"Failed to back up {source.name}: {e}")
-        copied.append(source.name)
+            copied.append(source.name)
+    except OSError as e:
+        shutil.rmtree(backup_dir, ignore_errors=True)
+        raise HTTPException(status_code=500, detail=f"Failed to back up {source.name}: {e}")
 
     if not copied:
         try:
             backup_dir.rmdir()
-        except OSError:
-            pass
+        except OSError as e:
+            raise HTTPException(status_code=500, detail=f"Failed to remove empty backup directory: {e}")
         raise HTTPException(status_code=404, detail="No config files found to back up")
 
     return ConfigBackupResponse(status="created", backup_dir=str(backup_dir), files=copied)

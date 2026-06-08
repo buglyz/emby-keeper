@@ -65,7 +65,10 @@ def _run_to_history_item(run: RunContext) -> RunHistoryItem:
 
 
 def _latest_run():
-    runs = RunContext.list_recent(limit=1)
+    try:
+        runs = RunContext.list_recent(limit=1)
+    except Exception:
+        return None
     return runs[0] if runs else None
 
 

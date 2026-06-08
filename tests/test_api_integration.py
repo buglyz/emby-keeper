@@ -144,6 +144,25 @@ def test_health_api_degrades_when_schedule_info_fails(tmp_path, api_app, monkeyp
     assert data["scheduler_error"] == "RuntimeError"
 
 
+def test_health_api_ignores_latest_run_cache_failure(tmp_path, api_app, monkeypatch):
+    config.basedir = tmp_path
+    config.set(Config())
+    bridge.web_accounts = WebAccountData(tmp_path)
+    bridge.emby_manager = SimpleNamespace(_schedulers={})
+
+    def fail_recent(limit=1):
+        raise RuntimeError("cache unavailable")
+
+    monkeypatch.setattr(RunContext, "list_recent", fail_recent)
+
+    response = asyncio.run(_asgi_request(api_app, "GET", "/api/status/health"))
+
+    assert response.status_code == 200
+    data = response.json()
+    assert data["status"] == "ok"
+    assert data["latest_run_id"] is None
+
+
 def test_config_export_and_backup_api_uses_encrypted_account_data(tmp_path, api_app):
     config.basedir = tmp_path
     config_file = tmp_path / "config.toml"
@@ -157,11 +176,13 @@ def test_config_export_and_backup_api_uses_encrypted_account_data(tmp_path, api_
                 "",
                 "[notifier]",
                 'apprise_uri = "tgram://bot-token/chat-id"',
+                'bot_token = "telegram-bot-token"',
                 "",
                 "[[emby.account]]",
                 'url = "https://example.com"',
                 'username = "alice"',
                 'password = "plain-password"',
+                'api_key = "emby-api-key"',
                 "",
             ]
         ),
@@ -177,6 +198,8 @@ def test_config_export_and_backup_api_uses_encrypted_account_data(tmp_path, api_
             "url": "https://example.com",
             "username": "alice",
             "encrypted_token": encrypt_token("token-1", tmp_path),
+            "access_token": "plain-access-token",
+            "metadata": {"api_key": "nested-api-key", "label": "safe-label"},
         },
     )
 
@@ -187,9 +210,14 @@ def test_config_export_and_backup_api_uses_encrypted_account_data(tmp_path, api_
     assert exported["redacted"] is True
     assert "plain-password" not in exported["config_toml"]
     assert "bot-token" not in exported["config_toml"]
+    assert "telegram-bot-token" not in exported["config_toml"]
+    assert "emby-api-key" not in exported["config_toml"]
     assert "mongodb://user:password@example.com/db" not in exported["config_toml"]
-    assert exported["config_toml"].count("***REDACTED***") >= 3
+    assert exported["config_toml"].count("***REDACTED***") >= 5
     assert exported["web_accounts"]["alice@example.com"]["encrypted_token"] == "***REDACTED***"
+    assert exported["web_accounts"]["alice@example.com"]["access_token"] == "***REDACTED***"
+    assert exported["web_accounts"]["alice@example.com"]["metadata"]["api_key"] == "***REDACTED***"
+    assert exported["web_accounts"]["alice@example.com"]["metadata"]["label"] == "safe-label"
 
     backup_response = asyncio.run(_asgi_request(api_app, "POST", "/api/config/backup"))
 
@@ -202,3 +230,27 @@ def test_config_export_and_backup_api_uses_encrypted_account_data(tmp_path, api_
 
     assert second_backup_response.status_code == 200
     assert second_backup_response.json()["backup_dir"] != backup["backup_dir"]
+
+
+def test_config_backup_cleans_partial_backup_on_copy_failure(tmp_path, api_app, monkeypatch):
+    config.basedir = tmp_path
+    config_file = tmp_path / "config.toml"
+    config_file.write_text("[emby]\n", encoding="utf-8")
+    config._conf_file = config_file
+    config.set(Config())
+    bridge.web_accounts = WebAccountData(tmp_path)
+    bridge.web_accounts.add("alice@example.com", {"url": "https://example.com", "username": "alice"})
+
+    original_copy2 = __import__("shutil").copy2
+
+    def fail_web_accounts_copy(source, target):
+        if source.name == "web_accounts.json":
+            raise OSError("copy failed")
+        return original_copy2(source, target)
+
+    monkeypatch.setattr("embykeeperapi.routers.config.shutil.copy2", fail_web_accounts_copy)
+
+    response = asyncio.run(_asgi_request(api_app, "POST", "/api/config/backup"))
+
+    assert response.status_code == 500
+    assert not list((tmp_path / "backups").glob("*"))
