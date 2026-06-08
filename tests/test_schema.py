@@ -1,7 +1,7 @@
 import pytest
 from pydantic import ValidationError
 
-from embykeeper.schema import Config, ConfigModel
+from embykeeper.schema import Config, ConfigModel, EmbyAccount
 
 
 class MinimalConfig(ConfigModel):
@@ -23,6 +23,23 @@ def test_legacy_non_emby_config_sections_are_ignored():
     assert not hasattr(cfg, "telegram")
     assert not hasattr(cfg, "checkiner")
     assert not hasattr(cfg, "subsonic")
+
+
+def test_schema_mutable_defaults_are_isolated():
+    first = Config()
+    second = Config()
+
+    first.emby.account.append(EmbyAccount(url="https://example.com", username="alice"))
+    first.notifier.enabled = True
+
+    assert second.emby.account == []
+    assert second.notifier.enabled is False
+
+    first_account = EmbyAccount(url="https://example.com", username="alice")
+    second_account = EmbyAccount(url="https://example.net", username="bob")
+    first_account.time.append(900)
+
+    assert second_account.time == [300, 600]
 
 
 def test_unknown_field_error_lists_are_deterministic():

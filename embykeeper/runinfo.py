@@ -10,7 +10,7 @@ import string
 from loguru import logger
 
 from rich.text import Text
-from pydantic import BaseModel, PrivateAttr, ValidationError
+from pydantic import BaseModel, Field, PrivateAttr, ValidationError
 
 from .utils import to_iterable
 from .cache import cache
@@ -49,11 +49,11 @@ class RunContext(BaseModel):
     _handler_id: int = PrivateAttr(default=None)
 
     id: str
-    parent_ids: List[str] = []
+    parent_ids: List[str] = Field(default_factory=list)
     description: Optional[str] = None
     status: RunStatus = RunStatus.PENDING
     status_info: Optional[str] = None
-    log: List[LogRecord] = []
+    log: List[LogRecord] = Field(default_factory=list)
     duration: Optional[float] = None
     start_time: Optional[datetime] = None
     end_time: Optional[datetime] = None

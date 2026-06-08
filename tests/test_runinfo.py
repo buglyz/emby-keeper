@@ -4,6 +4,17 @@ from embykeeper.runinfo import RunContext, RunStatus, _running_runs
 from embykeeper.schema import Config
 
 
+def test_run_context_mutable_defaults_are_isolated():
+    first = RunContext(id="FIRST")
+    second = RunContext(id="SECOND")
+
+    first.parent_ids.append("PARENT")
+    first.set(RunStatus.RUNNING)
+
+    assert second.parent_ids == []
+    assert second.log == []
+
+
 def test_run_context_get_ignores_corrupt_cached_record(tmp_path):
     config.set(Config())
     config.basedir = tmp_path

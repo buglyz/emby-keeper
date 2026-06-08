@@ -86,7 +86,7 @@ class EmbyAccount(ConfigModel):
     username: str
     password: Optional[str] = None
     name: str = None
-    time: Optional[Union[StrictInt, List[StrictInt]]] = [300, 600]
+    time: Optional[Union[StrictInt, List[StrictInt]]] = Field(default_factory=lambda: [300, 600])
     useragent: Optional[str] = None
     client: Optional[str] = None
     client_version: Optional[str] = None
@@ -128,7 +128,7 @@ class EmbyAccount(ConfigModel):
 
 
 class EmbyConfig(MediaServerBaseConfig):
-    account: Optional[List[EmbyAccount]] = []
+    account: Optional[List[EmbyAccount]] = Field(default_factory=list)
 
 
 class Config(ConfigModel):
@@ -163,8 +163,8 @@ class Config(ConfigModel):
     noexit: Optional[bool] = False
     debug_cron: Optional[bool] = False
     proxy: Optional[ProxyConfig] = None
-    emby: Optional[EmbyConfig] = EmbyConfig()
-    notifier: Optional[NotifierConfig] = NotifierConfig()
+    emby: Optional[EmbyConfig] = Field(default_factory=EmbyConfig)
+    notifier: Optional[NotifierConfig] = Field(default_factory=NotifierConfig)
 
     @model_validator(mode="before")
     @classmethod
