@@ -154,8 +154,7 @@ class RunContext(BaseModel):
                 run_ids.append(run_id)
 
         runs = []
-        scan_limit = max(limit + offset, limit, 1) * 2
-        for run_id in run_ids[:scan_limit]:
+        for run_id in run_ids:
             run = cls.get(run_id)
             if run:
                 runs.append(run)

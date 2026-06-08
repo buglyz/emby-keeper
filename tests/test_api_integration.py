@@ -289,3 +289,54 @@ def test_config_backup_cleans_partial_backup_on_copy_failure(tmp_path, api_app, 
 
     assert response.status_code == 500
     assert not list((tmp_path / "backups").glob("*"))
+
+
+def test_config_restore_stages_files_before_overwriting_current_config(tmp_path, api_app, monkeypatch):
+    config.basedir = tmp_path
+    config_file = tmp_path / "config.toml"
+    config_file.write_text("[emby]\ninterval_days = \"7\"\n", encoding="utf-8")
+    config._conf_file = config_file
+    config.set(Config())
+    bridge.web_accounts = WebAccountData(tmp_path)
+    bridge.web_accounts.add("alice@example.com", {"url": "https://example.com", "username": "alice"})
+
+    backup_response = asyncio.run(_asgi_request(api_app, "POST", "/api/config/backup"))
+    backup_dir = Path(backup_response.json()["backup_dir"])
+
+    config_file.write_text("[emby]\ninterval_days = \"99\"\n", encoding="utf-8")
+    original_copy2 = __import__("shutil").copy2
+
+    def fail_web_accounts_stage(source, target):
+        if source.name == "web_accounts.json":
+            raise OSError("stage failed")
+        return original_copy2(source, target)
+
+    monkeypatch.setattr("embykeeperapi.routers.config.shutil.copy2", fail_web_accounts_stage)
+
+    response = asyncio.run(
+        _asgi_request(api_app, "POST", f"/api/config/backups/{backup_dir.name}/restore", {"confirm": True})
+    )
+
+    assert response.status_code == 500
+    assert 'interval_days = "99"' in config_file.read_text(encoding="utf-8")
+
+
+def test_config_backup_list_ignores_symlink_entries(tmp_path, api_app):
+    config.basedir = tmp_path
+    backup_root = tmp_path / "backups"
+    backup_root.mkdir()
+    real_backup = backup_root / "20260101T080000Z"
+    real_backup.mkdir()
+    (real_backup / "config.toml").write_text("[emby]\n", encoding="utf-8")
+    target_dir = tmp_path / "outside"
+    target_dir.mkdir()
+    symlink = backup_root / "20260101T090000Z"
+    try:
+        symlink.symlink_to(target_dir, target_is_directory=True)
+    except OSError:
+        return
+
+    response = asyncio.run(_asgi_request(api_app, "GET", "/api/config/backups"))
+
+    assert response.status_code == 200
+    assert [item["id"] for item in response.json()] == ["20260101T080000Z"]

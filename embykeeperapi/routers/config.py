@@ -199,14 +199,14 @@ def _backup_dir_from_id(backup_id: str) -> Path:
         backup_dir.relative_to(_backup_root())
     except ValueError:
         raise HTTPException(status_code=404, detail="Backup not found")
-    if not backup_dir.is_dir():
+    if backup_dir.is_symlink() or not backup_dir.is_dir():
         raise HTTPException(status_code=404, detail="Backup not found")
     return backup_dir
 
 
 def _backup_files(backup_dir: Path) -> List[str]:
     try:
-        return sorted(path.name for path in backup_dir.iterdir() if path.is_file())
+        return sorted(path.name for path in backup_dir.iterdir() if path.is_file() and not path.is_symlink())
     except OSError as e:
         raise HTTPException(status_code=500, detail=f"Failed to read backup directory: {e}")
 
@@ -296,6 +296,55 @@ def _validate_restore_sources(restored):
                 raise HTTPException(status_code=400, detail=f"Backup web_accounts.json is invalid: {e}")
             if not isinstance(data, dict):
                 raise HTTPException(status_code=400, detail="Backup web_accounts.json must be an object")
+            from ..scheduler_bridge import _sanitize_account_record
+
+            if any(_sanitize_account_record(value) is None for value in data.values()):
+                raise HTTPException(status_code=400, detail="Backup web_accounts.json has invalid accounts")
+
+
+def _stage_restore_files(restored):
+    staged = []
+    try:
+        for source, target in restored:
+            target.parent.mkdir(parents=True, exist_ok=True)
+            with NamedTemporaryFile(
+                "wb",
+                dir=target.parent,
+                prefix=f".{target.name}.restore.",
+                suffix=".tmp",
+                delete=False,
+            ) as tmp:
+                tmp_path = Path(tmp.name)
+            shutil.copy2(source, tmp_path)
+            try:
+                tmp_path.chmod(0o600)
+            except OSError:
+                pass
+            staged.append((tmp_path, target))
+        return staged
+    except Exception:
+        for tmp_path, _target in staged:
+            try:
+                tmp_path.unlink(missing_ok=True)
+            except OSError:
+                pass
+        raise
+
+
+def _replace_staged_restore_files(staged):
+    replaced = []
+    try:
+        for tmp_path, target in staged:
+            tmp_path.replace(target)
+            replaced.append(target.name)
+        return replaced
+    except OSError as e:
+        for tmp_path, _target in staged:
+            try:
+                tmp_path.unlink(missing_ok=True)
+            except OSError:
+                pass
+        raise HTTPException(status_code=500, detail=f"Failed to restore files: {e}")
 
 
 def _is_secret_key(key) -> bool:
@@ -471,7 +520,7 @@ async def list_config_backups(user: str = Depends(get_current_user)):
         backup_dirs = [
             path
             for path in backup_root.iterdir()
-            if path.is_dir() and BACKUP_ID_PATTERN.fullmatch(path.name)
+            if path.is_dir() and not path.is_symlink() and BACKUP_ID_PATTERN.fullmatch(path.name)
         ]
     except OSError as e:
         raise HTTPException(status_code=500, detail=f"Failed to list backups: {e}")
@@ -501,23 +550,16 @@ async def restore_config_backup(
     restored = []
     for target in targets:
         source = backup_dir / target.name
-        if source.is_file():
+        if source.is_file() and not source.is_symlink():
             restored.append((source, target))
     if not restored:
         raise HTTPException(status_code=404, detail="No restorable files found in backup")
 
     _validate_restore_sources(restored)
     safety_backup = _create_backup_snapshot(raise_if_empty=False)
-    restored_files = []
     try:
-        for source, target in restored:
-            target.parent.mkdir(parents=True, exist_ok=True)
-            shutil.copy2(source, target)
-            try:
-                target.chmod(0o600)
-            except OSError:
-                pass
-            restored_files.append(target.name)
+        staged = _stage_restore_files(restored)
+        restored_files = _replace_staged_restore_files(staged)
     except OSError as e:
         raise HTTPException(status_code=500, detail=f"Failed to restore {target.name}: {e}")
 

@@ -226,6 +226,32 @@ def test_run_context_list_recent_filters_and_offsets(tmp_path):
         config.reset()
 
 
+def test_run_context_list_recent_status_filter_scans_full_index(tmp_path):
+    config.set(Config())
+    config.basedir = tmp_path
+    cache._cache_file = tmp_path / "cache.json"
+    cache._data = {}
+    _running_runs.clear()
+
+    try:
+        for index in range(8):
+            run = RunContext(id=f"FAIL{index}")
+            run.start()
+            run.finish(RunStatus.FAIL)
+        success = RunContext(id="SUCCESS")
+        success.start()
+        success.finish(RunStatus.SUCCESS)
+        for index in range(8, 16):
+            run = RunContext(id=f"FAIL{index}")
+            run.start()
+            run.finish(RunStatus.FAIL)
+
+        assert [run.id for run in RunContext.list_recent(limit=1, status="success")] == ["SUCCESS"]
+    finally:
+        _running_runs.clear()
+        config.reset()
+
+
 def test_run_context_cleanup_older_than_removes_cached_runs(tmp_path):
     config.set(Config())
     config.basedir = tmp_path
