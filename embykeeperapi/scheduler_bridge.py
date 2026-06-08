@@ -36,6 +36,41 @@ def _sanitize_optional_bool(value):
     return _DROP_FIELD
 
 
+def _sanitize_positive_int(value):
+    if isinstance(value, bool):
+        return None
+    if isinstance(value, int):
+        number = value
+    elif isinstance(value, str):
+        value = value.strip()
+        if not value:
+            return None
+        try:
+            number = int(value, 10)
+        except ValueError:
+            return None
+    else:
+        return None
+    return number if number > 0 else None
+
+
+def _sanitize_watch_time(value):
+    if value is None:
+        return _DROP_FIELD
+
+    single_value = _sanitize_positive_int(value)
+    if single_value is not None:
+        return single_value
+
+    if not isinstance(value, (list, tuple)) or len(value) != 2:
+        return _DROP_FIELD
+    min_time = _sanitize_positive_int(value[0])
+    max_time = _sanitize_positive_int(value[1])
+    if min_time is None or max_time is None or min_time > max_time:
+        return _DROP_FIELD
+    return [min_time, max_time]
+
+
 def _sanitize_account_record(data) -> Optional[dict]:
     if not isinstance(data, dict):
         return None
@@ -56,6 +91,12 @@ def _sanitize_account_record(data) -> Optional[dict]:
             sanitized.pop(field, None)
         else:
             sanitized[field] = value
+    if "time" in sanitized:
+        value = _sanitize_watch_time(sanitized["time"])
+        if value is _DROP_FIELD:
+            sanitized.pop("time", None)
+        else:
+            sanitized["time"] = value
     return sanitized
 
 

@@ -464,6 +464,77 @@ def test_web_account_data_normalizes_legacy_boolean_fields(tmp_path):
     )
 
 
+def test_web_account_data_normalizes_legacy_time_fields(tmp_path):
+    accounts_file = tmp_path / "web_accounts.json"
+    accounts_file.write_text(
+        json.dumps(
+            {
+                "alice@example.com": {
+                    "url": "https://example.com",
+                    "username": "alice",
+                    "time": "300",
+                },
+                "bob@example.net": {
+                    "url": "https://example.net",
+                    "username": "bob",
+                    "time": ["120", "240"],
+                },
+                "bad@example.org": {
+                    "url": "https://example.org",
+                    "username": "bad",
+                    "time": "bad",
+                },
+                "bool@example.org": {
+                    "url": "https://bool.example.org",
+                    "username": "bool",
+                    "time": True,
+                },
+                "reversed@example.org": {
+                    "url": "https://reversed.example.org",
+                    "username": "reversed",
+                    "time": [600, 300],
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    accounts = WebAccountData(tmp_path)
+
+    expected = {
+        "alice@example.com": {
+            "url": "https://example.com",
+            "username": "alice",
+            "time": 300,
+        },
+        "bob@example.net": {
+            "url": "https://example.net",
+            "username": "bob",
+            "time": [120, 240],
+        },
+        "bad@example.org": {
+            "url": "https://example.org",
+            "username": "bad",
+        },
+        "bool@example.org": {
+            "url": "https://bool.example.org",
+            "username": "bool",
+        },
+        "reversed@example.org": {
+            "url": "https://reversed.example.org",
+            "username": "reversed",
+        },
+    }
+    assert accounts.get_all() == expected
+    assert json.loads(accounts_file.read_text(encoding="utf-8")) == expected
+    assert len(accounts.to_emby_accounts()) == 5
+    backups = list(tmp_path.glob("web_accounts.json.corrupt.*"))
+    assert len(backups) == 1
+    backup_data = json.loads(backups[0].read_text(encoding="utf-8"))
+    assert backup_data["bad@example.org"]["time"] == "bad"
+    assert backup_data["bool@example.org"]["time"] is True
+
+
 def test_web_account_data_keeps_memory_unchanged_when_save_fails(tmp_path, monkeypatch):
     accounts = WebAccountData(tmp_path)
     accounts.add("alice@example.com", {"username": "alice"})
