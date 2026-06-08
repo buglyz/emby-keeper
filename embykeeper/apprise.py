@@ -21,7 +21,10 @@ class AppriseStream:
             level = "info"
             body = message
         level = level.lower()
-        body = Text.from_markup(body).plain
+        try:
+            body = Text.from_markup(body).plain
+        except Exception:
+            pass
 
         # Map loguru levels to apprise levels
         notify_type = apprise.NotifyType.INFO
