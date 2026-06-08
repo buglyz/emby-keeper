@@ -297,6 +297,11 @@ async def create_config_backup(user: str = Depends(get_current_user)):
     """Create a local timestamped backup of config.toml and web_accounts.json."""
     basedir = Path(config.basedir)
     backup_root = basedir / "backups"
+    try:
+        backup_root.mkdir(parents=True, exist_ok=True)
+        backup_root.chmod(0o700)
+    except OSError as e:
+        raise HTTPException(status_code=500, detail=f"Failed to prepare backup directory: {e}")
     timestamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
     backup_dir = backup_root / timestamp
     for counter in range(100):

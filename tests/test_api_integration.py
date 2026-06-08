@@ -228,6 +228,7 @@ def test_config_export_and_backup_api_uses_encrypted_account_data(tmp_path, api_
     assert backup["status"] == "created"
     assert sorted(backup["files"]) == ["config.toml", "web_accounts.json"]
     backup_dir = Path(backup["backup_dir"])
+    assert stat.S_IMODE((tmp_path / "backups").stat().st_mode) == 0o700
     assert stat.S_IMODE(backup_dir.stat().st_mode) == 0o700
     assert stat.S_IMODE((backup_dir / "config.toml").stat().st_mode) == 0o600
     assert stat.S_IMODE((backup_dir / "web_accounts.json").stat().st_mode) == 0o600
