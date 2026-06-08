@@ -1,10 +1,10 @@
 import hashlib
 import hmac
-import ipaddress
 import os
 import secrets
 import time
 from datetime import datetime, timedelta
+from ipaddress import ip_address, ip_network
 from pathlib import Path
 from tempfile import NamedTemporaryFile
 
@@ -17,6 +17,12 @@ from jose import JWTError, jwt
 ALGORITHM = "HS256"
 DEFAULT_EXPIRE_DAYS = 7
 JWT_SECRET_FILE = "jwt_secret.key"
+TRUST_PROXY_HEADERS_ENV = "EK_TRUST_PROXY"
+TRUSTED_PROXIES_ENV = "EK_TRUSTED_PROXIES"
+DEFAULT_TRUSTED_PROXY_NETWORKS = (
+    ip_network("127.0.0.0/8"),
+    ip_network("::1/128"),
+)
 
 security = HTTPBearer(auto_error=False)
 
@@ -41,6 +47,22 @@ def _get_env_bool(name: str) -> bool:
     return bool(value and value.casefold() in TRUTHY_ENV_VALUES)
 
 
+def _trusted_proxy_networks():
+    raw = os.environ.get(TRUSTED_PROXIES_ENV)
+    networks = list(DEFAULT_TRUSTED_PROXY_NETWORKS)
+    if not isinstance(raw, str) or not raw.strip():
+        return networks
+    for item in raw.split(","):
+        item = item.strip()
+        if not item:
+            continue
+        try:
+            networks.append(ip_network(item, strict=False))
+        except ValueError:
+            continue
+    return networks
+
+
 def _valid_ip(value: str):
     if not isinstance(value, str):
         return None
@@ -48,15 +70,25 @@ def _valid_ip(value: str):
     if not value:
         return None
     try:
-        return str(ipaddress.ip_address(value))
+        return str(ip_address(value))
     except ValueError:
         return None
+
+
+def _trust_proxy_headers_for_host(host: str) -> bool:
+    if _get_env_bool(TRUST_PROXY_HEADERS_ENV):
+        return True
+    try:
+        client_ip = ip_address(host)
+    except ValueError:
+        return False
+    return any(client_ip in network for network in _trusted_proxy_networks())
 
 
 def get_client_ip(request) -> str:
     """Resolve the client IP used for auth rate limiting."""
     direct_ip = request.client.host if getattr(request, "client", None) else "unknown"
-    if not _get_env_bool("EK_TRUST_PROXY_HEADERS"):
+    if not _trust_proxy_headers_for_host(direct_ip):
         return direct_ip
 
     headers = getattr(request, "headers", {}) or {}

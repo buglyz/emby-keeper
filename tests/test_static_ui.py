@@ -1,18 +1,28 @@
 from pathlib import Path
 
 STATIC_INDEX = Path(__file__).resolve().parents[1] / "embykeeperapi" / "static" / "index.html"
+STATIC_CORE = STATIC_INDEX.parent / "app-core.js"
 STATIC_VENDOR = STATIC_INDEX.parent / "vendor"
 
 
+def read_static_source():
+    return "\n".join(
+        [
+            STATIC_INDEX.read_text(encoding="utf-8"),
+            STATIC_CORE.read_text(encoding="utf-8"),
+        ]
+    )
+
+
 def test_empty_server_description_does_not_break_template_quotes():
-    html = STATIC_INDEX.read_text(encoding="utf-8")
+    html = read_static_source()
 
     assert 'description="暂无服务器，点击添加服务器开始"' in html
     assert 'description="暂无服务器，点击"添加服务器"开始"' not in html
 
 
 def test_edit_form_only_sends_credentials_when_present():
-    html = STATIC_INDEX.read_text(encoding="utf-8")
+    html = read_static_source()
 
     assert "const authChanged = isEdit.value" in html
     assert "(!isEdit.value || authChanged)" in html
@@ -23,7 +33,7 @@ def test_edit_form_only_sends_credentials_when_present():
 
 
 def test_server_form_trims_text_payload_before_save():
-    html = STATIC_INDEX.read_text(encoding="utf-8")
+    html = read_static_source()
 
     assert "function trimText(value)" in html
     assert "function optionalText(value)" in html
@@ -55,7 +65,7 @@ def test_server_form_trims_text_payload_before_save():
 
 
 def test_server_form_rejects_invalid_watch_time_before_save():
-    html = STATIC_INDEX.read_text(encoding="utf-8")
+    html = read_static_source()
 
     assert ':precision="0" placeholder="最小秒数"' in html
     assert ':precision="0" placeholder="最大秒数"' in html
@@ -74,7 +84,7 @@ def test_server_form_rejects_invalid_watch_time_before_save():
 
 
 def test_config_form_trims_text_payload_before_save():
-    html = STATIC_INDEX.read_text(encoding="utf-8")
+    html = read_static_source()
 
     assert "function addScheduleText(data, key, value, label)" in html
     assert "throw new Error(`${label}不能为空`)" in html
@@ -92,7 +102,7 @@ def test_config_form_trims_text_payload_before_save():
 
 
 def test_config_form_validates_optional_integer_fields_before_save():
-    html = STATIC_INDEX.read_text(encoding="utf-8")
+    html = read_static_source()
 
     assert '<n-input-number v-model:value="editConfig.emby_concurrency" :min="1" :precision="0"' in html
     assert '<n-input-number v-model:value="editConfig.proxy_port" :min="1" :precision="0"' in html
@@ -106,7 +116,7 @@ def test_config_form_validates_optional_integer_fields_before_save():
 
 
 def test_config_page_refreshes_after_save():
-    html = STATIC_INDEX.read_text(encoding="utf-8")
+    html = read_static_source()
 
     assert (
         "await API.updateConfig(data);\n"
@@ -116,7 +126,7 @@ def test_config_page_refreshes_after_save():
 
 
 def test_login_form_trims_credentials_before_exchange():
-    html = STATIC_INDEX.read_text(encoding="utf-8")
+    html = read_static_source()
 
     assert "API.tokenExchange(tokenInput.value.trim())" in html
     assert "API.passwordLogin(passwordInput.value.trim())" in html
@@ -125,15 +135,20 @@ def test_login_form_trims_credentials_before_exchange():
 
 
 def test_frontend_fallback_checks_actual_naive_ui_global():
-    html = STATIC_INDEX.read_text(encoding="utf-8")
+    html = read_static_source()
 
     assert "typeof naiveUI === 'undefined'" in html
     assert "typeof naive === 'undefined'" not in html
 
 
 def test_frontend_vendor_assets_are_packaged_locally():
-    html = STATIC_INDEX.read_text(encoding="utf-8")
+    html = read_static_source()
 
+    assert "window.EK_STATIC_PATH = `${window.EK_BASE_PATH}/static/`" in html
+    assert "window.EK_LOAD_STATIC = function (filename)" in html
+    assert "window.EK_LOAD_STATIC('app-core.js')" in html
+    assert STATIC_CORE.is_file()
+    assert STATIC_CORE.stat().st_size > 1000
     assert "window.EK_VENDOR_PATH = `${window.EK_BASE_PATH}/static/vendor/`" in html
     assert "window.EK_LOAD_VENDOR = function (filename)" in html
     for filename in (
@@ -149,7 +164,7 @@ def test_frontend_vendor_assets_are_packaged_locally():
 
 
 def test_frontend_api_base_respects_reverse_proxy_prefix():
-    html = STATIC_INDEX.read_text(encoding="utf-8")
+    html = read_static_source()
 
     assert "window.EK_BASE_PATH = basePath === '/' ? '' : basePath" in html
     assert "const routeSuffix =" in html
@@ -165,7 +180,7 @@ def test_frontend_api_base_respects_reverse_proxy_prefix():
 
 
 def test_frontend_formats_structured_api_errors():
-    html = STATIC_INDEX.read_text(encoding="utf-8")
+    html = read_static_source()
 
     assert "_formatErrorDetail(detail)" in html
     assert "Array.isArray(detail)" in html
@@ -175,7 +190,7 @@ def test_frontend_formats_structured_api_errors():
 
 
 def test_frontend_only_sends_authorization_header_with_token():
-    html = STATIC_INDEX.read_text(encoding="utf-8")
+    html = read_static_source()
 
     assert "if (token) headers.Authorization = `Bearer ${token}`" in html
     assert "if (body !== null && body !== undefined) opts.body = JSON.stringify(body)" in html
@@ -184,7 +199,7 @@ def test_frontend_only_sends_authorization_header_with_token():
 
 
 def test_frontend_exposes_run_history_and_cancel_actions():
-    html = STATIC_INDEX.read_text(encoding="utf-8")
+    html = read_static_source()
 
     assert "getRuns({ limit = 50, offset = 0, status = null } = {})" in html
     assert "getRunLogs(id)" in html
@@ -203,14 +218,14 @@ def test_frontend_exposes_run_history_and_cancel_actions():
 
 
 def test_schedule_page_refreshes_after_manual_run():
-    html = STATIC_INDEX.read_text(encoding="utf-8")
+    html = read_static_source()
 
     assert "message.success(res && res.message ? res.message : '任务已启动')" in html
     assert "await loadData();" in html
 
 
 def test_server_actions_refresh_after_runtime_operations():
-    html = STATIC_INDEX.read_text(encoding="utf-8")
+    html = read_static_source()
 
     assert "async function runUiAction({" in html
     assert "function responseMessage(res, fallback)" in html
@@ -233,7 +248,7 @@ def test_server_actions_refresh_after_runtime_operations():
 
 
 def test_config_page_exposes_backup_and_health_diagnostics():
-    html = STATIC_INDEX.read_text(encoding="utf-8")
+    html = read_static_source()
 
     assert "exportConfig() { return this.get('/api/config/export'); }" in html
     assert "backupConfig() { return this.post('/api/config/backup'); }" in html
@@ -253,7 +268,7 @@ def test_config_page_exposes_backup_and_health_diagnostics():
 
 
 def test_frontend_exposes_schedule_preview_and_health_status():
-    html = STATIC_INDEX.read_text(encoding="utf-8")
+    html = read_static_source()
 
     assert "previewSchedule(data)" in html
     assert "调度预览" in html
@@ -263,7 +278,7 @@ def test_frontend_exposes_schedule_preview_and_health_status():
 
 
 def test_frontend_exposes_telegram_notifier_controls_without_echoing_token():
-    html = STATIC_INDEX.read_text(encoding="utf-8")
+    html = read_static_source()
 
     assert "getNotifier()" in html
     assert "updateNotifier(data)" in html
