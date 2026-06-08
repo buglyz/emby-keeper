@@ -86,3 +86,29 @@ def test_proxy_fix_middleware_uses_real_ip_when_forwarded_for_missing():
         assert seen["client"] == "198.51.100.8"
 
     asyncio.run(run_test())
+
+
+def test_proxy_fix_middleware_uses_first_forwarded_proto_value():
+    async def run_test():
+        middleware = ProxyFixMiddleware(app=lambda *_args: None)
+        scope = {
+            "type": "http",
+            "method": "GET",
+            "path": "/client",
+            "headers": [(b"x-forwarded-proto", b"HTTPS, http")],
+            "client": ("original", 12345),
+            "server": ("example.com", 80),
+            "scheme": "http",
+        }
+        request = Request(scope)
+        seen = {}
+
+        async def call_next(next_request):
+            seen["scheme"] = next_request.url.scheme
+            return Response("ok")
+
+        await middleware.dispatch(request, call_next)
+
+        assert seen["scheme"] == "https"
+
+    asyncio.run(run_test())

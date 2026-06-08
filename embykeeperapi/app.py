@@ -23,8 +23,12 @@ class ProxyFixMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: Request, call_next):
         # Handle X-Forwarded-Proto for scheme
         forwarded_proto = request.headers.get("X-Forwarded-Proto")
-        if forwarded_proto in {"http", "https"}:
-            request.scope["scheme"] = forwarded_proto
+        if forwarded_proto:
+            forwarded_proto_values = [
+                proto.strip().lower() for proto in forwarded_proto.split(",") if proto.strip()
+            ]
+            if forwarded_proto_values and forwarded_proto_values[0] in {"http", "https"}:
+                request.scope["scheme"] = forwarded_proto_values[0]
 
         # Handle X-Forwarded-For / X-Real-Ip for client IP
         forwarded_for = request.headers.get("X-Forwarded-For")
