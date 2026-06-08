@@ -539,7 +539,12 @@ class Emby:
         audio_stream_index = media_source.get("DefaultAudioStreamIndex")
         if audio_stream_index is not None:
             return audio_stream_index
-        for stream_info in media_source.get("MediaStreams", []):
+        media_streams = media_source.get("MediaStreams", [])
+        if not isinstance(media_streams, list):
+            return None
+        for stream_info in media_streams:
+            if not isinstance(stream_info, dict):
+                continue
             if stream_info.get("Type") == "Audio" and stream_info.get("Index") is not None:
                 return stream_info["Index"]
         return None

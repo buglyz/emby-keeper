@@ -950,6 +950,16 @@ def test_first_media_source_ignores_non_object_media_sources():
     ) == {"Id": "media-source-1", "DirectStreamUrl": "/Videos/item-1/stream"}
 
 
+def test_audio_stream_index_rejects_non_list_media_streams():
+    assert Emby._audio_stream_index({"MediaStreams": {"Type": "Audio", "Index": 2}}) is None
+
+
+def test_audio_stream_index_ignores_non_object_media_streams():
+    assert Emby._audio_stream_index(
+        {"MediaStreams": ["invalid", {"Type": "Audio", "Index": 2}]}
+    ) == 2
+
+
 def test_watch_returns_false_when_no_items():
     account = EmbyAccount(url="https://example.com", username="alice", time=30)
     emby = Emby(account)
