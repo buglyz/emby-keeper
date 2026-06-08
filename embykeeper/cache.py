@@ -180,16 +180,18 @@ class Cache:
                 parts = key.split(".")
                 current = next_data
                 path = []
+                parent_found = True
 
                 # 遍历路径, 检查每一层
                 for part in parts[:-1]:
                     if not isinstance(current, dict) or part not in current:
+                        parent_found = False
                         break
                     path.append((current, part))
                     current = current[part]
 
                 # 检查并删除最后一个键
-                if isinstance(current, dict) and parts[-1] in current:
+                if parent_found and isinstance(current, dict) and parts[-1] in current:
                     del current[parts[-1]]
                     changed = True
 

@@ -228,6 +228,19 @@ def test_json_cache_delete_many_removes_empty_parent_dicts(tmp_path):
     config.reset()
 
 
+def test_json_cache_delete_many_skips_incomplete_paths(tmp_path):
+    config.set(Config())
+    config.basedir = tmp_path
+
+    cache = Cache()
+    cache.set("foo", "kept")
+    cache.delete_many(["missing.foo"])
+
+    assert cache.get("foo") == "kept"
+
+    config.reset()
+
+
 def test_json_cache_delete_by_prefix_uses_batch_delete(tmp_path):
     config.set(Config())
     config.basedir = tmp_path
