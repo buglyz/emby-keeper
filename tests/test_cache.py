@@ -203,3 +203,21 @@ def test_json_cache_delete_by_prefix_removes_empty_object_values(tmp_path):
     assert cache.get("other.value") == "kept"
 
     config.reset()
+
+
+def test_mongo_cache_find_by_prefix_escapes_regex_metacharacters():
+    seen = {}
+
+    class FakeCollection:
+        def find(self, query, projection):
+            seen["query"] = query
+            seen["projection"] = projection
+            return [{"_id": "emby.credential.example"}]
+
+    cache = Cache.__new__(Cache)
+    cache._mongo_client = object()
+    cache._collection = FakeCollection()
+
+    assert cache.find_by_prefix("emby.credential") == ["emby.credential.example"]
+    assert seen["query"] == {"_id": {"$regex": r"^emby\.credential"}}
+    assert seen["projection"] == {"_id": 1}

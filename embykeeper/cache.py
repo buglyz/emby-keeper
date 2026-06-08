@@ -1,4 +1,5 @@
 import json
+import re
 from copy import deepcopy
 from pathlib import Path
 from tempfile import NamedTemporaryFile
@@ -132,7 +133,8 @@ class Cache:
     def find_by_prefix(self, prefix: str) -> List[str]:
         if self._mongo_client:
             return [
-                doc["_id"] for doc in self._collection.find({"_id": {"$regex": f"^{prefix}"}}, {"_id": 1})
+                doc["_id"]
+                for doc in self._collection.find({"_id": {"$regex": f"^{re.escape(prefix)}"}}, {"_id": 1})
             ]
         else:
 
