@@ -36,6 +36,10 @@ def test_format_byte_human_uses_byte_pluralization():
     assert format_byte_human(2) == "2 Bytes"
 
 
+def test_format_byte_human_supports_petabytes():
+    assert format_byte_human(1024**5) == "1.00 PB"
+
+
 def test_get_proxy_str_quotes_credentials():
     proxy = ProxyConfig(
         scheme="http",

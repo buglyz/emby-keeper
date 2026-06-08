@@ -293,22 +293,17 @@ def format_timedelta_human(delta: timedelta):
 
 def format_byte_human(B: float):
     """将字节数转换为人类可读形式."""
-    B = float(B)
-    KB = float(1024)
-    MB = float(KB**2)  # 1,048,576
-    GB = float(KB**3)  # 1,073,741,824
-    TB = float(KB**4)  # 1,099,511,627,776
+    value = float(B)
+    units = ["Bytes", "KB", "MB", "GB", "TB", "PB", "EB"]
+    unit_index = 0
 
-    if B < KB:
-        return "{0:g} {1}".format(B, "Byte" if B == 1 else "Bytes")
-    elif KB <= B < MB:
-        return "{0:.2f} KB".format(B / KB)
-    elif MB <= B < GB:
-        return "{0:.2f} MB".format(B / MB)
-    elif GB <= B < TB:
-        return "{0:.2f} GB".format(B / GB)
-    elif TB <= B:
-        return "{0:.2f} TB".format(B / TB)
+    while abs(value) >= 1024 and unit_index < len(units) - 1:
+        value /= 1024
+        unit_index += 1
+
+    if unit_index == 0:
+        return "{0:g} {1}".format(value, "Byte" if value == 1 else "Bytes")
+    return "{0:.2f} {1}".format(value, units[unit_index])
 
 
 @asynccontextmanager
