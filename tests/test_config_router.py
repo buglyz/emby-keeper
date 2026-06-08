@@ -192,6 +192,51 @@ def test_update_config_rejects_invalid_schedule_values(tmp_path):
     config.reset()
 
 
+def test_update_config_trims_global_schedule_values(tmp_path):
+    async def run_test():
+        config_file = tmp_path / "config.toml"
+        config_file.write_text("", encoding="utf-8")
+        config.basedir = tmp_path
+        config.set(Config(emby={"time_range": "<8:00AM,9:00AM>", "interval_days": "7"}))
+
+        await update_config(
+            GlobalConfigUpdate(
+                emby_time_range=" <10:00AM,11:00AM> ",
+                emby_interval_days=" 12 ",
+            ),
+            user="tester",
+        )
+
+        assert config._cache.emby.time_range == "<10:00AM,11:00AM>"
+        assert config._cache.emby.interval_days == "12"
+        data = tomllib.loads(config_file.read_text(encoding="utf-8"))
+        assert data["emby"]["time_range"] == "<10:00AM,11:00AM>"
+        assert data["emby"]["interval_days"] == "12"
+
+    asyncio.run(run_test())
+    config.reset()
+
+
+def test_update_config_rejects_non_string_global_schedule_when_validation_is_bypassed(tmp_path):
+    async def run_test():
+        config.basedir = tmp_path
+        config.set(Config(emby={"time_range": "<8:00AM,9:00AM>", "interval_days": "7"}))
+
+        invalid_req = GlobalConfigUpdate.model_construct(
+            emby_time_range=123,
+            _fields_set={"emby_time_range"},
+        )
+
+        with pytest.raises(HTTPException) as exc:
+            await update_config(invalid_req, user="tester")
+
+        assert exc.value.status_code == 400
+        assert config._cache.emby.time_range == "<8:00AM,9:00AM>"
+
+    asyncio.run(run_test())
+    config.reset()
+
+
 def test_update_config_does_not_mutate_runtime_when_persist_fails(tmp_path):
     async def run_test():
         config_file = tmp_path / "config.toml"

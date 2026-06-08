@@ -22,6 +22,17 @@ def _model_fields_set(model) -> set:
     return getattr(model, "__fields_set__", set())
 
 
+def _normalize_schedule_text(field: str, value):
+    if value is None:
+        raise HTTPException(status_code=400, detail=f"{field} cannot be empty")
+    if not isinstance(value, str):
+        raise HTTPException(status_code=400, detail=f"{field} must be a string")
+    value = value.strip()
+    if not value:
+        raise HTTPException(status_code=400, detail=f"{field} cannot be empty")
+    return value
+
+
 def _write_text_atomic(path: Path, content: str):
     path.parent.mkdir(parents=True, exist_ok=True)
     tmp_path = None
@@ -126,9 +137,9 @@ async def update_config(req: GlobalConfigUpdate, user: str = Depends(get_current
     fields_set = _model_fields_set(req)
 
     if "emby_time_range" in fields_set:
-        new_config.emby.time_range = req.emby_time_range
+        new_config.emby.time_range = _normalize_schedule_text("emby_time_range", req.emby_time_range)
     if "emby_interval_days" in fields_set:
-        new_config.emby.interval_days = req.emby_interval_days
+        new_config.emby.interval_days = _normalize_schedule_text("emby_interval_days", req.emby_interval_days)
     if "emby_concurrency" in fields_set:
         new_config.emby.concurrency = req.emby_concurrency
 
