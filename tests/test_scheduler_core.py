@@ -5,6 +5,7 @@ import pytest
 
 import embykeeper.schedule as schedule_module
 from embykeeper.config import config
+from embykeeper.runinfo import RunContext, RunStatus, _running_runs
 from embykeeper.schedule import Scheduler
 from embykeeper.schema import Config
 
@@ -304,6 +305,34 @@ def test_scheduler_cancels_running_function_when_schedule_is_cancelled(monkeypat
         finally:
             blocker.set()
             await asyncio.sleep(0)
+
+    asyncio.run(run_test())
+
+
+def test_scheduler_marks_function_self_cancellation_as_error(monkeypatch):
+    async def run_test():
+        ctx = RunContext.prepare("self-cancel")
+
+        async def func(_ctx):
+            raise asyncio.CancelledError()
+
+        scheduler = Scheduler(
+            func,
+            days=0,
+            start_time=None,
+            end_time=None,
+            on_next_time=lambda _next_time: ctx,
+        )
+        monkeypatch.setattr(scheduler, "_get_next_time", lambda: datetime.now())
+
+        try:
+            with pytest.raises(asyncio.CancelledError):
+                await scheduler.schedule()
+
+            assert ctx.status == RunStatus.ERROR
+            assert ctx.status_info == "任务在运行时被取消"
+        finally:
+            _running_runs.clear()
 
     asyncio.run(run_test())
 

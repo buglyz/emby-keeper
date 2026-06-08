@@ -265,7 +265,7 @@ class Scheduler:
                     raise
             except asyncio.CancelledError:
                 # This is a cancellation from outside schedule()
-                if self._ctx and self._ctx.status != RunStatus.CANCELLED:
+                if self._ctx and self._ctx.status not in {RunStatus.CANCELLED, RunStatus.ERROR}:
                     self._ctx.finish(RunStatus.CANCELLED, "任务被取消")
                 raise  # Re-raise to propagate cancellation
             except Exception:
