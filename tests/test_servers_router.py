@@ -626,6 +626,31 @@ def test_create_server_trims_url_username_and_name(tmp_path):
     asyncio.run(run_test())
 
 
+def test_create_server_normalizes_auth_method(tmp_path):
+    async def run_test():
+        config.basedir = tmp_path
+        config.set(Config())
+        await bridge.initialize(tmp_path)
+
+        try:
+            await create_server(
+                EmbyServerCreate(
+                    url="https://example.com",
+                    username="alice",
+                    auth_method=" TOKEN ",
+                    access_token="token-1",
+                ),
+                user="tester",
+            )
+
+            stored = bridge.web_accounts.get("alice@example.com")
+            assert stored["auth_method"] == "token"
+        finally:
+            await reset_bridge()
+
+    asyncio.run(run_test())
+
+
 def test_create_server_trims_optional_text_fields(tmp_path):
     async def run_test():
         config.basedir = tmp_path

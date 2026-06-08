@@ -40,6 +40,7 @@ OPTIONAL_TEXT_FIELDS = {
 }
 SCHEDULE_TEXT_FIELDS = {"interval_days", "time_range"}
 BOOLEAN_FIELDS = {"allow_multiple", "allow_stream", "use_proxy", "enabled"}
+AUTH_METHODS = {"token", "password"}
 
 
 def _make_account_id(username: str, name: Optional[str], url: str) -> str:
@@ -120,6 +121,15 @@ def _normalize_bool(value, field: str, *, required: bool = False):
         return None
     if not isinstance(value, bool):
         raise HTTPException(status_code=400, detail=f"{field} must be a boolean")
+    return value
+
+
+def _normalize_auth_method(value):
+    if not isinstance(value, str):
+        raise HTTPException(status_code=400, detail="auth_method must be a string")
+    value = value.strip().lower()
+    if value not in AUTH_METHODS:
+        raise HTTPException(status_code=400, detail="auth_method must be 'token' or 'password'")
     return value
 
 
@@ -243,6 +253,7 @@ async def create_server(req: EmbyServerCreate, user: str = Depends(get_current_u
     interval_days = _normalize_optional_text(req.interval_days, "interval_days")
     time_range = _normalize_optional_text(req.time_range, "time_range")
     bool_values = {field: _normalize_bool(getattr(req, field), field) for field in BOOLEAN_FIELDS}
+    auth_method = _normalize_auth_method(req.auth_method)
     name = optional_text["name"]
     _validate_server_fields(url=url, time=req.time)
     _validate_account_schedule(interval_days, time_range)
@@ -253,11 +264,11 @@ async def create_server(req: EmbyServerCreate, user: str = Depends(get_current_u
         raise HTTPException(status_code=409, detail="Server with this ID already exists")
 
     # Handle auth method
-    if req.auth_method == "token":
+    if auth_method == "token":
         access_token = _validate_required_text("access_token", req.access_token)
         encrypted_token = encrypt_token(access_token, bridge.web_accounts.basedir)
         user_id = None
-    elif req.auth_method == "password":
+    elif auth_method == "password":
         _validate_required_text("password", req.password)
         # Exchange password for token via Emby API (one-time use)
         from embykeeper.emby.api import Emby
@@ -289,15 +300,12 @@ async def create_server(req: EmbyServerCreate, user: str = Depends(get_current_u
         encrypted_token = encrypt_token(token_result, bridge.web_accounts.basedir)
         user_id = emby.user_id
         logger.info(f"Successfully exchanged password for token for {account_id}")
-    else:
-        raise HTTPException(status_code=400, detail="auth_method must be 'token' or 'password'")
-
     # Store account data
     account_data = {
         "url": url,
         "username": username,
         "name": name,
-        "auth_method": req.auth_method,
+        "auth_method": auth_method,
         "encrypted_token": encrypted_token,
         "user_id": user_id,
         "time": req.time,
@@ -380,14 +388,12 @@ async def update_server(
             update_data.get("time_range", existing.get("time_range")),
         )
 
-    auth_method = req.auth_method
+    auth_method = _normalize_auth_method(req.auth_method) if "auth_method" in fields_set else None
     has_access_token = (
         "access_token" in fields_set and req.access_token is not None and _has_nonblank_text(req.access_token)
     )
     has_password = "password" in fields_set and req.password is not None and _has_nonblank_text(req.password)
     if auth_method is not None:
-        if auth_method not in {"token", "password"}:
-            raise HTTPException(status_code=400, detail="auth_method must be 'token' or 'password'")
         if auth_method != existing.get("auth_method", "token") and not (has_access_token or has_password):
             raise HTTPException(
                 status_code=400, detail="New credentials are required when changing auth_method"
