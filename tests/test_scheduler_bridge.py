@@ -247,6 +247,15 @@ def test_web_account_data_backs_up_corrupt_json(tmp_path):
     assert backups[0].read_text(encoding="utf-8") == '{"alice":'
 
 
+def test_web_account_data_creates_missing_basedir(tmp_path):
+    basedir = tmp_path / "missing" / "accounts"
+    accounts = WebAccountData(basedir)
+
+    accounts.add("alice@example.com", {"url": "https://example.com", "username": "alice"})
+
+    assert (basedir / "web_accounts.json").is_file()
+
+
 def test_web_account_data_filters_non_object_accounts(tmp_path):
     accounts_file = tmp_path / "web_accounts.json"
     accounts_file.write_text(

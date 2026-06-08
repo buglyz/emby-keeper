@@ -47,6 +47,7 @@ class WebAccountData:
 
     def __init__(self, basedir: Path):
         self.basedir = basedir
+        self.basedir.mkdir(parents=True, exist_ok=True)
         self._data: Dict[str, dict] = {}
         self._load()
 
