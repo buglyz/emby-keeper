@@ -252,6 +252,28 @@ def test_invalid_cached_credentials_are_ignored():
     assert cache.get(key) is None
 
 
+def test_invalid_cached_token_values_are_ignored():
+    key = "emby.credential.example.com.alice"
+    cache.set(key, {"token": 123, "userid": "user-1"})
+
+    emby = Emby(EmbyAccount(url="https://example.com", username="alice"))
+
+    assert emby.token is None
+    assert emby.user_id is None
+    assert cache.get(key) is None
+
+
+def test_credentials_are_normalized_before_caching():
+    key = "emby.credential.example.com.alice"
+    emby = Emby(EmbyAccount(url="https://example.com", username="alice"))
+
+    emby.set_credentials(" token-1 ", 123)
+
+    assert emby.token == "token-1"
+    assert emby.user_id == "123"
+    assert cache.get(key) == {"token": "token-1", "userid": "123"}
+
+
 def test_invalid_cached_env_is_regenerated_from_account_settings():
     key = "emby.env.example.com.alice"
     cache.set(key, ["invalid"])

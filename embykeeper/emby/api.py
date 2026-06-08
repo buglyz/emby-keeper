@@ -109,10 +109,43 @@ class Emby:
     def _credentials_cache_key(self) -> str:
         return f"emby.credential.{self.hostname}.{self.a.username}"
 
+    @staticmethod
+    def _normalize_token(value):
+        if not isinstance(value, str):
+            return None
+        value = value.strip()
+        return value or None
+
+    @staticmethod
+    def _normalize_user_id(value):
+        if isinstance(value, bool) or value is None:
+            return None
+        if isinstance(value, int):
+            value = str(value)
+        if not isinstance(value, str):
+            return None
+        value = value.strip()
+        return value or None
+
     def _load_credentials(self):
-        data = self._get_cached_dict(self._credentials_cache_key(), "登录凭据")
-        self._token = data.get("token", None)
-        self._user_id = data.get("userid", None)
+        cache_key = self._credentials_cache_key()
+        data = self._get_cached_dict(cache_key, "登录凭据")
+        token = self._normalize_token(data.get("token"))
+        user_id = self._normalize_user_id(data.get("userid"))
+        if not token:
+            self._token = None
+            self._user_id = None
+            if data:
+                self.log.warning("登录凭据缓存内容无效, 将重新登录.")
+                cache.delete(cache_key)
+            return
+        self._token = token
+        self._user_id = user_id
+        if token != data.get("token") or user_id != data.get("userid"):
+            cache_data = {"token": token}
+            if user_id:
+                cache_data["userid"] = user_id
+            cache.set(cache_key, cache_data)
 
     def _load_env(self):
         cache_key = f"emby.env.{self.hostname}.{self.a.username}"
@@ -229,6 +262,8 @@ class Emby:
         return env
 
     def set_credentials(self, token: str, user_id: str = None):
+        token = self._normalize_token(token)
+        user_id = self._normalize_user_id(user_id)
         if not token:
             self._token = None
             self._user_id = None
