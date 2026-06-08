@@ -919,6 +919,7 @@
 
         async function handlePreview() {
           previewLoading.value = true;
+          previewResult.value = null;
           try {
             previewResult.value = await API.previewSchedule({
               interval_days: optionalText(previewForm.interval_days),
@@ -1078,6 +1079,7 @@
             addScheduleText(data, 'emby_interval_days', editConfig.emby_interval_days, 'Emby 间隔天数');
             await API.updateConfig(data);
             message.success('配置已保存');
+            await loadData();
           } catch (e) { message.error(e.message); }
           finally { saving.value = false; }
         }

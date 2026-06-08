@@ -105,6 +105,16 @@ def test_config_form_validates_optional_integer_fields_before_save():
     assert "port: editConfig.proxy_port || null" not in html
 
 
+def test_config_page_refreshes_after_save():
+    html = STATIC_INDEX.read_text(encoding="utf-8")
+
+    assert (
+        "await API.updateConfig(data);\n"
+        "            message.success('配置已保存');\n"
+        "            await loadData();"
+    ) in html
+
+
 def test_login_form_trims_credentials_before_exchange():
     html = STATIC_INDEX.read_text(encoding="utf-8")
 
@@ -212,6 +222,7 @@ def test_frontend_exposes_schedule_preview_and_health_status():
 
     assert "previewSchedule(data)" in html
     assert "调度预览" in html
+    assert "previewResult.value = null" in html
     assert "getHealth()" in html
     assert "运行健康" in html
 

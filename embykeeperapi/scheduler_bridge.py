@@ -111,11 +111,13 @@ def _sanitize_interval_days(value):
     return value or _DROP_FIELD
 
 
-def _sanitize_account_record(data) -> Optional[dict]:
+def _sanitize_account_record(data, *, require_required_fields: bool = True) -> Optional[dict]:
     if not isinstance(data, dict):
         return None
     sanitized = deepcopy(data)
     for field in ("url", "username"):
+        if field not in sanitized and not require_required_fields:
+            continue
         value = sanitized.get(field)
         if not isinstance(value, str):
             return None
@@ -269,8 +271,11 @@ class WebAccountData:
         return deepcopy(data) if data is not None else None
 
     def add(self, account_id: str, data: dict):
+        account_data = _sanitize_account_record(data, require_required_fields=False)
+        if account_data is None:
+            raise ValueError("invalid web account data")
         next_data = deepcopy(self._data)
-        next_data[account_id] = deepcopy(data)
+        next_data[account_id] = account_data
         self._save(next_data)
         self._data = next_data
 
@@ -288,6 +293,9 @@ class WebAccountData:
                 account_data.pop(k, None)
             else:
                 account_data[k] = deepcopy(v)
+        account_data = _sanitize_account_record(account_data, require_required_fields=False)
+        if account_data is None:
+            raise ValueError("invalid web account data")
 
         next_data = deepcopy(self._data)
         if target_id != account_id:

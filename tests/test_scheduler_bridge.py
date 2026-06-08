@@ -370,6 +370,68 @@ def test_web_account_data_creates_missing_basedir(tmp_path):
     assert (basedir / "web_accounts.json").is_file()
 
 
+def test_web_account_data_normalizes_added_accounts_before_save(tmp_path):
+    accounts = WebAccountData(tmp_path)
+
+    accounts.add(
+        "alice@example.com",
+        {
+            "url": " https://example.com ",
+            "username": " alice ",
+            "enabled": "false",
+            "time": ["300", "600"],
+            "client": " Fileball ",
+            "device_id": " ",
+        },
+    )
+
+    expected = {
+        "url": "https://example.com",
+        "username": "alice",
+        "enabled": False,
+        "time": [300, 600],
+        "client": "Fileball",
+    }
+    assert accounts.get("alice@example.com") == expected
+    assert json.loads((tmp_path / "web_accounts.json").read_text(encoding="utf-8")) == {
+        "alice@example.com": expected
+    }
+
+
+def test_web_account_data_rejects_invalid_added_accounts(tmp_path):
+    accounts = WebAccountData(tmp_path)
+
+    with pytest.raises(ValueError):
+        accounts.add("broken", {"url": "", "username": "alice"})
+
+    assert accounts.get_all() == {}
+
+
+def test_web_account_data_normalizes_updated_accounts_before_save(tmp_path):
+    accounts = WebAccountData(tmp_path)
+    accounts.add("alice@example.com", {"url": "https://example.com", "username": "alice"})
+
+    assert accounts.update(
+        "alice@example.com",
+        {
+            "username": " alice2 ",
+            "enabled": "true",
+            "time": "450",
+            "client": " Infuse ",
+        },
+        new_account_id="alice2@example.com",
+    ) == "alice2@example.com"
+
+    expected = {
+        "url": "https://example.com",
+        "username": "alice2",
+        "enabled": True,
+        "time": 450,
+        "client": "Infuse",
+    }
+    assert accounts.get_all() == {"alice2@example.com": expected}
+
+
 def test_web_account_data_filters_non_object_accounts(tmp_path):
     accounts_file = tmp_path / "web_accounts.json"
     accounts_file.write_text(
@@ -833,7 +895,7 @@ def test_web_account_data_save_cleans_temp_file_when_json_dump_fails(tmp_path):
     accounts.add("alice@example.com", {"url": "https://example.com", "username": "alice"})
 
     with pytest.raises(TypeError):
-        accounts.add("bad@example.com", {"url": object(), "username": "bob"})
+        accounts.add("bad@example.com", {"url": "https://bad.example.com", "username": "bob", "metadata": object()})
 
     assert accounts.get_all() == {"alice@example.com": {"url": "https://example.com", "username": "alice"}}
     assert json.loads((tmp_path / "web_accounts.json").read_text(encoding="utf-8")) == {
