@@ -233,16 +233,23 @@ class Emby:
             cache_data["userid"] = user_id
         cache.set(f"emby.credential.{self.hostname}.{self.a.username}", cache_data)
 
+    @staticmethod
+    def _json_or_none(resp: Response, expected_type=None):
+        try:
+            data = resp.json()
+        except Exception:
+            return None
+        if expected_type is not None and not isinstance(data, expected_type):
+            return None
+        return data
+
     async def _discover_user_id_from_sessions(self) -> Optional[str]:
         resp = await self._request("GET", "/Sessions", _login=True)
         if resp.status_code != 200:
             return None
 
-        try:
-            sessions = resp.json()
-        except Exception:
-            return None
-        if not isinstance(sessions, list):
+        sessions = self._json_or_none(resp, list)
+        if sessions is None:
             return None
 
         username = (self.a.username or "").casefold()
@@ -267,14 +274,16 @@ class Emby:
         if self.user_id:
             resp = await self._request("GET", f"/Users/{self.user_id}", _login=True)
             if resp.status_code == 200:
-                user = resp.json()
-                self.set_credentials(self.token, user.get("Id") or self.user_id)
-                return True
+                user = self._json_or_none(resp, dict)
+                if user is not None:
+                    self.set_credentials(self.token, user.get("Id") or self.user_id)
+                    return True
         resp = await self._request("GET", "/Users/Me", _login=True)
         if resp.status_code == 200:
-            user = resp.json()
-            self.set_credentials(self.token, user.get("Id"))
-            return bool(self.user_id)
+            user = self._json_or_none(resp, dict)
+            if user is not None:
+                self.set_credentials(self.token, user.get("Id"))
+                return bool(self.user_id)
 
         user_id = await self._discover_user_id_from_sessions()
         if not user_id:
@@ -282,7 +291,9 @@ class Emby:
         resp = await self._request("GET", f"/Users/{user_id}", _login=True)
         if resp.status_code != 200:
             return False
-        user = resp.json()
+        user = self._json_or_none(resp, dict)
+        if user is None:
+            return False
         self.set_credentials(self.token, user.get("Id") or user_id)
         return bool(self.user_id)
 
@@ -588,7 +599,10 @@ class Emby:
             self.log.warning(f"登陆时出现错误 ({resp.status_code}), 执行失败.")
             return None
 
-        user: dict = resp.json()
+        user = self._json_or_none(resp, dict)
+        if user is None:
+            self.log.warning("登陆时服务器返回内容无法解析, 执行失败.")
+            return None
         self.set_credentials(user.get("AccessToken", None), user.get("User", {}).get("Id"))
         if self.token and self.user_id:
             return self.token

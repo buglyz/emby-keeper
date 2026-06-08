@@ -28,6 +28,11 @@ class DummyResponse:
         return None
 
 
+class BrokenJsonResponse(DummyResponse):
+    def json(self):
+        raise ValueError("invalid json")
+
+
 @pytest.fixture(autouse=True)
 def reset_config_and_cache(tmp_path):
     config.basedir = tmp_path
@@ -119,6 +124,44 @@ def test_token_authentication_discovers_user_id_from_sessions(monkeypatch):
         ("GET", "/Users/user-1", True),
     ]
     assert emby.user_id == "user-1"
+
+
+def test_token_authentication_handles_invalid_success_json(monkeypatch):
+    account = EmbyAccount(url="https://example.com", username="alice")
+    emby = Emby(account)
+    emby.set_credentials("token-1")
+
+    requests = []
+
+    async def fake_request(method, path, _login=False, **kwargs):
+        requests.append(path)
+        assert method == "GET"
+        assert _login is True
+        if path == "/Users/Me":
+            return BrokenJsonResponse()
+        assert path == "/Sessions"
+        return DummyResponse([])
+
+    monkeypatch.setattr(emby, "_request", fake_request)
+
+    assert asyncio.run(emby.authenticate_with_token()) is False
+    assert requests == ["/Users/Me", "/Sessions"]
+
+
+def test_login_handles_invalid_success_json(monkeypatch):
+    account = EmbyAccount(url="https://example.com", username="alice", password="secret")
+    emby = Emby(account)
+
+    async def fake_request(method, path, _login=False, **kwargs):
+        assert method == "POST"
+        assert path == "/Users/AuthenticateByName"
+        assert _login is True
+        return BrokenJsonResponse()
+
+    monkeypatch.setattr(emby, "_request", fake_request)
+
+    assert asyncio.run(emby.login()) is None
+    assert emby.token is None
 
 
 def test_authorization_header_uses_real_user_id_only():
