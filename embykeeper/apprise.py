@@ -39,7 +39,12 @@ class AppriseStream:
         elif level == "success":
             notify_type = apprise.NotifyType.SUCCESS
 
-        if not self.apobj.notify(body=body, title="Embykeeper", notify_type=notify_type):
+        try:
+            sent = self.apobj.notify(body=body, title="Embykeeper", notify_type=notify_type)
+        except Exception as e:
+            logger.warning(f"Failed to send notification via Apprise: {type(e).__name__}.")
+            return
+        if not sent:
             logger.warning(f"Failed to send notification via Apprise.")
 
     def close(self):

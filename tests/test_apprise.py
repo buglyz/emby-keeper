@@ -55,6 +55,20 @@ def test_apprise_stream_skips_notify_when_uri_is_invalid(monkeypatch):
     stream.write("plain message")
 
 
+def test_apprise_stream_ignores_notify_exceptions(monkeypatch):
+    class DummyApprise:
+        def add(self, _uri):
+            return True
+
+        def notify(self, **_kwargs):
+            raise RuntimeError("send failed")
+
+    monkeypatch.setattr("embykeeper.apprise.apprise.Apprise", DummyApprise)
+
+    stream = AppriseStream("mailto://user@example.com")
+    stream.write("plain message")
+
+
 def test_apprise_stream_keeps_body_when_markup_is_invalid(monkeypatch):
     calls = []
 
