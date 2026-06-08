@@ -1,5 +1,5 @@
 import asyncio
-from datetime import datetime
+from datetime import datetime, timezone
 
 import pytest
 from fastapi import HTTPException
@@ -131,5 +131,30 @@ def test_dashboard_status_reports_latest_watch_time(monkeypatch):
         assert response.running_servers == 1
         assert response.online_servers == 2
         assert response.last_global_watch_time == datetime(2026, 1, 2, 9, 0)
+
+    asyncio.run(run_test())
+
+
+def test_dashboard_status_tolerates_mixed_watch_time_timezones(monkeypatch):
+    async def run_test():
+        class WebAccounts:
+            def get_all(self):
+                return {
+                    "alice": {"enabled": True},
+                    "bob": {"enabled": True},
+                }
+
+        latest = datetime(2026, 1, 2, 9, 0, tzinfo=timezone.utc)
+        statuses = {
+            "alice": {"last_watch_time": datetime(2026, 1, 1, 8, 0)},
+            "bob": {"last_watch_time": latest},
+        }
+
+        bridge.web_accounts = WebAccounts()
+        monkeypatch.setattr(bridge, "get_account_status", lambda account_id: statuses[account_id])
+
+        response = await get_dashboard_status(user="tester")
+
+        assert response.last_global_watch_time == latest
 
     asyncio.run(run_test())

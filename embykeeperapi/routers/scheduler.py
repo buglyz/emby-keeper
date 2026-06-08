@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import List
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -14,6 +14,14 @@ def _require_bridge():
     """Ensure the scheduler bridge is initialized before serving runtime data."""
     if bridge.web_accounts is None:
         raise HTTPException(status_code=503, detail="Service initializing, please retry")
+
+
+def _datetime_sort_key(value):
+    if not isinstance(value, datetime):
+        return None
+    if value.tzinfo is None:
+        value = value.replace(tzinfo=timezone.utc)
+    return value.timestamp()
 
 
 @router.get("/healthz")
@@ -72,6 +80,7 @@ async def get_dashboard_status(user: str = Depends(get_current_user)):
     running = 0
     online = 0
     last_global_watch_time = None
+    last_global_watch_key = None
     for aid, a in accounts.items():
         st = bridge.get_account_status(aid)
         if st.get("is_running", False):
@@ -79,10 +88,12 @@ async def get_dashboard_status(user: str = Depends(get_current_user)):
         if st.get("is_online", False):
             online += 1
         last_watch_time = st.get("last_watch_time")
-        if isinstance(last_watch_time, datetime) and (
-            last_global_watch_time is None or last_watch_time > last_global_watch_time
+        watch_time_key = _datetime_sort_key(last_watch_time)
+        if watch_time_key is not None and (
+            last_global_watch_key is None or watch_time_key > last_global_watch_key
         ):
             last_global_watch_time = last_watch_time
+            last_global_watch_key = watch_time_key
 
     return DashboardStatus(
         total_servers=total,
