@@ -69,7 +69,7 @@ class Cache:
             try:
                 for part in key.split("."):
                     value = value.get(part, {})
-                return default if value == {} else value
+                return default if value == {} else deepcopy(value)
             except (AttributeError, TypeError):
                 return default
 
@@ -82,7 +82,7 @@ class Cache:
             current = next_data
             for part in parts[:-1]:
                 current = current.setdefault(part, {})
-            current[parts[-1]] = value
+            current[parts[-1]] = deepcopy(value)
             self._write_json_cache(next_data)
             self._data = next_data
 

@@ -61,3 +61,22 @@ def test_json_cache_preserves_existing_file_when_replace_fails(tmp_path, monkeyp
     assert not list(tmp_path.glob(".cache.json.*.tmp"))
 
     config.reset()
+
+
+def test_json_cache_isolates_mutable_values(tmp_path):
+    config.set(Config())
+    config.basedir = tmp_path
+
+    cache = Cache()
+    value = {"items": ["a"], "meta": {"source": "test"}}
+    cache.set("example.value", value)
+    value["items"].append("from-source")
+    value["meta"]["source"] = "changed-source"
+
+    cached = cache.get("example.value")
+    cached["items"].append("from-return")
+    cached["meta"]["source"] = "changed-return"
+
+    assert cache.get("example.value") == {"items": ["a"], "meta": {"source": "test"}}
+
+    config.reset()
