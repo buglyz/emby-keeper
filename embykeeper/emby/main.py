@@ -16,6 +16,7 @@ from embykeeper.schema import EmbyAccount, EmbyConfig
 from .api import Emby, EmbyPlayError, EmbyConnectError, EmbyRequestError, EmbyError
 
 logger = logger.bind(scheme="embywatcher")
+_INVALID_PORT = object()
 
 
 def _get_emby_config() -> EmbyConfig:
@@ -32,13 +33,23 @@ def _default_url_port(scheme: str) -> Optional[int]:
     return None
 
 
+def _parsed_url_port(parsed_url):
+    try:
+        return parsed_url.port
+    except ValueError:
+        return _INVALID_PORT
+
+
 def _same_emby_origin(account: EmbyAccount, parsed_url) -> bool:
     if account.url.scheme != parsed_url.scheme:
         return False
     if account.url.host != parsed_url.hostname:
         return False
     account_port = account.url.port or _default_url_port(account.url.scheme)
-    parsed_port = parsed_url.port or _default_url_port(parsed_url.scheme)
+    parsed_port = _parsed_url_port(parsed_url)
+    if parsed_port is _INVALID_PORT:
+        return False
+    parsed_port = parsed_port or _default_url_port(parsed_url.scheme)
     return account_port == parsed_port
 
 

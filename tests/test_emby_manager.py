@@ -169,6 +169,12 @@ def test_same_emby_origin_requires_matching_scheme():
     assert _same_emby_origin(account, urlparse("https://example.com")) is False
 
 
+def test_same_emby_origin_rejects_invalid_url_port():
+    account = EmbyAccount(url="https://example.com", username="alice")
+
+    assert _same_emby_origin(account, urlparse("https://example.com:invalid/web")) is False
+
+
 def test_shutdown_unregisters_config_callback(monkeypatch):
     async def run_test():
         manager = EmbyManager()
