@@ -117,6 +117,17 @@ class EmbyManager:
 
         task.add_done_callback(cleanup)
 
+    def _start_watch_task(self, account_spec: str, coro):
+        task = asyncio.create_task(coro, name=f"watch-{account_spec}")
+        self._tasks[account_spec] = task
+
+        def cleanup(done_task: asyncio.Task):
+            if self._tasks.get(account_spec) is done_task:
+                self._tasks.pop(account_spec, None)
+
+        task.add_done_callback(cleanup)
+        return task
+
     def _handle_account_change(self, added: List[EmbyAccount], removed: List[EmbyAccount]):
         """Handle account additions and removals"""
         need_reschedule_unified = False
@@ -194,10 +205,7 @@ class EmbyManager:
             )
 
         def func(ctx: RunContext):
-            task = self._tasks[self.get_spec(account)] = asyncio.create_task(
-                self._watch_main([account], False)
-            )
-            return task
+            return self._start_watch_task(self.get_spec(account), self._watch_main([account], False))
 
         scheduler = Scheduler.from_str(
             func=func,
@@ -225,8 +233,7 @@ class EmbyManager:
         )
 
         def func(ctx: RunContext):
-            task = self._tasks["unified"] = asyncio.create_task(self._watch_main(unified_accounts, False))
-            return task
+            return self._start_watch_task("unified", self._watch_main(unified_accounts, False))
 
         scheduler = Scheduler.from_str(
             func=func,

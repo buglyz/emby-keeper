@@ -245,7 +245,7 @@ class Scheduler:
 
             # Execute the function
             try:
-                task = asyncio.create_task(self.func(self._ctx))
+                task = asyncio.ensure_future(self.func(self._ctx))
                 try:
                     await asyncio.shield(task)
                 except asyncio.CancelledError:

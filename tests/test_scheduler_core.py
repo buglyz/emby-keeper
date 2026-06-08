@@ -309,6 +309,27 @@ def test_scheduler_cancels_running_function_when_schedule_is_cancelled(monkeypat
     asyncio.run(run_test())
 
 
+def test_scheduler_accepts_function_returning_existing_task(monkeypatch):
+    async def run_test():
+        calls = 0
+
+        async def worker():
+            nonlocal calls
+            calls += 1
+
+        def func(_ctx):
+            return asyncio.create_task(worker())
+
+        scheduler = Scheduler(func, days=0, start_time=None, end_time=None)
+        monkeypatch.setattr(scheduler, "_get_next_time", lambda: datetime.now())
+
+        await asyncio.wait_for(scheduler.schedule(), timeout=1)
+
+        assert calls == 1
+
+    asyncio.run(run_test())
+
+
 def test_scheduler_marks_function_self_cancellation_as_error(monkeypatch):
     async def run_test():
         ctx = RunContext.prepare("self-cancel")

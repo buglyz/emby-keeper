@@ -146,6 +146,36 @@ def test_watch_main_marks_context_cancelled(monkeypatch):
     asyncio.run(run_test())
 
 
+def test_completed_independent_watch_task_is_removed(monkeypatch):
+    async def run_test():
+        manager = EmbyManager()
+        account = EmbyAccount(
+            url="https://example.com",
+            username="alice",
+            interval_days="7",
+            time_range="8:00AM",
+        )
+
+        async def fake_watch_main(_accounts, _instant):
+            return None
+
+        monkeypatch.setattr(manager, "_watch_main", fake_watch_main)
+
+        try:
+            scheduler = manager.schedule_independent_account(account)
+            task = scheduler.func(None)
+
+            assert manager._tasks[manager.get_spec(account)] is task
+            await task
+            await asyncio.sleep(0)
+
+            assert manager.get_spec(account) not in manager._tasks
+        finally:
+            await manager.shutdown()
+
+    asyncio.run(run_test())
+
+
 @pytest.mark.parametrize(
     ("url", "item_id"),
     [
