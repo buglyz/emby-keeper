@@ -143,6 +143,7 @@ def test_frontend_api_base_respects_reverse_proxy_prefix():
 
     assert "window.EK_BASE_PATH = basePath === '/' ? '' : basePath" in html
     assert "const routeSuffix =" in html
+    assert "login|schedule|runs|config" in html
     assert "function getApiBasePath()" in html
     assert "if (typeof window.EK_BASE_PATH === 'string') return window.EK_BASE_PATH" in html
     assert "const marker = '/static/vendor/'" in html
@@ -181,6 +182,13 @@ def test_frontend_exposes_run_history_and_cancel_actions():
     assert "cancelWatch(id)" in html
     assert "cancelSchedule(id)" in html
     assert "取消任务" in html
+
+
+def test_schedule_page_refreshes_after_manual_run():
+    html = STATIC_INDEX.read_text(encoding="utf-8")
+
+    assert "message.success(res && res.message ? res.message : '任务已启动')" in html
+    assert "await loadData();" in html
 
 
 def test_frontend_exposes_schedule_preview_and_health_status():

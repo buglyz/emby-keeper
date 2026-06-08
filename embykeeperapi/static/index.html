@@ -7,7 +7,7 @@
   <script>
     (function () {
       const path = window.location.pathname.replace(/\/$/, '');
-      const routeSuffix = /(?:\/(?:login|schedule|config)(?:\/.*)?|\/servers(?:\/.*)?)$/;
+      const routeSuffix = /(?:\/(?:login|schedule|runs|config)(?:\/.*)?|\/servers(?:\/.*)?)$/;
       const basePath = path.replace(routeSuffix, '');
       window.EK_BASE_PATH = basePath === '/' ? '' : basePath;
       window.EK_VENDOR_PATH = `${window.EK_BASE_PATH}/static/vendor/`;
@@ -871,6 +871,7 @@
         ];
 
         async function loadData() {
+          loading.value = true;
           try { schedules.value = await API.getSchedule(); }
           catch (e) { message.error(e.message); }
           finally { loading.value = false; }
@@ -879,7 +880,8 @@
         async function handleRunNow(id) {
           try {
             const res = await API.runNow(id);
-            message.success('任务已启动');
+            message.success(res && res.message ? res.message : '任务已启动');
+            await loadData();
           } catch (e) { message.error(e.message); }
         }
 

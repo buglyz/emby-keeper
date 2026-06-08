@@ -384,10 +384,20 @@ class SchedulerBridge:
         """Cancel a currently running manual or scheduled watch task."""
         cancelled = False
 
-        task = self._running_tasks.pop(account_id, None)
-        if task and not task.done():
-            task.cancel()
-            cancelled = True
+        if account_id in {"global", "unified"}:
+            account_ids = [
+                aid
+                for aid, data in (self.web_accounts.get_all() if self.web_accounts else {}).items()
+                if not (data.get("time_range") or data.get("interval_days"))
+            ]
+        else:
+            account_ids = [account_id]
+
+        for target_account_id in account_ids:
+            task = self._running_tasks.pop(target_account_id, None)
+            if task and not task.done():
+                task.cancel()
+                cancelled = True
 
         if self.emby_manager:
             manager_tasks = getattr(self.emby_manager, "_tasks", {})
@@ -400,8 +410,9 @@ class SchedulerBridge:
                     cancelled = True
                 manager_running.discard(task_key)
 
-        if cancelled and account_id not in {"global", "unified"}:
-            self._record_status(account_id, last_watch_status="cancelled", is_running=False)
+        if cancelled:
+            for target_account_id in account_ids:
+                self._record_status(target_account_id, last_watch_status="cancelled", is_running=False)
         return cancelled
 
     def _cache_account_credentials(self, data: dict):

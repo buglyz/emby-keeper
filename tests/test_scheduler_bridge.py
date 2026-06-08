@@ -294,6 +294,44 @@ def test_cached_account_credentials_ignore_cache_write_failure(tmp_path, monkeyp
     )
 
 
+def test_cancel_unified_task_cancels_global_web_account_tasks(tmp_path):
+    async def run_test():
+        bridge = SchedulerBridge()
+        bridge.web_accounts = WebAccountData(tmp_path)
+        bridge.web_accounts.add("alice@example.com", {"url": "https://a.example.com", "username": "alice"})
+        bridge.web_accounts.add(
+            "bob@example.com",
+            {
+                "url": "https://b.example.com",
+                "username": "bob",
+                "interval_days": "7",
+            },
+        )
+
+        alice_task = asyncio.create_task(asyncio.sleep(60))
+        bob_task = asyncio.create_task(asyncio.sleep(60))
+        bridge._running_tasks = {
+            "alice@example.com": alice_task,
+            "bob@example.com": bob_task,
+        }
+
+        try:
+            assert bridge.cancel_account_task("unified") is True
+            assert alice_task.cancelled() or alice_task.cancelling()
+            assert not bob_task.cancelled()
+            assert bridge._running_tasks == {"bob@example.com": bob_task}
+            assert bridge.get_account_status("alice@example.com")["last_watch_status"] == "cancelled"
+        finally:
+            bob_task.cancel()
+            for task in (alice_task, bob_task):
+                try:
+                    await task
+                except asyncio.CancelledError:
+                    pass
+
+    asyncio.run(run_test())
+
+
 def test_web_account_data_backs_up_invalid_json_shapes(tmp_path):
     accounts_file = tmp_path / "web_accounts.json"
     accounts_file.write_text(
