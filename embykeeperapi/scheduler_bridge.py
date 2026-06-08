@@ -23,8 +23,10 @@ WEB_ACCOUNTS_FILE = "web_accounts.json"
 def _is_valid_account_record(data) -> bool:
     return (
         isinstance(data, dict)
-        and bool(str(data.get("url") or "").strip())
-        and bool(str(data.get("username") or "").strip())
+        and isinstance(data.get("url"), str)
+        and bool(data["url"].strip())
+        and isinstance(data.get("username"), str)
+        and bool(data["username"].strip())
     )
 
 

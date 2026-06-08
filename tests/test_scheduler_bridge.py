@@ -321,6 +321,26 @@ def test_web_account_data_filters_accounts_missing_required_fields(tmp_path):
     }
 
 
+def test_web_account_data_filters_non_string_required_fields(tmp_path):
+    accounts_file = tmp_path / "web_accounts.json"
+    accounts_file.write_text(
+        json.dumps(
+            {
+                "alice@example.com": {"url": "https://example.com", "username": "alice"},
+                "numeric-url": {"url": 123, "username": "bob"},
+                "numeric-username": {"url": "https://example.net", "username": 456},
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    accounts = WebAccountData(tmp_path)
+
+    assert accounts.get_all() == {
+        "alice@example.com": {"url": "https://example.com", "username": "alice"}
+    }
+
+
 def test_web_account_data_keeps_memory_unchanged_when_save_fails(tmp_path, monkeypatch):
     accounts = WebAccountData(tmp_path)
     accounts.add("alice@example.com", {"username": "alice"})
