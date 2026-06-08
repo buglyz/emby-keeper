@@ -1,5 +1,8 @@
+from datetime import datetime
+
 import pytest
 
+import embykeeper.schedule as schedule_module
 from embykeeper.config import config
 from embykeeper.schedule import Scheduler
 from embykeeper.schema import Config
@@ -38,3 +41,19 @@ def test_scheduler_from_str_accepts_valid_interval_range():
     assert scheduler.days == [7, 12]
     assert scheduler.start_time.hour == 8
     assert scheduler.end_time.hour == 9
+
+
+def test_scheduler_uses_random_interval_from_range(monkeypatch):
+    seen = {}
+
+    def fake_next_random_datetime(*, start_time, end_time, interval_days):
+        seen["interval_days"] = interval_days
+        return datetime(2026, 1, 1, 8, 0)
+
+    monkeypatch.setattr(schedule_module.random, "randint", lambda start, end: 9)
+    monkeypatch.setattr(schedule_module, "next_random_datetime", fake_next_random_datetime)
+
+    scheduler = Scheduler.from_str(noop, interval_days="<7,12>", time_range="<8:00AM,9:00AM>")
+
+    assert scheduler.next_time == datetime(2026, 1, 1, 8, 0)
+    assert seen["interval_days"] == 9
