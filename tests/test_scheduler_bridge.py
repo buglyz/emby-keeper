@@ -439,6 +439,58 @@ def test_web_account_data_trims_required_fields_from_legacy_file(tmp_path):
     }
 
 
+def test_web_account_data_normalizes_legacy_encrypted_token_field(tmp_path):
+    accounts_file = tmp_path / "web_accounts.json"
+    accounts_file.write_text(
+        json.dumps(
+            {
+                "alice@example.com": {
+                    "url": "https://example.com",
+                    "username": "alice",
+                    "encrypted_token": " token-1 ",
+                },
+                "blank@example.com": {
+                    "url": "https://blank.example.com",
+                    "username": "blank",
+                    "encrypted_token": "   ",
+                },
+                "numeric@example.com": {
+                    "url": "https://numeric.example.com",
+                    "username": "numeric",
+                    "encrypted_token": 123,
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    accounts = WebAccountData(tmp_path)
+
+    expected = {
+        "alice@example.com": {
+            "url": "https://example.com",
+            "username": "alice",
+            "encrypted_token": "token-1",
+        },
+        "blank@example.com": {
+            "url": "https://blank.example.com",
+            "username": "blank",
+        },
+        "numeric@example.com": {
+            "url": "https://numeric.example.com",
+            "username": "numeric",
+        },
+    }
+    assert accounts.get_all() == expected
+    assert json.loads(accounts_file.read_text(encoding="utf-8")) == expected
+    backups = list(tmp_path.glob("web_accounts.json.corrupt.*"))
+    assert len(backups) == 1
+    backup_data = json.loads(backups[0].read_text(encoding="utf-8"))
+    assert backup_data["alice@example.com"]["encrypted_token"] == " token-1 "
+    assert backup_data["blank@example.com"]["encrypted_token"] == "   "
+    assert backup_data["numeric@example.com"]["encrypted_token"] == 123
+
+
 def test_web_account_data_normalizes_legacy_boolean_fields(tmp_path):
     accounts_file = tmp_path / "web_accounts.json"
     accounts_file.write_text(

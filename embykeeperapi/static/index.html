@@ -799,13 +799,13 @@
                   <n-input v-model:value="editConfig.emby_interval_days" size="small" />
                 </n-descriptions-item>
                 <n-descriptions-item label="Emby 并发数">
-                  <n-input-number v-model:value="editConfig.emby_concurrency" :min="1" size="small" />
+                  <n-input-number v-model:value="editConfig.emby_concurrency" :min="1" :precision="0" size="small" />
                 </n-descriptions-item>
                 <n-descriptions-item label="代理主机">
                   <n-input v-model:value="editConfig.proxy_hostname" size="small" />
                 </n-descriptions-item>
                 <n-descriptions-item label="代理端口">
-                  <n-input-number v-model:value="editConfig.proxy_port" :min="1" size="small" />
+                  <n-input-number v-model:value="editConfig.proxy_port" :min="1" :precision="0" size="small" />
                 </n-descriptions-item>
                 <n-descriptions-item label="代理协议">
                   <n-select v-model:value="editConfig.proxy_scheme" :options="[{label:'SOCKS5',value:'socks5'},{label:'HTTP',value:'http'}]" size="small" />
@@ -842,19 +842,33 @@
           return trimmed || null;
         }
 
+        function addOptionalText(data, key, value) {
+          const normalized = optionalText(value);
+          if (normalized !== null) data[key] = normalized;
+        }
+
+        function optionalPositiveInteger(value, label) {
+          if (value == null) return null;
+          if (!Number.isInteger(value) || value <= 0) {
+            throw new Error(`${label}必须是正整数`);
+          }
+          return value;
+        }
+
         async function handleSave() {
           saving.value = true;
           try {
-            await API.updateConfig({
-              emby_time_range: optionalText(editConfig.emby_time_range),
-              emby_interval_days: optionalText(editConfig.emby_interval_days),
-              emby_concurrency: editConfig.emby_concurrency || null,
+            const data = {
+              emby_concurrency: optionalPositiveInteger(editConfig.emby_concurrency, 'Emby 并发数'),
               proxy: {
                 hostname: optionalText(editConfig.proxy_hostname),
-                port: editConfig.proxy_port || null,
+                port: optionalPositiveInteger(editConfig.proxy_port, '代理端口'),
                 scheme: editConfig.proxy_scheme || null,
               },
-            });
+            };
+            addOptionalText(data, 'emby_time_range', editConfig.emby_time_range);
+            addOptionalText(data, 'emby_interval_days', editConfig.emby_interval_days);
+            await API.updateConfig(data);
             message.success('配置已保存');
           } catch (e) { message.error(e.message); }
           finally { saving.value = false; }

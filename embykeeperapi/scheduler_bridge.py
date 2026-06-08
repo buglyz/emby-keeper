@@ -157,6 +157,12 @@ def _sanitize_account_record(data) -> Optional[dict]:
             sanitized.pop("auth_method", None)
         else:
             sanitized["auth_method"] = value
+    if "encrypted_token" in sanitized:
+        value = _sanitize_optional_text(sanitized["encrypted_token"])
+        if value is _DROP_FIELD:
+            sanitized.pop("encrypted_token", None)
+        else:
+            sanitized["encrypted_token"] = value
     return sanitized
 
 

@@ -76,12 +76,30 @@ def test_server_form_rejects_invalid_watch_time_before_save():
 def test_config_form_trims_text_payload_before_save():
     html = STATIC_INDEX.read_text(encoding="utf-8")
 
-    assert "emby_time_range: optionalText(editConfig.emby_time_range)" in html
-    assert "emby_interval_days: optionalText(editConfig.emby_interval_days)" in html
+    assert "function addOptionalText(data, key, value)" in html
+    assert "if (normalized !== null) data[key] = normalized" in html
+    assert "addOptionalText(data, 'emby_time_range', editConfig.emby_time_range)" in html
+    assert "addOptionalText(data, 'emby_interval_days', editConfig.emby_interval_days)" in html
     assert "hostname: optionalText(editConfig.proxy_hostname)" in html
+    assert "emby_time_range: optionalText(editConfig.emby_time_range)" not in html
+    assert "emby_interval_days: optionalText(editConfig.emby_interval_days)" not in html
     assert "emby_time_range: editConfig.emby_time_range || null" not in html
     assert "emby_interval_days: editConfig.emby_interval_days || null" not in html
     assert "hostname: editConfig.proxy_hostname || null" not in html
+
+
+def test_config_form_validates_optional_integer_fields_before_save():
+    html = STATIC_INDEX.read_text(encoding="utf-8")
+
+    assert '<n-input-number v-model:value="editConfig.emby_concurrency" :min="1" :precision="0"' in html
+    assert '<n-input-number v-model:value="editConfig.proxy_port" :min="1" :precision="0"' in html
+    assert "function optionalPositiveInteger(value, label)" in html
+    assert "if (value == null) return null" in html
+    assert "throw new Error(`${label}必须是正整数`)" in html
+    assert "emby_concurrency: optionalPositiveInteger(editConfig.emby_concurrency, 'Emby 并发数')" in html
+    assert "port: optionalPositiveInteger(editConfig.proxy_port, '代理端口')" in html
+    assert "emby_concurrency: editConfig.emby_concurrency || null" not in html
+    assert "port: editConfig.proxy_port || null" not in html
 
 
 def test_login_form_trims_credentials_before_exchange():
