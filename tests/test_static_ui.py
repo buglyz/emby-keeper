@@ -16,10 +16,42 @@ def test_edit_form_only_sends_credentials_when_present():
 
     assert "const authChanged = isEdit.value" in html
     assert "(!isEdit.value || authChanged)" in html
-    assert "data.access_token = form.access_token" in html
-    assert "data.password = form.password" in html
+    assert "data.access_token = normalized.access_token" in html
+    assert "data.password = normalized.password" in html
     assert "access_token: form.auth_method === 'token' ? form.access_token : null" not in html
     assert "password: form.auth_method === 'password' ? form.password : null" not in html
+
+
+def test_server_form_trims_text_payload_before_save():
+    html = STATIC_INDEX.read_text(encoding="utf-8")
+
+    assert "function trimText(value)" in html
+    assert "function optionalText(value)" in html
+    assert "const normalized = {" in html
+    for snippet in (
+        "url: trimText(form.url)",
+        "username: trimText(form.username)",
+        "name: optionalText(form.name)",
+        "access_token: trimText(form.access_token)",
+        "password: trimText(form.password)",
+        "play_id: optionalText(form.play_id)",
+        "interval_days: optionalText(form.interval_days)",
+        "time_range: optionalText(form.time_range)",
+        "useragent: optionalText(form.useragent)",
+        "client: optionalText(form.client)",
+        "client_version: optionalText(form.client_version)",
+        "device: optionalText(form.device)",
+        "device_id: optionalText(form.device_id)",
+    ):
+        assert snippet in html
+    assert "if (!normalized.url || !normalized.username)" in html
+    assert "!normalized.access_token" in html
+    assert "!normalized.password" in html
+    assert "url: normalized.url" in html
+    assert "username: normalized.username" in html
+    assert "name: normalized.name" in html
+    assert "data.access_token = normalized.access_token" in html
+    assert "data.password = normalized.password" in html
 
 
 def test_frontend_fallback_checks_actual_naive_ui_global():

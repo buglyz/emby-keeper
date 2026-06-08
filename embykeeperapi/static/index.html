@@ -518,9 +518,33 @@
           }
         });
 
+        function trimText(value) {
+          return typeof value === 'string' ? value.trim() : value;
+        }
+
+        function optionalText(value) {
+          const trimmed = trimText(value);
+          return trimmed || null;
+        }
+
         async function handleSave() {
           saving.value = true; errorMsg.value = '';
-          if (!form.url || !form.username) {
+          const normalized = {
+            url: trimText(form.url),
+            username: trimText(form.username),
+            name: optionalText(form.name),
+            access_token: trimText(form.access_token),
+            password: trimText(form.password),
+            play_id: optionalText(form.play_id),
+            interval_days: optionalText(form.interval_days),
+            time_range: optionalText(form.time_range),
+            useragent: optionalText(form.useragent),
+            client: optionalText(form.client),
+            client_version: optionalText(form.client_version),
+            device: optionalText(form.device),
+            device_id: optionalText(form.device_id),
+          };
+          if (!normalized.url || !normalized.username) {
             errorMsg.value = '服务器地址和用户名不能为空';
             saving.value = false;
             return;
@@ -531,40 +555,40 @@
             return;
           }
           const authChanged = isEdit.value && originalAuthMethod.value && form.auth_method !== originalAuthMethod.value;
-          if (form.auth_method === 'token' && !form.access_token && (!isEdit.value || authChanged)) {
+          if (form.auth_method === 'token' && !normalized.access_token && (!isEdit.value || authChanged)) {
             errorMsg.value = 'Token 模式下必须提供 AccessToken';
             saving.value = false;
             return;
           }
-          if (form.auth_method === 'password' && !form.password && (!isEdit.value || authChanged)) {
+          if (form.auth_method === 'password' && !normalized.password && (!isEdit.value || authChanged)) {
             errorMsg.value = '密码模式下必须提供密码';
             saving.value = false;
             return;
           }
           const data = {
-            url: form.url,
-            username: form.username,
-            name: form.name || null,
+            url: normalized.url,
+            username: normalized.username,
+            name: normalized.name,
             auth_method: form.auth_method,
             time: form.time_min === form.time_max ? form.time_min : [form.time_min, form.time_max],
             allow_multiple: form.allow_multiple,
             allow_stream: form.allow_stream,
             use_proxy: form.use_proxy,
             enabled: form.enabled,
-            play_id: form.play_id || null,
-            interval_days: form.interval_days || null,
-            time_range: form.time_range || null,
-            useragent: form.useragent || null,
-            client: form.client || null,
-            client_version: form.client_version || null,
-            device: form.device || null,
-            device_id: form.device_id || null,
+            play_id: normalized.play_id,
+            interval_days: normalized.interval_days,
+            time_range: normalized.time_range,
+            useragent: normalized.useragent,
+            client: normalized.client,
+            client_version: normalized.client_version,
+            device: normalized.device,
+            device_id: normalized.device_id,
           };
-          if (form.auth_method === 'token' && form.access_token) {
-            data.access_token = form.access_token;
+          if (form.auth_method === 'token' && normalized.access_token) {
+            data.access_token = normalized.access_token;
           }
-          if (form.auth_method === 'password' && form.password) {
-            data.password = form.password;
+          if (form.auth_method === 'password' && normalized.password) {
+            data.password = normalized.password;
           }
           try {
             if (isEdit.value) {
