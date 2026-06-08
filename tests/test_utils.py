@@ -107,6 +107,20 @@ def test_async_task_pool_yields_all_precompleted_tasks():
     asyncio.run(asyncio.wait_for(run_test(), timeout=1))
 
 
+def test_async_task_pool_accepts_future_without_name():
+    async def run_test():
+        pool = AsyncTaskPool()
+        future = asyncio.Future()
+        future.set_result("done")
+
+        task = pool.add(future)
+
+        assert task.get_name() == "async-task"
+        assert await pool.wait() == ["done"]
+
+    asyncio.run(asyncio.wait_for(run_test(), timeout=1))
+
+
 def test_nonblocking_lock_acquires_available_lock():
     async def run_test():
         lock = asyncio.Lock()

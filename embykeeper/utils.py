@@ -132,8 +132,9 @@ class AsyncTaskPool:
                 self.waiter.notify()
                 return await task
 
+        task_name = name or getattr(coro, "__name__", None) or getattr(coro, "__qualname__", None) or "async-task"
         t = asyncio.create_task(wrapper())
-        t.set_name(name or coro.__name__)
+        t.set_name(task_name)
         self.tasks.append(t)
         return t
 
