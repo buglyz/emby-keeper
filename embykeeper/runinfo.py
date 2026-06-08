@@ -159,6 +159,8 @@ class RunContext(BaseModel):
         if parent_ids:
             for parent_id in parent_ids:
                 children = cache.get(f"runinfo.children.{parent_id}", [])
+                if not isinstance(children, list):
+                    children = []
                 if run_id not in children:
                     children.append(run_id)
                     cache.set(f"runinfo.children.{parent_id}", children)
@@ -197,6 +199,8 @@ class RunContext(BaseModel):
         """获取所有子任务"""
         children = []
         child_ids = cache.get(f"runinfo.children.{self.id}", [])
+        if not isinstance(child_ids, list):
+            return children
         for child_id in child_ids:
             child = RunContext.get(child_id)
             if child:
@@ -254,6 +258,8 @@ class RunContext(BaseModel):
         """获取所有正在运行的子任务"""
         children = []
         child_ids = cache.get(f"runinfo.children.{self.id}", [])
+        if not isinstance(child_ids, list):
+            return children
         for child_id in child_ids:
             if child_id in _running_runs:
                 children.append(_running_runs[child_id])

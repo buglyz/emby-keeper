@@ -1,6 +1,6 @@
 from embykeeper.cache import cache
 from embykeeper.config import config
-from embykeeper.runinfo import RunContext, _running_runs
+from embykeeper.runinfo import RunContext, RunStatus, _running_runs
 from embykeeper.schema import Config
 
 
@@ -46,3 +46,38 @@ def test_run_context_prepare_avoids_existing_ids(tmp_path, monkeypatch):
     finally:
         _running_runs.clear()
         config.reset()
+
+
+def test_run_context_prepare_replaces_invalid_children_cache(tmp_path, monkeypatch):
+    config.set(Config())
+    config.basedir = tmp_path
+    cache._cache_file = tmp_path / "cache.json"
+    cache._data = {}
+    _running_runs.clear()
+    cache.set("runinfo.children.PARENT", "invalid")
+    monkeypatch.setattr("embykeeper.runinfo.random.choices", lambda *_args, **_kwargs: list("CHILD1"))
+
+    run = RunContext.prepare("child", parent_ids=["PARENT"])
+
+    try:
+        assert run.id == "CHILD1"
+        assert cache.get("runinfo.children.PARENT") == ["CHILD1"]
+    finally:
+        run.finish(RunStatus.CANCELLED)
+        _running_runs.clear()
+        config.reset()
+
+
+def test_run_context_ignores_invalid_children_cache(tmp_path):
+    config.set(Config())
+    config.basedir = tmp_path
+    cache._cache_file = tmp_path / "cache.json"
+    cache._data = {}
+    cache.set("runinfo.children.PARENT", "invalid")
+
+    run = RunContext(id="PARENT")
+
+    assert run.get_children() == []
+    assert run.get_running_children() == []
+
+    config.reset()
