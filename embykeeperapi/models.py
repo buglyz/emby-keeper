@@ -225,6 +225,7 @@ class HealthStatus(BaseModel):
     latest_run_id: Optional[str] = None
     latest_run_status: Optional[str] = None
     latest_run_status_info: Optional[str] = None
+    scheduler_error: Optional[str] = None
 
 
 class RunHistoryItem(BaseModel):
@@ -257,6 +258,7 @@ class ConfigExportResponse(BaseModel):
     web_accounts_path: Optional[str] = None
     config_toml: Optional[str] = None
     web_accounts: dict = Field(default_factory=dict)
+    redacted: bool = True
 
 
 class ConfigBackupResponse(BaseModel):

@@ -153,7 +153,12 @@ async def get_dashboard_status(user: str = Depends(get_current_user)):
 async def get_health_status(user: str = Depends(get_current_user)):
     """Get operational health details for the Web UI."""
     accounts = bridge.web_accounts.get_all() if bridge.web_accounts else {}
-    schedules = bridge.get_schedule_info()
+    scheduler_error = None
+    try:
+        schedules = bridge.get_schedule_info()
+    except Exception as e:
+        schedules = []
+        scheduler_error = type(e).__name__
     config_file = Path(config._conf_file) if config._conf_file else Path(config.basedir) / "config.toml"
     web_accounts_basedir = getattr(bridge.web_accounts, "basedir", None)
     web_accounts_file = (
@@ -180,7 +185,7 @@ async def get_health_status(user: str = Depends(get_current_user)):
         except Exception:
             notifier_ready = False
 
-    healthy = bool(config._cache and bridge.web_accounts is not None)
+    healthy = bool(config._cache and bridge.web_accounts is not None and scheduler_error is None)
     return HealthStatus(
         status="ok" if healthy else "degraded",
         config_loaded=bool(config._cache),
@@ -198,6 +203,7 @@ async def get_health_status(user: str = Depends(get_current_user)):
         latest_run_id=latest_run.id if latest_run else None,
         latest_run_status=latest_run.status.name.lower() if latest_run else None,
         latest_run_status_info=latest_run.status_info if latest_run else None,
+        scheduler_error=scheduler_error,
     )
 
 

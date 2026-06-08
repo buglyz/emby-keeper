@@ -27,6 +27,8 @@ from embykeeper.schema import EmbyConfig, NotifierConfig, ProxyConfig
 
 router = APIRouter(prefix="/api/config", tags=["config"])
 logger = logger.bind(scheme="embykeeperapi")
+REDACTED_VALUE = "***REDACTED***"
+SECRET_CONFIG_KEYS = {"password", "apprise_uri", "mongodb", "token", "access_token", "secret"}
 
 
 def _model_fields_set(model) -> set:
@@ -152,9 +154,40 @@ def _config_file_path() -> Path:
 
 
 def _web_accounts_file_path() -> Path:
-    if bridge.web_accounts:
-        return bridge.web_accounts.basedir / "web_accounts.json"
+    basedir = getattr(bridge.web_accounts, "basedir", None)
+    if basedir:
+        return Path(basedir) / "web_accounts.json"
     return Path(config.basedir) / "web_accounts.json"
+
+
+def _redact_toml_value(value):
+    if isinstance(value, MutableMapping):
+        for key in list(value.keys()):
+            if str(key).lower() in SECRET_CONFIG_KEYS:
+                value[key] = REDACTED_VALUE
+            else:
+                _redact_toml_value(value[key])
+    elif isinstance(value, list):
+        for item in value:
+            _redact_toml_value(item)
+
+
+def _redact_config_toml(content: str) -> str:
+    doc = parse(content)
+    _redact_toml_value(doc)
+    return dumps(doc)
+
+
+def _redact_web_accounts(accounts: dict) -> dict:
+    redacted = {}
+    for account_id, account in accounts.items():
+        if not isinstance(account, dict):
+            continue
+        item = dict(account)
+        if item.get("encrypted_token"):
+            item["encrypted_token"] = REDACTED_VALUE
+        redacted[account_id] = item
+    return redacted
 
 
 def _persist_global_config(next_config=None):
@@ -223,21 +256,30 @@ async def get_config(user: str = Depends(get_current_user)):
 
 @router.get("/export", response_model=ConfigExportResponse)
 async def export_config_bundle(user: str = Depends(get_current_user)):
-    """Export current config and encrypted web account data for backup."""
+    """Export a redacted config snapshot for diagnostics."""
     config_file = _config_file_path()
     accounts_file = _web_accounts_file_path()
     config_toml = None
     if config_file.is_file():
         try:
-            config_toml = config_file.read_text(encoding="utf-8")
+            config_toml = _redact_config_toml(config_file.read_text(encoding="utf-8"))
+        except HTTPException:
+            raise
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=f"Failed to redact config.toml: {e}")
+    web_accounts = {}
+    if bridge.web_accounts:
+        try:
+            web_accounts = _redact_web_accounts(bridge.web_accounts.get_all())
         except OSError as e:
-            raise HTTPException(status_code=500, detail=f"Failed to read config.toml: {e}")
+            raise HTTPException(status_code=500, detail=f"Failed to read web accounts: {e}")
     return ConfigExportResponse(
         generated_at=datetime.now(timezone.utc),
         config_path=str(config_file),
         web_accounts_path=str(accounts_file),
         config_toml=config_toml,
-        web_accounts=bridge.web_accounts.get_all() if bridge.web_accounts else {},
+        web_accounts=web_accounts,
+        redacted=True,
     )
 
 

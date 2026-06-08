@@ -232,7 +232,9 @@ def test_config_page_exposes_backup_and_health_diagnostics():
     assert "function downloadJson(filename, data)" in html
     assert "handleExportConfig" in html
     assert "handleCreateBackup" in html
-    assert "下载备份" in html
+    assert "下载脱敏快照" in html
+    assert "emby-keeper-redacted-" in html
+    assert "脱敏快照已下载" in html
     assert "创建本地备份" in html
     assert "scheduler_task_running" in html
     assert "web_accounts_writable" in html

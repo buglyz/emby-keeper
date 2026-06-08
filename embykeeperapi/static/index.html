@@ -1068,7 +1068,7 @@
 
             <n-card title="备份与导出" style="margin-bottom:16px">
               <n-space justify="end">
-                <n-button :loading="exportingBackup" @click="handleExportConfig">下载备份</n-button>
+                <n-button :loading="exportingBackup" @click="handleExportConfig">下载脱敏快照</n-button>
                 <n-button :loading="creatingBackup" type="primary" @click="handleCreateBackup">创建本地备份</n-button>
               </n-space>
             </n-card>
@@ -1224,8 +1224,8 @@
           try {
             const data = await API.exportConfig();
             const stamp = new Date().toISOString().replace(/[:.]/g, '-');
-            downloadJson(`emby-keeper-backup-${stamp}.json`, data);
-            message.success('备份已下载');
+            downloadJson(`emby-keeper-redacted-${stamp}.json`, data);
+            message.success('脱敏快照已下载');
           } catch (e) { message.error(e.message); }
           finally { exportingBackup.value = false; }
         }

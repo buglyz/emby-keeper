@@ -125,10 +125,48 @@ def test_health_api_exposes_operational_diagnostics(tmp_path, api_app):
     assert data["latest_run_status_info"] == "failed auth"
 
 
+def test_health_api_degrades_when_schedule_info_fails(tmp_path, api_app, monkeypatch):
+    config.basedir = tmp_path
+    config.set(Config())
+    bridge.web_accounts = WebAccountData(tmp_path)
+    bridge.emby_manager = SimpleNamespace(_schedulers={})
+
+    def fail_schedule_info():
+        raise RuntimeError("scheduler failed")
+
+    monkeypatch.setattr(bridge, "get_schedule_info", fail_schedule_info)
+
+    response = asyncio.run(_asgi_request(api_app, "GET", "/api/status/health"))
+
+    assert response.status_code == 200
+    data = response.json()
+    assert data["status"] == "degraded"
+    assert data["scheduler_error"] == "RuntimeError"
+
+
 def test_config_export_and_backup_api_uses_encrypted_account_data(tmp_path, api_app):
     config.basedir = tmp_path
     config_file = tmp_path / "config.toml"
-    config_file.write_text("[emby]\ninterval_days = \"7\"\n", encoding="utf-8")
+    config_file.write_text(
+        '\n'.join(
+            [
+                'mongodb = "mongodb://user:password@example.com/db"',
+                "",
+                "[emby]",
+                'interval_days = "7"',
+                "",
+                "[notifier]",
+                'apprise_uri = "tgram://bot-token/chat-id"',
+                "",
+                "[[emby.account]]",
+                'url = "https://example.com"',
+                'username = "alice"',
+                'password = "plain-password"',
+                "",
+            ]
+        ),
+        encoding="utf-8",
+    )
     config._conf_file = config_file
     config.set(Config())
     cache._setup_json_cache()
@@ -146,9 +184,12 @@ def test_config_export_and_backup_api_uses_encrypted_account_data(tmp_path, api_
 
     assert export_response.status_code == 200
     exported = export_response.json()
-    assert exported["config_toml"] == '[emby]\ninterval_days = "7"\n'
-    assert exported["web_accounts"]["alice@example.com"]["encrypted_token"]
-    assert exported["web_accounts"]["alice@example.com"]["encrypted_token"] != "token-1"
+    assert exported["redacted"] is True
+    assert "plain-password" not in exported["config_toml"]
+    assert "bot-token" not in exported["config_toml"]
+    assert "mongodb://user:password@example.com/db" not in exported["config_toml"]
+    assert exported["config_toml"].count("***REDACTED***") >= 3
+    assert exported["web_accounts"]["alice@example.com"]["encrypted_token"] == "***REDACTED***"
 
     backup_response = asyncio.run(_asgi_request(api_app, "POST", "/api/config/backup"))
 
