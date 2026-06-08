@@ -39,6 +39,7 @@ OPTIONAL_TEXT_FIELDS = {
     "device_id",
 }
 SCHEDULE_TEXT_FIELDS = {"interval_days", "time_range"}
+BOOLEAN_FIELDS = {"allow_multiple", "allow_stream", "use_proxy", "enabled"}
 
 
 def _make_account_id(username: str, name: Optional[str], url: str) -> str:
@@ -112,6 +113,14 @@ def _normalize_optional_text(value: Optional[str], field: str = "value"):
         raise HTTPException(status_code=400, detail=f"{field} must be a string")
     value = value.strip()
     return value or None
+
+
+def _normalize_bool(value, field: str, *, required: bool = False):
+    if value is None and not required:
+        return None
+    if not isinstance(value, bool):
+        raise HTTPException(status_code=400, detail=f"{field} must be a boolean")
+    return value
 
 
 def _has_nonblank_text(value) -> bool:
@@ -233,6 +242,7 @@ async def create_server(req: EmbyServerCreate, user: str = Depends(get_current_u
     optional_text = _normalized_optional_text_updates(req)
     interval_days = _normalize_optional_text(req.interval_days, "interval_days")
     time_range = _normalize_optional_text(req.time_range, "time_range")
+    bool_values = {field: _normalize_bool(getattr(req, field), field) for field in BOOLEAN_FIELDS}
     name = optional_text["name"]
     _validate_server_fields(url=url, time=req.time)
     _validate_account_schedule(interval_days, time_range)
@@ -291,11 +301,11 @@ async def create_server(req: EmbyServerCreate, user: str = Depends(get_current_u
         "encrypted_token": encrypted_token,
         "user_id": user_id,
         "time": req.time,
-        "allow_multiple": req.allow_multiple,
-        "allow_stream": req.allow_stream,
-        "use_proxy": req.use_proxy,
+        "allow_multiple": bool_values["allow_multiple"],
+        "allow_stream": bool_values["allow_stream"],
+        "use_proxy": bool_values["use_proxy"],
         "play_id": optional_text["play_id"],
-        "enabled": req.enabled,
+        "enabled": bool_values["enabled"],
         "interval_days": interval_days,
         "time_range": time_range,
         "useragent": optional_text["useragent"],
@@ -360,6 +370,8 @@ async def update_server(
                 value = _normalize_optional_text(value, field)
             elif field in SCHEDULE_TEXT_FIELDS:
                 value = _normalize_optional_text(value, field)
+            elif field in BOOLEAN_FIELDS:
+                value = _normalize_bool(value, field)
             update_data[field] = value
 
     if "interval_days" in fields_set or "time_range" in fields_set:
@@ -461,7 +473,8 @@ async def toggle_server(
     _require_bridge()
     if not bridge.web_accounts.get(account_id):
         raise HTTPException(status_code=404, detail="Server not found")
-    bridge.update_account(account_id, {"enabled": req.enabled})
+    enabled = _normalize_bool(req.enabled, "enabled", required=True)
+    bridge.update_account(account_id, {"enabled": enabled})
     return _account_data_to_response(account_id, bridge.web_accounts.get(account_id))
 
 

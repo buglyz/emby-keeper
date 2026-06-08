@@ -8,8 +8,8 @@ from embykeeper.config import config
 from embykeeper.emby.api import Emby
 from embykeeper.schema import Config
 from embykeeperapi.crypto import decrypt_token, encrypt_token
-from embykeeperapi.models import EmbyServerCreate, EmbyServerUpdate
-from embykeeperapi.routers.servers import create_server, update_server
+from embykeeperapi.models import EmbyServerCreate, EmbyServerToggle, EmbyServerUpdate
+from embykeeperapi.routers.servers import create_server, toggle_server, update_server
 from embykeeperapi.scheduler_bridge import bridge
 
 
@@ -341,6 +341,33 @@ def test_create_server_rejects_non_string_optional_text_when_model_validation_is
             access_token="token-1",
             play_id=123,
             _fields_set={"url", "username", "auth_method", "access_token", "play_id"},
+        )
+
+        try:
+            with pytest.raises(HTTPException) as exc:
+                await create_server(req, user="tester")
+
+            assert exc.value.status_code == 400
+            assert bridge.web_accounts.get_all() == {}
+        finally:
+            await reset_bridge()
+
+    asyncio.run(run_test())
+
+
+def test_create_server_rejects_non_boolean_flags_when_model_validation_is_bypassed(tmp_path):
+    async def run_test():
+        config.basedir = tmp_path
+        config.set(Config())
+        await bridge.initialize(tmp_path)
+
+        req = EmbyServerCreate.model_construct(
+            url="https://example.com",
+            username="alice",
+            auth_method="token",
+            access_token="token-1",
+            allow_stream="false",
+            _fields_set={"url", "username", "auth_method", "access_token", "allow_stream"},
         )
 
         try:
@@ -997,6 +1024,68 @@ def test_update_server_rejects_non_string_password_without_crashing(tmp_path, mo
         try:
             with pytest.raises(HTTPException) as exc:
                 await update_server(account_id, req, user="tester")
+
+            assert exc.value.status_code == 400
+            assert bridge.web_accounts.get(account_id) == original
+        finally:
+            await reset_bridge()
+
+    asyncio.run(run_test())
+
+
+def test_update_server_rejects_non_boolean_flags_without_mutating_account(tmp_path):
+    async def run_test():
+        config.basedir = tmp_path
+        config.set(Config())
+        await bridge.initialize(tmp_path)
+
+        account_id = "alice@example.com"
+        bridge.add_account(
+            account_id,
+            {
+                "url": "https://example.com",
+                "username": "alice",
+                "encrypted_token": encrypt_token("token-old", tmp_path),
+                "enabled": True,
+            },
+        )
+        original = bridge.web_accounts.get(account_id).copy()
+        req = EmbyServerUpdate.model_construct(enabled="false", _fields_set={"enabled"})
+
+        try:
+            with pytest.raises(HTTPException) as exc:
+                await update_server(account_id, req, user="tester")
+
+            assert exc.value.status_code == 400
+            assert bridge.web_accounts.get(account_id) == original
+        finally:
+            await reset_bridge()
+
+    asyncio.run(run_test())
+
+
+def test_toggle_server_rejects_non_boolean_enabled_without_mutating_account(tmp_path):
+    async def run_test():
+        config.basedir = tmp_path
+        config.set(Config())
+        await bridge.initialize(tmp_path)
+
+        account_id = "alice@example.com"
+        bridge.add_account(
+            account_id,
+            {
+                "url": "https://example.com",
+                "username": "alice",
+                "encrypted_token": encrypt_token("token-old", tmp_path),
+                "enabled": True,
+            },
+        )
+        original = bridge.web_accounts.get(account_id).copy()
+        req = EmbyServerToggle.model_construct(enabled="false")
+
+        try:
+            with pytest.raises(HTTPException) as exc:
+                await toggle_server(account_id, req, user="tester")
 
             assert exc.value.status_code == 400
             assert bridge.web_accounts.get(account_id) == original
