@@ -1283,3 +1283,24 @@ def test_watch_returns_false_when_all_items_are_too_short():
     }
 
     assert asyncio.run(emby.watch()) is False
+
+
+def test_watch_returns_false_when_items_have_invalid_shapes():
+    account = EmbyAccount(
+        url="https://example.com",
+        username="alice",
+        time=30,
+        allow_multiple=False,
+    )
+    emby = Emby(account)
+    emby.items = {
+        "item-1": "invalid",
+        "item-2": {
+            "Id": "item-2",
+            "Name": "Short Movie",
+            "MediaType": "Video",
+            "RunTimeTicks": 10_000_000,
+        },
+    }
+
+    assert asyncio.run(emby.watch()) is False

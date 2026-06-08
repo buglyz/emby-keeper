@@ -1286,7 +1286,7 @@ class Emby:
         last_played_time = 0
         played_videos = 0
         retry = 0
-        failed_items = []
+        failed_items = set()
         failed_reasons = {"invalid": 0, "no_length": 0, "wrong_type": 0, "short_length": 0}
 
         while True:
@@ -1294,15 +1294,16 @@ class Emby:
             random.shuffle(shuffled_items)
 
             for iid, item in shuffled_items:
-                try:
-                    if iid in failed_items:
-                        failed_reasons["invalid"] += 1
-                        continue
-                except KeyError:
+                if iid in failed_items:
+                    continue
+                if not isinstance(item, dict):
+                    failed_reasons["invalid"] += 1
+                    failed_items.add(iid)
                     continue
                 media_type = item.get("MediaType", None)
                 if not media_type == "Video":
                     failed_reasons["wrong_type"] += 1
+                    failed_items.add(iid)
                     continue
                 total_ticks = item.get("RunTimeTicks", None)
                 if not total_ticks:
@@ -1310,12 +1311,13 @@ class Emby:
                         total_ticks = min(req_time, random.randint(480, 720)) * 10000000
                     else:
                         failed_reasons["no_length"] += 1
+                        failed_items.add(iid)
                         continue
                 total_time = total_ticks / 10000000
                 if req_time - played_time > total_time:
                     if not self.a.allow_multiple:
                         failed_reasons["short_length"] += 1
-                        failed_items.append(iid)
+                        failed_items.add(iid)
                         continue
                     play_time = total_time
                 else:
