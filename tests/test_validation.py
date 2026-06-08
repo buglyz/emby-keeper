@@ -19,6 +19,8 @@ def test_validate_schedule_fields_accepts_valid_interval_and_time_range():
         ("7 trailing", "8:00AM"),
         ("7", "8:00AM trailing"),
         ("7", "<8:00AM>"),
+        ("7", "8"),
+        ("7", "800"),
     ],
 )
 def test_validate_schedule_fields_rejects_invalid_values(interval_days, time_range):

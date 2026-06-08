@@ -14,6 +14,10 @@ from .runinfo import RunContext, RunStatus
 from .utils import next_random_datetime
 
 
+def _looks_like_time_text(value: str) -> bool:
+    return bool(re.search(r":|(?<![a-z])(?:am|pm)\b", value, re.IGNORECASE))
+
+
 class Scheduler:
     """异步函数计划执行器"""
 
@@ -108,6 +112,8 @@ class Scheduler:
 
     def _parse_time(self, t):
         if isinstance(t, str):
+            if not _looks_like_time_text(t):
+                raise ValueError(f"无法解析时间: {t}")
             return parser.parse(t).time()
         return t
 

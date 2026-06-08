@@ -6,6 +6,16 @@ from fastapi import HTTPException
 from embykeeper.schema import DEFAULT_EMBY_INTERVAL_DAYS, DEFAULT_TIME_RANGE
 
 
+def _looks_like_time_text(value: str) -> bool:
+    return bool(re.search(r":|(?<![a-z])(?:am|pm)\b", value, re.IGNORECASE))
+
+
+def _parse_time_value(value: str):
+    if not _looks_like_time_text(value):
+        raise ValueError("time_range must include ':' or AM/PM")
+    return parser.parse(value).time()
+
+
 def validate_schedule_fields(interval_days=None, time_range=None, *, use_defaults: bool = True):
     """Validate scheduler strings before saving Web UI config/account data."""
     interval = interval_days if interval_days is not None or not use_defaults else DEFAULT_EMBY_INTERVAL_DAYS
@@ -33,9 +43,9 @@ def validate_schedule_fields(interval_days=None, time_range=None, *, use_default
         watch_time = str(watch_time)
         time_range_match = re.fullmatch(r"<\s*(.*?)\s*,\s*(.*?)\s*>", watch_time)
         if time_range_match:
-            parser.parse(time_range_match.group(1)).time()
-            parser.parse(time_range_match.group(2)).time()
+            _parse_time_value(time_range_match.group(1))
+            _parse_time_value(time_range_match.group(2))
         else:
-            parser.parse(watch_time).time()
+            _parse_time_value(watch_time)
     except Exception as e:
         raise HTTPException(status_code=400, detail=f"Invalid schedule settings: {e}")

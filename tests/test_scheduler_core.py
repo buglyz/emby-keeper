@@ -36,6 +36,12 @@ def test_scheduler_from_str_rejects_trailing_interval_text():
         Scheduler.from_str(noop, interval_days="<7,12> trailing", time_range="8:00AM")
 
 
+@pytest.mark.parametrize("time_range", ["8", "800"])
+def test_scheduler_from_str_rejects_date_only_time_text(time_range):
+    with pytest.raises(ValueError):
+        Scheduler.from_str(noop, interval_days="7", time_range=time_range)
+
+
 def test_scheduler_from_str_accepts_valid_interval_range():
     scheduler = Scheduler.from_str(noop, interval_days="<7,12>", time_range="<8:00AM,9:00AM>")
 
