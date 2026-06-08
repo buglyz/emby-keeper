@@ -120,7 +120,7 @@ def _constant_time_equal(value: str, expected: str) -> bool:
 def validate_pre_shared_token(token: str) -> bool:
     """Validate a pre-shared token against EK_TOKEN env var."""
     expected = os.environ.get("EK_TOKEN")
-    if not expected:
+    if not expected or not isinstance(token, str):
         return False
     return _constant_time_equal(token, expected)
 
@@ -128,7 +128,7 @@ def validate_pre_shared_token(token: str) -> bool:
 def validate_password(password: str) -> bool:
     """Validate a password against EK_WEBPASS env var."""
     expected = os.environ.get("EK_WEBPASS")
-    if not expected:
+    if not expected or not isinstance(password, str):
         return False
     return _constant_time_equal(password, expected)
 

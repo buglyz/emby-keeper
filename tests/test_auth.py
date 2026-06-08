@@ -18,3 +18,17 @@ def test_rate_limit_removes_stale_attempts():
     assert auth.check_rate_limit("203.0.113.1") is True
 
     assert "203.0.113.1" not in auth._failed_attempts
+
+
+def test_pre_shared_token_validation_rejects_non_string(monkeypatch):
+    monkeypatch.setenv("EK_TOKEN", "token-1")
+
+    assert auth.validate_pre_shared_token(None) is False
+    assert auth.validate_pre_shared_token(123) is False
+
+
+def test_password_validation_rejects_non_string(monkeypatch):
+    monkeypatch.setenv("EK_WEBPASS", "secret")
+
+    assert auth.validate_password(None) is False
+    assert auth.validate_password(123) is False
