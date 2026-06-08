@@ -80,9 +80,10 @@ def test_reserved_spa_paths(path, expected):
 
 def test_healthz_route_is_not_spa_fallback():
     app = create_app()
-    route = next(route for route in app.routes if getattr(route, "path", None) == "/healthz")
+    routes = [route for route in app.routes if getattr(route, "path", None) == "/healthz"]
 
-    assert asyncio.run(route.endpoint()) == {"status": "ok"}
+    assert len(routes) == 1
+    assert asyncio.run(routes[0].endpoint()) == {"status": "ok"}
 
 
 def test_proxy_fix_middleware_uses_first_non_empty_forwarded_for():
