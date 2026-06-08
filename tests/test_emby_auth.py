@@ -144,6 +144,46 @@ def test_authorization_header_uses_real_user_id_only():
     assert emby.run_id not in header_with_user
 
 
+def test_invalid_cached_credentials_are_ignored():
+    key = "emby.credential.example.com.alice"
+    cache.set(key, ["token-1", "user-1"])
+
+    emby = Emby(EmbyAccount(url="https://example.com", username="alice"))
+
+    assert emby.token is None
+    assert emby.user_id is None
+    assert cache.get(key) is None
+
+
+def test_invalid_cached_env_is_regenerated_from_account_settings():
+    key = "emby.env.example.com.alice"
+    cache.set(key, ["invalid"])
+    account = EmbyAccount(
+        url="https://example.com",
+        username="alice",
+        client="Fileball",
+        client_version="1.3.30",
+        device="Test Device",
+        device_id="test-device-id",
+        useragent="Fileball/1.3.30",
+    )
+
+    env = Emby(account).env
+
+    assert env.client == "Fileball"
+    assert env.client_version == "1.3.30"
+    assert env.device == "Test Device"
+    assert env.device_id == "test-device-id"
+    assert env.useragent == "Fileball/1.3.30"
+    assert cache.get(key) == {
+        "client": "Fileball",
+        "device": "Test Device",
+        "device_id": "test-device-id",
+        "client_version": "1.3.30",
+        "useragent": "Fileball/1.3.30",
+    }
+
+
 def test_build_url_preserves_configured_base_path():
     account = EmbyAccount(url="https://example.com/emby", username="alice")
     emby = Emby(account)

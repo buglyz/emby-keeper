@@ -98,14 +98,22 @@ class Emby:
             self._load_credentials()
         return self._user_id
 
+    def _get_cached_dict(self, key: str, name: str) -> dict:
+        data = cache.get(key, {})
+        if isinstance(data, dict):
+            return data
+        self.log.warning(f"{name}缓存格式无效, 将重新生成.")
+        cache.delete(key)
+        return {}
+
     def _load_credentials(self):
-        data: dict = cache.get(f"emby.credential.{self.hostname}.{self.a.username}", {})
+        data = self._get_cached_dict(f"emby.credential.{self.hostname}.{self.a.username}", "登录凭据")
         self._token = data.get("token", None)
         self._user_id = data.get("userid", None)
 
     def _load_env(self):
         cache_key = f"emby.env.{self.hostname}.{self.a.username}"
-        data: dict = cache.get(cache_key, {})
+        data = self._get_cached_dict(cache_key, "模拟设备信息")
         if data:
             # 检查用户配置是否与缓存一致
             should_clear = False
@@ -184,7 +192,8 @@ class Emby:
         return uuid.UUID(int=rd.getrandbits(128))
 
     def get_fake_env(self):
-        cached_env: dict = cache.get(f"emby.env.{self.hostname}.{self.a.username}", {})
+        cache_key = f"emby.env.{self.hostname}.{self.a.username}"
+        cached_env = self._get_cached_dict(cache_key, "模拟设备信息")
 
         # 按优先级获取各个值
         is_filebar = random.random() < 0.2
@@ -207,7 +216,7 @@ class Emby:
         }
 
         env = EmbyEnv(**data)
-        cache.set(f"emby.env.{self.hostname}.{self.a.username}", data)
+        cache.set(cache_key, data)
         return env
 
     def set_credentials(self, token: str, user_id: str = None):
