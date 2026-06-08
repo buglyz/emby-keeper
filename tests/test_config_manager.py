@@ -56,3 +56,19 @@ def test_start_observer_waits_for_previous_observer_cancel(tmp_path, monkeypatch
             await asyncio.gather(manager._observer, return_exceptions=True)
 
     asyncio.run(run_test())
+
+
+def test_reset_cancels_observer_task():
+    async def run_test():
+        manager = ConfigManager()
+        task = asyncio.create_task(asyncio.Event().wait())
+        manager._observer = task
+
+        manager.reset()
+
+        assert manager._observer is None
+        assert task.cancelling() > 0
+
+        await asyncio.gather(task, return_exceptions=True)
+
+    asyncio.run(run_test())

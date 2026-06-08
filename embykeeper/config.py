@@ -264,6 +264,9 @@ class ConfigManager(ProxyBase):
         return dumps(doc)
 
     def reset(self):
+        if self._observer:
+            self._observer.cancel()
+            self._observer = None
         self._cache = None
 
     @staticmethod
