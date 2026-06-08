@@ -9,6 +9,7 @@ from embykeeper.utils import (
     distribute_numbers,
     format_byte_human,
     get_proxy_str,
+    nonblocking,
     truncate_str,
 )
 
@@ -75,5 +76,33 @@ def test_async_task_pool_yields_all_precompleted_tasks():
             results.append(task.result())
 
         assert sorted(results) == [1, 2]
+
+    asyncio.run(asyncio.wait_for(run_test(), timeout=1))
+
+
+def test_nonblocking_lock_acquires_available_lock():
+    async def run_test():
+        lock = asyncio.Lock()
+
+        async with nonblocking(lock) as acquired:
+            assert acquired is True
+            assert lock.locked() is True
+
+        assert lock.locked() is False
+
+    asyncio.run(run_test())
+
+
+def test_nonblocking_lock_does_not_wait_for_locked_lock():
+    async def run_test():
+        lock = asyncio.Lock()
+        await lock.acquire()
+
+        try:
+            async with nonblocking(lock) as acquired:
+                assert acquired is False
+                assert lock.locked() is True
+        finally:
+            lock.release()
 
     asyncio.run(asyncio.wait_for(run_test(), timeout=1))
