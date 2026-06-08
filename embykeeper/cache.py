@@ -68,11 +68,14 @@ class Cache:
             result = self._collection.find_one({"_id": key})
             return result["value"] if result else default
         else:
+            missing = object()
             value = self._data
             try:
                 for part in key.split("."):
-                    value = value.get(part, {})
-                return default if value == {} else deepcopy(value)
+                    value = value.get(part, missing)
+                    if value is missing:
+                        return default
+                return deepcopy(value)
             except (AttributeError, TypeError):
                 return default
 

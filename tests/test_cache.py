@@ -95,6 +95,19 @@ def test_json_cache_isolates_mutable_values(tmp_path):
     config.reset()
 
 
+def test_json_cache_preserves_empty_object_values(tmp_path):
+    config.set(Config())
+    config.basedir = tmp_path
+
+    cache = Cache()
+    cache.set("example.empty", {})
+
+    assert cache.get("example.empty") == {}
+    assert cache.get("example.missing") is None
+
+    config.reset()
+
+
 def test_json_cache_set_replaces_non_object_parent(tmp_path):
     config.set(Config())
     config.basedir = tmp_path
