@@ -25,6 +25,7 @@ class Cache:
 
     def _setup_json_cache(self):
         self._cache_file = config.basedir / "cache.json"
+        self._cache_file.parent.mkdir(parents=True, exist_ok=True)
         self._data = {}
         if self._cache_file.exists():
             try:
