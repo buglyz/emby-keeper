@@ -4,14 +4,11 @@ from dateutil import parser
 from fastapi import HTTPException
 
 from embykeeper.schema import DEFAULT_EMBY_INTERVAL_DAYS, DEFAULT_TIME_RANGE
-
-
-def _looks_like_time_text(value: str) -> bool:
-    return bool(re.search(r":|(?<![a-z])(?:am|pm)\b", value, re.IGNORECASE))
+from embykeeper.utils import looks_like_time_text
 
 
 def _parse_time_value(value: str):
-    if not _looks_like_time_text(value):
+    if not looks_like_time_text(value):
         raise ValueError("time_range must include ':' or AM/PM")
     return parser.parse(value).time()
 

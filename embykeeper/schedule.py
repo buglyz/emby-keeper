@@ -11,11 +11,7 @@ from loguru import logger
 
 from .config import config
 from .runinfo import RunContext, RunStatus
-from .utils import next_random_datetime
-
-
-def _looks_like_time_text(value: str) -> bool:
-    return bool(re.search(r":|(?<![a-z])(?:am|pm)\b", value, re.IGNORECASE))
+from .utils import looks_like_time_text, next_random_datetime
 
 
 class Scheduler:
@@ -112,7 +108,7 @@ class Scheduler:
 
     def _parse_time(self, t):
         if isinstance(t, str):
-            if not _looks_like_time_text(t):
+            if not looks_like_time_text(t):
                 raise ValueError(f"无法解析时间: {t}")
             return parser.parse(t).time()
         return t

@@ -9,6 +9,7 @@ from embykeeper.utils import (
     distribute_numbers,
     format_byte_human,
     get_proxy_str,
+    looks_like_time_text,
     nonblocking,
     truncate_str,
 )
@@ -29,6 +30,13 @@ def test_batch_splits_iterable():
 def test_batch_rejects_non_positive_size():
     with pytest.raises(ValueError):
         list(batch([1, 2, 3], 0))
+
+
+def test_looks_like_time_text_requires_explicit_time_marker():
+    assert looks_like_time_text("8:00AM") is True
+    assert looks_like_time_text("8pm") is True
+    assert looks_like_time_text("800") is False
+    assert looks_like_time_text("spam") is False
 
 
 def test_format_byte_human_uses_byte_pluralization():

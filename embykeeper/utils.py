@@ -3,6 +3,7 @@ from contextlib import asynccontextmanager
 from datetime import date, datetime, time, timedelta
 from pathlib import Path
 import random
+import re
 import sys
 import site
 import traceback
@@ -212,6 +213,11 @@ def time_in_range(start, end, x):
         return start <= x <= end
     else:
         return start <= x or x <= end
+
+
+def looks_like_time_text(value: str) -> bool:
+    """判断字符串是否显式包含时间信息, 避免 dateutil 将纯日期文本解析为午夜."""
+    return bool(re.search(r":|(?<![a-z])(?:am|pm)\b", value, re.IGNORECASE))
 
 
 def batch(iterable, n=1):
