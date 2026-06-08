@@ -1,3 +1,5 @@
+import asyncio
+
 from embykeeper.cache import cache
 from embykeeper.config import config
 from embykeeper.runinfo import RunContext, RunStatus, _running_runs
@@ -167,6 +169,55 @@ def test_run_context_finish_survives_cache_save_failure(monkeypatch):
     assert run.status == RunStatus.SUCCESS
     assert run.status_info == "done"
     assert run._finished.is_set()
+
+
+def test_run_context_run_finishes_successful_function(tmp_path):
+    config.set(Config())
+    config.basedir = tmp_path
+    cache._cache_file = tmp_path / "cache.json"
+    cache._data = {}
+    _running_runs.clear()
+    seen = {}
+
+    async def work(ctx):
+        seen["run_id"] = ctx.id
+        ctx.start()
+        return "done"
+
+    try:
+        assert asyncio.run(RunContext.run(work, description="wrapped")) == "done"
+
+        assert seen["run_id"] not in _running_runs
+        saved = RunContext.get(seen["run_id"])
+        assert saved.status == RunStatus.SUCCESS
+        assert saved.end_time is not None
+    finally:
+        _running_runs.clear()
+        config.reset()
+
+
+def test_run_context_run_preserves_function_finished_status(tmp_path):
+    config.set(Config())
+    config.basedir = tmp_path
+    cache._cache_file = tmp_path / "cache.json"
+    cache._data = {}
+    _running_runs.clear()
+    seen = {}
+
+    async def work(ctx):
+        seen["run_id"] = ctx.id
+        ctx.finish(RunStatus.NONEED, "already done")
+        return "done"
+
+    try:
+        assert asyncio.run(RunContext.run(work, description="wrapped")) == "done"
+
+        saved = RunContext.get(seen["run_id"])
+        assert saved.status == RunStatus.NONEED
+        assert saved.status_info == "already done"
+    finally:
+        _running_runs.clear()
+        config.reset()
 
 
 def test_run_context_ignores_invalid_children_cache(tmp_path):

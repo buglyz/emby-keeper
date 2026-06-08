@@ -263,12 +263,17 @@ class RunContext(BaseModel):
             task = asyncio.create_task(func(ctx))
             ctx._cancel = task.cancel
             try:
-                return await task
+                result = await task
+                if not ctx._finished.is_set():
+                    ctx.finish(RunStatus.SUCCESS)
+                return result
             except asyncio.CancelledError:
-                ctx.finish(RunStatus.CANCELLED, "任务被取消")
+                if not ctx._finished.is_set():
+                    ctx.finish(RunStatus.CANCELLED, "任务被取消")
                 raise
-            except Exception as e:
-                ctx.finish(RunStatus.ERROR, f"任务发生错误")
+            except Exception:
+                if not ctx._finished.is_set():
+                    ctx.finish(RunStatus.ERROR, "任务发生错误")
                 raise
 
         return runner()
