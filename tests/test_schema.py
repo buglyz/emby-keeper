@@ -1,7 +1,12 @@
 import pytest
 from pydantic import ValidationError
 
-from embykeeper.schema import Config
+from embykeeper.schema import Config, ConfigModel
+
+
+class MinimalConfig(ConfigModel):
+    beta: int = 1
+    alpha: int = 1
 
 
 def test_legacy_non_emby_config_sections_are_ignored():
@@ -18,6 +23,16 @@ def test_legacy_non_emby_config_sections_are_ignored():
     assert not hasattr(cfg, "telegram")
     assert not hasattr(cfg, "checkiner")
     assert not hasattr(cfg, "subsonic")
+
+
+def test_unknown_field_error_lists_are_deterministic():
+    with pytest.raises(ValidationError) as exc_info:
+        MinimalConfig(gamma=1, delta=2)
+
+    message = str(exc_info.value)
+
+    assert "包含未知设置项：delta, gamma" in message
+    assert "允许的设置项: alpha, beta" in message
 
 
 def test_legacy_emby_account_alias_does_not_mutate_source_dict():

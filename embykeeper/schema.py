@@ -21,7 +21,7 @@ class ConfigModel(BaseModel):
         extra_fields = set(values.keys()) - allowed_fields
         if extra_fields:
             raise ValueError(
-                f"包含未知设置项：{', '.join(extra_fields)}, 允许的设置项: {', '.join(allowed_fields)}"
+                f"包含未知设置项：{', '.join(sorted(extra_fields))}, 允许的设置项: {', '.join(sorted(allowed_fields))}"
             )
         return values
 
