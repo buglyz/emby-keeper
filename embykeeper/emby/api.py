@@ -354,8 +354,9 @@ class Emby:
             if resp.status_code == 200:
                 user = self._json_or_none(resp, dict)
                 if user is not None:
-                    self.set_credentials(self.token, user.get("Id") or self.user_id)
-                    return True
+                    user_id = self._normalize_user_id(user.get("Id")) or self.user_id
+                    self.set_credentials(self.token, user_id)
+                    return bool(self.user_id)
         resp = await self._request("GET", "/Users/Me", _login=True)
         if resp.status_code == 200:
             user = self._json_or_none(resp, dict)
@@ -372,7 +373,7 @@ class Emby:
         user = self._json_or_none(resp, dict)
         if user is None:
             return False
-        self.set_credentials(self.token, user.get("Id") or user_id)
+        self.set_credentials(self.token, self._normalize_user_id(user.get("Id")) or user_id)
         return bool(self.user_id)
 
     async def ensure_authenticated(self) -> bool:

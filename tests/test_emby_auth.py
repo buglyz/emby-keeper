@@ -151,6 +151,23 @@ def test_token_authentication_uses_stored_user_id(monkeypatch):
     assert emby.user_id == "user-1"
 
 
+def test_token_authentication_preserves_stored_user_id_when_response_id_is_invalid(monkeypatch):
+    account = EmbyAccount(url="https://example.com", username="alice")
+    emby = Emby(account)
+    emby.set_credentials("token-1", "user-1")
+
+    async def fake_request(method, path, _login=False, **kwargs):
+        assert method == "GET"
+        assert path == "/Users/user-1"
+        assert _login is True
+        return DummyResponse({"Id": True})
+
+    monkeypatch.setattr(emby, "_request", fake_request)
+
+    assert asyncio.run(emby.authenticate_with_token()) is True
+    assert emby.user_id == "user-1"
+
+
 def test_watch_retry_uses_default_when_global_emby_config_missing(monkeypatch):
     async def run_test():
         config.set(Config(emby=None))
@@ -255,6 +272,30 @@ def test_token_authentication_ignores_invalid_session_user_ids(monkeypatch):
         ("GET", "/Sessions", True),
         ("GET", "/Users/user-1", True),
     ]
+    assert emby.user_id == "user-1"
+
+
+def test_token_authentication_preserves_discovered_user_id_when_user_response_id_is_invalid(monkeypatch):
+    account = EmbyAccount(url="https://example.com", username="alice", device_id="device-1")
+    emby = Emby(account)
+    emby.set_credentials("token-1")
+
+    async def fake_request(method, path, _login=False, **kwargs):
+        assert method == "GET"
+        assert _login is True
+        if path == "/Users/Me":
+            resp = DummyResponse({})
+            resp.status_code = 500
+            resp.ok = False
+            return resp
+        if path == "/Sessions":
+            return DummyResponse([{"UserId": "user-1", "UserName": "alice", "DeviceId": "device-1"}])
+        assert path == "/Users/user-1"
+        return DummyResponse({"Id": True})
+
+    monkeypatch.setattr(emby, "_request", fake_request)
+
+    assert asyncio.run(emby.authenticate_with_token()) is True
     assert emby.user_id == "user-1"
 
 
