@@ -107,6 +107,16 @@ def test_reset_clears_registered_callbacks():
     assert manager._callbacks == {"change": {}, "list_change": {}}
 
 
+def test_basedir_ignores_blank_values(tmp_path):
+    manager = ConfigManager()
+    manager.basedir = tmp_path
+
+    manager.basedir = "   "
+
+    assert manager._basedir is None
+    assert manager.basedir != tmp_path
+
+
 def test_reload_conf_does_not_restart_same_file_observer(tmp_path, monkeypatch):
     async def run_test():
         config_file = tmp_path / "config.toml"

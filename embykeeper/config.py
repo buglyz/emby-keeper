@@ -55,6 +55,9 @@ class ConfigManager(ProxyBase):
 
     @basedir.setter
     def basedir(self, value):
+        if value is None or (isinstance(value, str) and not value.strip()):
+            self._basedir = None
+            return
         self._basedir = Path(value)
         if not self._basedir.is_dir():
             self._basedir.mkdir(parents=True, exist_ok=True)
