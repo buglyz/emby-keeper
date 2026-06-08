@@ -34,6 +34,9 @@ class Cache:
             try:
                 with open(self._cache_file, "r", encoding="utf-8") as f:
                     self._data = json.load(f)
+                if not isinstance(self._data, dict):
+                    logger.warning("缓存文件格式无效, 将使用全新缓存.")
+                    self._data = {}
             except json.JSONDecodeError:
                 logger.warning("缓存文件损坏, 将使用全新缓存.")
 

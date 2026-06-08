@@ -20,6 +20,19 @@ def test_json_cache_creates_parent_directory(tmp_path):
     config.reset()
 
 
+def test_json_cache_ignores_non_object_file(tmp_path):
+    config.set(Config())
+    config.basedir = tmp_path
+    (tmp_path / "cache.json").write_text("[]", encoding="utf-8")
+
+    cache = Cache()
+    cache.set("scheduler.example", {"next_time": "new"})
+
+    assert cache.get("scheduler.example") == {"next_time": "new"}
+
+    config.reset()
+
+
 def test_json_cache_writes_atomically(tmp_path):
     config.set(Config())
     config.basedir = tmp_path
