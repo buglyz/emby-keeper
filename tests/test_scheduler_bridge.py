@@ -675,6 +675,43 @@ def test_trigger_login_remembers_user_id(tmp_path, monkeypatch):
     asyncio.run(run_test())
 
 
+def test_trigger_login_succeeds_when_remembering_user_id_fails(tmp_path, monkeypatch):
+    async def run_test():
+        bridge = SchedulerBridge()
+        await bridge.initialize(tmp_path)
+
+        account_id = "alice@example.com"
+        bridge.add_account(
+            account_id,
+            {
+                "url": "https://example.com",
+                "username": "alice",
+                "encrypted_token": encrypt_token("token-1", tmp_path),
+                "enabled": True,
+            },
+        )
+
+        async def fake_authenticate(emby):
+            emby.set_credentials("token-1", "user-1")
+            return True
+
+        def fail_update(*_args, **_kwargs):
+            raise OSError("disk full")
+
+        monkeypatch.setattr(bridge, "_authenticate_emby", fake_authenticate)
+        monkeypatch.setattr(bridge.web_accounts, "update", fail_update)
+
+        result = await bridge.trigger_login(account_id)
+
+        assert result["status"] == "success"
+        assert bridge.web_accounts.get(account_id).get("user_id") is None
+        assert bridge.get_account_status(account_id)["is_online"] is True
+
+        await bridge.shutdown()
+
+    asyncio.run(run_test())
+
+
 def test_trigger_login_handles_invalid_encrypted_token(tmp_path):
     async def run_test():
         bridge = SchedulerBridge()

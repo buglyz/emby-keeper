@@ -256,7 +256,11 @@ class SchedulerBridge:
         if not user_id or account_data.get("user_id") == user_id:
             return
 
-        updated_id = self.web_accounts.update(account_id, {"user_id": user_id})
+        try:
+            updated_id = self.web_accounts.update(account_id, {"user_id": user_id})
+        except OSError as e:
+            logger.warning(f"Failed to remember Emby user id for {account_id}: {e}")
+            return
         if updated_id:
             account_data["user_id"] = user_id
             self._cache_account_credentials(account_data)
