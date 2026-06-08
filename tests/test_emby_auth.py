@@ -184,6 +184,20 @@ def test_invalid_cached_env_is_regenerated_from_account_settings():
     }
 
 
+def test_fake_env_reuses_cached_useragent_field(monkeypatch):
+    key = "emby.env.example.com.alice"
+    cache.set(key, {"useragent": "CachedClient/9.9"})
+    monkeypatch.setattr("embykeeper.emby.api.random.random", lambda: 0.9)
+    monkeypatch.setattr("embykeeper.emby.api.random.randint", lambda start, _end: start)
+    monkeypatch.setattr(Emby, "get_random_device", staticmethod(lambda: "Test Device"))
+    account = EmbyAccount(url="https://example.com", username="alice")
+
+    env = Emby(account).env
+
+    assert env.useragent == "CachedClient/9.9"
+    assert cache.get(key)["useragent"] == "CachedClient/9.9"
+
+
 def test_build_url_preserves_configured_base_path():
     account = EmbyAccount(url="https://example.com/emby", username="alice")
     emby = Emby(account)

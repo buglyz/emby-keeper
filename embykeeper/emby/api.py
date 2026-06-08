@@ -205,7 +205,13 @@ class Emby:
         client = self.a.client or cached_env.get("client") or ("Filebar" if is_filebar else "Fileball")
         device = self.a.device or cached_env.get("device") or self.get_random_device()
         device_id = self.a.device_id or cached_env.get("device_id") or str(uuid.uuid4()).upper()
-        useragent = self.useragent or self.a.useragent or cached_env.get("ua") or f"{client}/{version}"
+        useragent = (
+            self.useragent
+            or self.a.useragent
+            or cached_env.get("useragent")
+            or cached_env.get("ua")
+            or f"{client}/{version}"
+        )
 
         data = {
             "client": client,
