@@ -51,6 +51,8 @@ def _validate_server_fields(url: Optional[str] = None, time=None):
     if url is not None:
         from urllib.parse import urlparse
 
+        if any(ch.isspace() for ch in url):
+            raise HTTPException(status_code=400, detail="URL must not contain whitespace")
         parsed = urlparse(url)
         if parsed.scheme not in {"http", "https"}:
             raise HTTPException(status_code=400, detail="URL must start with http:// or https://")

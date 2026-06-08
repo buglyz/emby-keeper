@@ -256,6 +256,32 @@ def test_create_server_rejects_blank_token_without_saving(tmp_path):
     asyncio.run(run_test())
 
 
+def test_create_server_rejects_url_with_internal_whitespace(tmp_path):
+    async def run_test():
+        config.basedir = tmp_path
+        config.set(Config())
+        await bridge.initialize(tmp_path)
+
+        try:
+            with pytest.raises(HTTPException) as exc:
+                await create_server(
+                    EmbyServerCreate(
+                        url="https://exa mple.com",
+                        username="alice",
+                        auth_method="token",
+                        access_token="token-1",
+                    ),
+                    user="tester",
+                )
+
+            assert exc.value.status_code == 400
+            assert bridge.web_accounts.get_all() == {}
+        finally:
+            await reset_bridge()
+
+    asyncio.run(run_test())
+
+
 def test_create_server_rejects_blank_password_without_login(tmp_path, monkeypatch):
     async def run_test():
         config.basedir = tmp_path
