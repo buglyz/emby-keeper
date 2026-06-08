@@ -20,14 +20,19 @@ logger = logger.bind(scheme="embykeeperapi")
 WEB_ACCOUNTS_FILE = "web_accounts.json"
 
 
-def _is_valid_account_record(data) -> bool:
-    return (
-        isinstance(data, dict)
-        and isinstance(data.get("url"), str)
-        and bool(data["url"].strip())
-        and isinstance(data.get("username"), str)
-        and bool(data["username"].strip())
-    )
+def _sanitize_account_record(data) -> Optional[dict]:
+    if not isinstance(data, dict):
+        return None
+    sanitized = deepcopy(data)
+    for field in ("url", "username"):
+        value = sanitized.get(field)
+        if not isinstance(value, str):
+            return None
+        value = value.strip()
+        if not value:
+            return None
+        sanitized[field] = value
+    return sanitized
 
 
 def _backup_invalid_accounts_file(filepath: Path) -> bool:
@@ -63,9 +68,22 @@ class WebAccountData:
                     data = json.load(f)
                 if not isinstance(data, dict):
                     raise ValueError("web accounts data must be an object")
-                valid_data = {k: v for k, v in data.items() if _is_valid_account_record(v)}
+                valid_data = {}
+                for key, value in data.items():
+                    sanitized = _sanitize_account_record(value)
+                    if sanitized is not None:
+                        valid_data[key] = sanitized
                 if len(valid_data) != len(data):
                     logger.warning("Web accounts file contains invalid account records; backing up original.")
+                    if _backup_invalid_accounts_file(filepath):
+                        try:
+                            self._save(valid_data)
+                        except OSError as e:
+                            logger.warning(f"Failed to write sanitized web accounts file: {e}")
+                elif valid_data != data:
+                    logger.warning(
+                        "Web accounts file contains unnormalized account records; backing up original."
+                    )
                     if _backup_invalid_accounts_file(filepath):
                         try:
                             self._save(valid_data)

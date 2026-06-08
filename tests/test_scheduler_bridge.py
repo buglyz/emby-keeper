@@ -389,6 +389,43 @@ def test_web_account_data_filters_non_string_required_fields(tmp_path):
     assert "numeric-username" in backup_data
 
 
+def test_web_account_data_trims_required_fields_from_legacy_file(tmp_path):
+    accounts_file = tmp_path / "web_accounts.json"
+    accounts_file.write_text(
+        json.dumps(
+            {
+                "alice@example.com": {
+                    "url": " https://example.com ",
+                    "username": " alice ",
+                    "encrypted_token": "token-1",
+                }
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    accounts = WebAccountData(tmp_path)
+
+    expected = {
+        "alice@example.com": {
+            "url": "https://example.com",
+            "username": "alice",
+            "encrypted_token": "token-1",
+        }
+    }
+    assert accounts.get_all() == expected
+    assert json.loads(accounts_file.read_text(encoding="utf-8")) == expected
+    backups = list(tmp_path.glob("web_accounts.json.corrupt.*"))
+    assert len(backups) == 1
+    assert json.loads(backups[0].read_text(encoding="utf-8")) == {
+        "alice@example.com": {
+            "url": " https://example.com ",
+            "username": " alice ",
+            "encrypted_token": "token-1",
+        }
+    }
+
+
 def test_web_account_data_keeps_memory_unchanged_when_save_fails(tmp_path, monkeypatch):
     accounts = WebAccountData(tmp_path)
     accounts.add("alice@example.com", {"username": "alice"})
