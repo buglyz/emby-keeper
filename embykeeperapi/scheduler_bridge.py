@@ -9,7 +9,7 @@ from typing import Dict, List, Optional
 from loguru import logger
 
 from embykeeper.config import config
-from embykeeper.schema import Config, EmbyAccount
+from embykeeper.schema import Config, EmbyAccount, EmbyConfig
 
 from .crypto import decrypt_token
 
@@ -295,7 +295,9 @@ class SchedulerBridge:
         if not loaded:
             logger.warning("No valid config loaded; using defaults for API-managed accounts.")
             config.set(Config())
-        self._base_emby_accounts = list(config.emby.account or [])
+        if config._cache.emby is None:
+            config.set(config._cache.model_copy(update={"emby": EmbyConfig()}))
+        self._base_emby_accounts = list(config._cache.emby.account or [])
 
         # Merge web-managed accounts into the config
         self._merge_accounts()
@@ -326,8 +328,9 @@ class SchedulerBridge:
         all_accounts = self._base_emby_accounts + web_accounts
 
         # Update config
+        emby_config = config._cache.emby or EmbyConfig()
         new_config = config._cache.model_copy(
-            update={"emby": config._cache.emby.model_copy(update={"account": all_accounts})}
+            update={"emby": emby_config.model_copy(update={"account": all_accounts})}
         )
         config.set(new_config)
 

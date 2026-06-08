@@ -7,6 +7,7 @@ import pytest
 from embykeeper.cache import cache
 from embykeeper.config import config
 from embykeeper.emby.api import Emby
+from embykeeper.schema import Config
 from embykeeperapi.crypto import encrypt_token
 from embykeeperapi.scheduler_bridge import SchedulerBridge, WebAccountData
 
@@ -167,6 +168,18 @@ def test_api_bridge_skips_malformed_web_account_credentials(tmp_path):
             await bridge.shutdown()
 
     asyncio.run(run_test())
+
+
+def test_api_bridge_merge_accounts_creates_missing_emby_config(tmp_path):
+    config.basedir = tmp_path
+    config.set(Config(emby=None))
+    bridge = SchedulerBridge()
+    bridge.web_accounts = WebAccountData(tmp_path)
+
+    bridge._merge_accounts()
+
+    assert config._cache.emby is not None
+    assert config._cache.emby.account == []
 
 
 def test_api_bridge_skips_invalid_encrypted_token_cache_on_initialize(tmp_path):
