@@ -2,9 +2,7 @@
 import {
   VTermynal,
   VtInput,
-  VtProgress,
   VtText,
-  VtSpinner,
 } from '@lehoczky/vue-termynal';
 </script>
 
