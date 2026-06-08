@@ -55,6 +55,20 @@ def test_apprise_stream_skips_notify_when_uri_is_invalid(monkeypatch):
     stream.write("plain message")
 
 
+def test_apprise_stream_skips_notify_when_uri_add_raises(monkeypatch):
+    class DummyApprise:
+        def add(self, _uri):
+            raise RuntimeError("invalid uri")
+
+        def notify(self, **_kwargs):
+            raise AssertionError("notify should not be called when uri setup fails")
+
+    monkeypatch.setattr("embykeeper.apprise.apprise.Apprise", DummyApprise)
+
+    stream = AppriseStream("invalid://uri")
+    stream.write("plain message")
+
+
 def test_apprise_stream_ignores_notify_exceptions(monkeypatch):
     class DummyApprise:
         def add(self, _uri):

@@ -8,7 +8,12 @@ logger = logger.bind(scheme="notifier", nonotify=True)
 class AppriseStream:
     def __init__(self, uri: str):
         self.apobj = apprise.Apprise()
-        self.ready = bool(self.apobj.add(uri))
+        self.ready = False
+        try:
+            self.ready = bool(self.apobj.add(uri))
+        except Exception as e:
+            logger.warning(f"Failed to configure Apprise notification URI: {type(e).__name__}.")
+            return
         if not self.ready:
             logger.warning("Failed to configure Apprise notification URI.")
 
