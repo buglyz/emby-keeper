@@ -999,6 +999,63 @@ def test_audio_stream_index_ignores_non_object_media_streams():
     ) == 2
 
 
+def test_item_list_methods_return_empty_lists_for_invalid_json(monkeypatch):
+    async def run_test():
+        account = EmbyAccount(url="https://example.com", username="alice")
+        emby = Emby(account)
+        emby.set_credentials("token-1", "user-1")
+
+        async def fake_request(method, path, **kwargs):
+            return BrokenJsonResponse()
+
+        monkeypatch.setattr(emby, "_request", fake_request)
+
+        assert await emby.get_latest_items() == []
+        assert await emby.get_resume_items() == []
+        assert await emby.get_folder_items("folder-1") == []
+
+    asyncio.run(run_test())
+
+
+def test_folder_items_ignore_invalid_items_shape(monkeypatch):
+    async def run_test():
+        account = EmbyAccount(url="https://example.com", username="alice")
+        emby = Emby(account)
+        emby.set_credentials("token-1", "user-1")
+
+        async def fake_request(method, path, **kwargs):
+            return DummyResponse({"Items": "invalid"})
+
+        monkeypatch.setattr(emby, "_request", fake_request)
+
+        assert await emby.get_folder_items("folder-1") == []
+
+    asyncio.run(run_test())
+
+
+def test_main_page_ignores_invalid_listing_json(monkeypatch):
+    async def run_test():
+        account = EmbyAccount(url="https://example.com", username="alice")
+        emby = Emby(account)
+        emby.set_credentials("token-1", "user-1")
+
+        async def fake_request(method, path, **kwargs):
+            return BrokenJsonResponse()
+
+        original_sleep = asyncio.sleep
+
+        async def fake_sleep(_seconds):
+            await original_sleep(0)
+
+        monkeypatch.setattr(emby, "_request", fake_request)
+        monkeypatch.setattr("embykeeper.emby.api.asyncio.sleep", fake_sleep)
+
+        assert await emby.load_main_page() is None
+        assert emby.items == {}
+
+    asyncio.run(run_test())
+
+
 @pytest.mark.parametrize(
     ("item", "expected"),
     [

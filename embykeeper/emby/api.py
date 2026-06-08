@@ -287,6 +287,19 @@ class Emby:
             return None
         return data
 
+    @staticmethod
+    def _json_list_or_empty(resp: Response):
+        data = Emby._json_or_none(resp, list)
+        return data if data is not None else []
+
+    @staticmethod
+    def _json_items_or_empty(resp: Response):
+        data = Emby._json_or_none(resp, dict)
+        if data is None:
+            return []
+        items = data.get("Items", [])
+        return items if isinstance(items, list) else []
+
     async def _discover_user_id_from_sessions(self) -> Optional[str]:
         resp = await self._request("GET", "/Sessions", _login=True)
         if resp.status_code != 200:
@@ -1056,7 +1069,9 @@ class Emby:
         )
 
         col_ids = []
-        for i in views.json().get("Items", []):
+        for i in self._json_items_or_empty(views):
+            if not isinstance(i, dict):
+                continue
             cid: str = i.get("Id", None)
             type: str = i.get("CollectionType")
             if cid and type and type.lower() in ("movies", "tvshows"):
@@ -1064,7 +1079,8 @@ class Emby:
         await asyncio.sleep(random.uniform(0.1, 0.3))
 
         user = await self._request(method="GET", path=f"/Users/{self.user_id}")
-        last_login_date = user.json().get("LastLoginDate", None)
+        user_data = self._json_or_none(user, dict) or {}
+        last_login_date = user_data.get("LastLoginDate", None)
         await asyncio.sleep(random.uniform(0.1, 0.3))
 
         await self._request(
@@ -1138,7 +1154,7 @@ class Emby:
                 **kw,
             },
         )
-        return resp.json()
+        return self._json_list_or_empty(resp)
 
     async def get_resume_items(
         self,
@@ -1166,7 +1182,7 @@ class Emby:
                 **kw,
             },
         )
-        return resp.json()
+        return self._json_list_or_empty(resp)
 
     async def get_folder_items(
         self,
@@ -1197,7 +1213,7 @@ class Emby:
                 **kw,
             },
         )
-        return resp.json().get("Items", [])
+        return self._json_items_or_empty(resp)
 
     async def get_item(self, iid, **kw) -> dict:
         resp = await self._request(method="GET", path=f"/Users/{self.user_id}/Items/{iid}")
