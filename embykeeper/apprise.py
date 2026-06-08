@@ -8,9 +8,13 @@ logger = logger.bind(scheme="notifier", nonotify=True)
 class AppriseStream:
     def __init__(self, uri: str):
         self.apobj = apprise.Apprise()
-        self.apobj.add(uri)
+        self.ready = bool(self.apobj.add(uri))
+        if not self.ready:
+            logger.warning("Failed to configure Apprise notification URI.")
 
     def write(self, message):
+        if not self.ready:
+            return
         # The message from loguru has a newline at the end, remove it.
         message = message.strip()
         if not message:

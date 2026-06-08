@@ -41,6 +41,20 @@ def test_apprise_stream_sends_plain_message_without_level_prefix(monkeypatch):
     assert calls[0]["body"] == "plain message"
 
 
+def test_apprise_stream_skips_notify_when_uri_is_invalid(monkeypatch):
+    class DummyApprise:
+        def add(self, _uri):
+            return False
+
+        def notify(self, **_kwargs):
+            raise AssertionError("notify should not be called for invalid uri")
+
+    monkeypatch.setattr("embykeeper.apprise.apprise.Apprise", DummyApprise)
+
+    stream = AppriseStream("invalid://uri")
+    stream.write("plain message")
+
+
 def test_apprise_stream_keeps_body_when_markup_is_invalid(monkeypatch):
     calls = []
 
