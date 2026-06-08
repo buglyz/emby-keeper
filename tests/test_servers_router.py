@@ -308,6 +308,33 @@ def test_create_server_rejects_url_userinfo(tmp_path):
     asyncio.run(run_test())
 
 
+@pytest.mark.parametrize("url", ["https://example.com?token=secret", "https://example.com/#/home"])
+def test_create_server_rejects_url_query_or_fragment(tmp_path, url):
+    async def run_test():
+        config.basedir = tmp_path
+        config.set(Config())
+        await bridge.initialize(tmp_path)
+
+        try:
+            with pytest.raises(HTTPException) as exc:
+                await create_server(
+                    EmbyServerCreate(
+                        url=url,
+                        username="alice",
+                        auth_method="token",
+                        access_token="token-1",
+                    ),
+                    user="tester",
+                )
+
+            assert exc.value.status_code == 400
+            assert bridge.web_accounts.get_all() == {}
+        finally:
+            await reset_bridge()
+
+    asyncio.run(run_test())
+
+
 def test_create_server_rejects_blank_password_without_login(tmp_path, monkeypatch):
     async def run_test():
         config.basedir = tmp_path

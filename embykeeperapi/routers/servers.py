@@ -60,6 +60,8 @@ def _validate_server_fields(url: Optional[str] = None, time=None):
             raise HTTPException(status_code=400, detail="URL must contain a valid hostname")
         if parsed.username or parsed.password:
             raise HTTPException(status_code=400, detail="URL must not contain username or password")
+        if parsed.query or parsed.fragment:
+            raise HTTPException(status_code=400, detail="URL must not contain query or fragment")
 
     if time is not None:
         if isinstance(time, (list, tuple)):
