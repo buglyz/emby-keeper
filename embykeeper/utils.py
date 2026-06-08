@@ -343,7 +343,7 @@ def distribute_numbers(min_value, max_value, num_elements=1, min_distance=0, max
     if min_distance < 0:
         raise ValueError("invalid distance range.")
 
-    if max_distance and max_distance < min_distance:
+    if max_distance is not None and max_distance < min_distance:
         raise ValueError("invalid distance range.")
 
     numbers = sorted(base)
@@ -379,7 +379,7 @@ def distribute_numbers(min_value, max_value, num_elements=1, min_distance=0, max
         d = r[1] - r[0]
         min_v = r[0] + min_distance if r[0] == min_value else r[0]
         max_v = r[1]
-        if max_distance and d > max_distance:
+        if max_distance is not None and d > max_distance:
             value = random.uniform(min_v, r[0] + max_distance - min_distance)
         else:
             value = random.uniform(min_v, max_v)

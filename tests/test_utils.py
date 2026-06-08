@@ -60,6 +60,11 @@ def test_distribute_numbers_rejects_negative_min_distance():
         distribute_numbers(0, 10, min_distance=-1)
 
 
+def test_distribute_numbers_rejects_max_distance_below_min_distance():
+    with pytest.raises(ValueError):
+        distribute_numbers(0, 10, min_distance=1, max_distance=0)
+
+
 def test_async_task_pool_yields_all_precompleted_tasks():
     async def run_test():
         pool = AsyncTaskPool()
