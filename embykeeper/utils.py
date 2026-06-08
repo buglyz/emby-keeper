@@ -345,6 +345,15 @@ def distribute_numbers(min_value, max_value, num_elements=1, min_distance=0, max
         raise ValueError("invalid distance range.")
 
     numbers = sorted(base)
+    for value in numbers:
+        if value < min_value or value > max_value:
+            raise ValueError("base values must be within value range.")
+    for left, right in zip(numbers, numbers[1:]):
+        distance = right - left
+        if distance < min_distance:
+            raise ValueError("base values violate distance range.")
+        if max_distance is not None and distance > max_distance:
+            raise ValueError("base values violate distance range.")
     results = []
 
     for _ in range(num_elements):

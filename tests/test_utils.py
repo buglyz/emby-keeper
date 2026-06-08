@@ -74,6 +74,19 @@ def test_distribute_numbers_rejects_max_distance_below_min_distance():
         distribute_numbers(0, 10, min_distance=1, max_distance=0)
 
 
+def test_distribute_numbers_rejects_base_values_outside_range():
+    with pytest.raises(ValueError):
+        distribute_numbers(0, 10, base=[11])
+
+
+def test_distribute_numbers_rejects_base_values_violating_distance_range():
+    with pytest.raises(ValueError):
+        distribute_numbers(0, 10, min_distance=3, base=[1, 2])
+
+    with pytest.raises(ValueError):
+        distribute_numbers(0, 10, max_distance=3, base=[1, 5])
+
+
 def test_async_task_pool_yields_all_precompleted_tasks():
     async def run_test():
         pool = AsyncTaskPool()
