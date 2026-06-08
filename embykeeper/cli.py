@@ -306,7 +306,7 @@ async def main(
         except Exception as e:
             logger.error(f"MongoDB 缓存连接失败: {e}, 程序将退出.")
             show_exception(e, regular=False)
-            return
+            raise typer.Exit(1)
     else:
         try:
             from .cache import cache
@@ -317,7 +317,7 @@ async def main(
         except Exception as e:
             logger.error(f"本地缓存读写失败: {e}, 请使用 MongoDB 缓存, 程序将退出.")
             show_exception(e, regular=False)
-            return
+            raise typer.Exit(1)
 
     if clean:
         from .clean import cleaner

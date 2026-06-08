@@ -21,6 +21,8 @@ from . import var
 from .cli import app as cli
 from .config import config
 
+NO_INSTANT_FLAGS = {"-I", "--no-instant"}
+
 
 def generate_config():
     config.basedir.mkdir(parents=True, exist_ok=True)
@@ -80,10 +82,10 @@ def main():
     os.system("cls")
     var.console.rule("Embykeeper")
     args = sys.argv[1:]
-    if "-I" in args:
-        args = sys.argv[1:] + ["-W"]
+    if any(arg in NO_INSTANT_FLAGS for arg in args):
+        args = args + ["-W"]
     else:
-        args = sys.argv[1:] + ["-W", "-i"]
+        args = args + ["-W", "-i"]
     cli(args)
 
 
