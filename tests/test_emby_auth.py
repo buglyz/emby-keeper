@@ -85,6 +85,51 @@ def test_user_id_cache_without_token_does_not_authenticate(monkeypatch):
     assert emby.user_id == "user-1"
 
 
+def test_cached_credentials_read_failure_does_not_break_token_lookup(monkeypatch):
+    account = EmbyAccount(url="https://example.com", username="alice")
+    emby = Emby(account)
+
+    def fail_get(_key, default=None):
+        raise OSError("read failed")
+
+    monkeypatch.setattr("embykeeper.emby.api.cache.get", fail_get)
+
+    assert emby.token is None
+    assert emby.user_id is None
+
+
+def test_set_credentials_survives_cache_write_failure(monkeypatch):
+    account = EmbyAccount(url="https://example.com", username="alice")
+    emby = Emby(account)
+
+    def fail_set(_key, _value):
+        raise OSError("write failed")
+
+    monkeypatch.setattr("embykeeper.emby.api.cache.set", fail_set)
+
+    emby.set_credentials("token-1", "user-1")
+
+    assert emby.token == "token-1"
+    assert emby.user_id == "user-1"
+
+
+def test_clear_credentials_survives_cache_delete_failure(monkeypatch):
+    account = EmbyAccount(url="https://example.com", username="alice")
+    emby = Emby(account)
+    emby._token = "token-1"
+    emby._user_id = "user-1"
+
+    def fail_delete(_key):
+        raise OSError("delete failed")
+
+    monkeypatch.setattr("embykeeper.emby.api.cache.delete", fail_delete)
+
+    emby.set_credentials(None)
+
+    assert emby.token is None
+    assert emby.user_id is None
+
+
 def test_token_authentication_uses_stored_user_id(monkeypatch):
     account = EmbyAccount(url="https://example.com", username="alice")
     emby = Emby(account)

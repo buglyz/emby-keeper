@@ -99,12 +99,28 @@ class Emby:
         return self._user_id
 
     def _get_cached_dict(self, key: str, name: str) -> dict:
-        data = cache.get(key, {})
+        try:
+            data = cache.get(key, {})
+        except Exception as e:
+            self.log.warning(f"{name}缓存读取失败, 已忽略: {type(e).__name__}")
+            return {}
         if isinstance(data, dict):
             return data
         self.log.warning(f"{name}缓存格式无效, 将重新生成.")
-        cache.delete(key)
+        self._cache_delete(key, name)
         return {}
+
+    def _cache_set(self, key: str, value, name: str):
+        try:
+            cache.set(key, value)
+        except Exception as e:
+            self.log.warning(f"{name}缓存写入失败, 已忽略: {type(e).__name__}")
+
+    def _cache_delete(self, key: str, name: str):
+        try:
+            cache.delete(key)
+        except Exception as e:
+            self.log.warning(f"{name}缓存删除失败, 已忽略: {type(e).__name__}")
 
     def _credentials_cache_key(self) -> str:
         return f"emby.credential.{self.hostname}.{self.a.username}"
@@ -137,7 +153,7 @@ class Emby:
             self._user_id = None
             if data:
                 self.log.warning("登录凭据缓存内容无效, 将重新登录.")
-                cache.delete(cache_key)
+                self._cache_delete(cache_key, "登录凭据")
             return
         self._token = token
         self._user_id = user_id
@@ -145,7 +161,7 @@ class Emby:
             cache_data = {"token": token}
             if user_id:
                 cache_data["userid"] = user_id
-            cache.set(cache_key, cache_data)
+            self._cache_set(cache_key, cache_data, "登录凭据")
 
     def _load_env(self):
         cache_key = f"emby.env.{self.hostname}.{self.a.username}"
@@ -167,7 +183,7 @@ class Emby:
             if should_clear:
                 logger.info("账户设置已修改, 将重新生成环境 (Headers).")
                 self._env = None
-                cache.delete(cache_key)
+                self._cache_delete(cache_key, "模拟设备信息")
             else:
                 try:
                     self._env = EmbyEnv.model_validate(data)
@@ -258,7 +274,7 @@ class Emby:
         }
 
         env = EmbyEnv(**data)
-        cache.set(cache_key, data)
+        self._cache_set(cache_key, data, "模拟设备信息")
         return env
 
     def set_credentials(self, token: str, user_id: str = None):
@@ -267,7 +283,7 @@ class Emby:
         if not token:
             self._token = None
             self._user_id = None
-            cache.delete(self._credentials_cache_key())
+            self._cache_delete(self._credentials_cache_key(), "登录凭据")
             return
 
         self._token = token
@@ -275,7 +291,7 @@ class Emby:
         cache_data = {"token": token}
         if user_id:
             cache_data["userid"] = user_id
-        cache.set(self._credentials_cache_key(), cache_data)
+        self._cache_set(self._credentials_cache_key(), cache_data, "登录凭据")
 
     @staticmethod
     def _json_or_none(resp: Response, expected_type=None):
