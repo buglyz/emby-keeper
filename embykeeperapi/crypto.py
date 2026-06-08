@@ -98,12 +98,16 @@ def get_fernet(basedir: Path) -> Fernet:
 
 def encrypt_token(plain_token: str, basedir: Path) -> str:
     """Encrypt a token string, returns base64-encoded encrypted string."""
+    if not isinstance(plain_token, str) or not plain_token:
+        raise ValueError("plain_token must be a non-empty string")
     f = get_fernet(basedir)
     return f.encrypt(plain_token.encode()).decode()
 
 
 def decrypt_token(encrypted_token: str, basedir: Path) -> str:
     """Decrypt an encrypted token string."""
+    if not isinstance(encrypted_token, str) or not encrypted_token:
+        raise ValueError("encrypted_token must be a non-empty string")
     f = get_fernet(basedir)
     return f.decrypt(encrypted_token.encode()).decode()
 

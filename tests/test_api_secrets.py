@@ -163,3 +163,15 @@ def test_existing_valid_fernet_secret_key_is_used_as_is(tmp_path, monkeypatch):
 
     assert stat.S_IMODE(key_file.stat().st_mode) == 0o600
     assert Fernet(key).decrypt(encrypted.encode()).decode() == "emby-token"
+
+
+@pytest.mark.parametrize("plain_token", ["", None, 123, True])
+def test_encrypt_token_rejects_invalid_plain_tokens(tmp_path, plain_token):
+    with pytest.raises(ValueError):
+        encrypt_token(plain_token, tmp_path)
+
+
+@pytest.mark.parametrize("encrypted_token", ["", None, 123, True])
+def test_decrypt_token_rejects_invalid_ciphertexts(tmp_path, encrypted_token):
+    with pytest.raises(ValueError):
+        decrypt_token(encrypted_token, tmp_path)
