@@ -68,6 +68,24 @@ def test_run_context_prepare_replaces_invalid_children_cache(tmp_path, monkeypat
         config.reset()
 
 
+def test_run_context_prepare_survives_children_cache_save_failure(monkeypatch):
+    _running_runs.clear()
+    monkeypatch.setattr("embykeeper.runinfo.random.choices", lambda *_args, **_kwargs: list("CHILD2"))
+
+    def fail_set(key, value):
+        if key == "runinfo.children.PARENT":
+            raise OSError("write failed")
+
+    monkeypatch.setattr("embykeeper.runinfo.cache.set", fail_set)
+
+    try:
+        run = RunContext.prepare("child", parent_ids=["PARENT"])
+        assert run.id == "CHILD2"
+        assert _running_runs["CHILD2"] is run
+    finally:
+        _running_runs.clear()
+
+
 def test_run_context_finish_survives_cache_save_failure(monkeypatch):
     _running_runs.clear()
     run = RunContext(id="FAILSAVE")

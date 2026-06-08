@@ -161,12 +161,15 @@ class RunContext(BaseModel):
         # 如果有父任务, 记录父子关系
         if parent_ids:
             for parent_id in parent_ids:
-                children = cache.get(f"runinfo.children.{parent_id}", [])
-                if not isinstance(children, list):
-                    children = []
-                if run_id not in children:
-                    children.append(run_id)
-                    cache.set(f"runinfo.children.{parent_id}", children)
+                try:
+                    children = cache.get(f"runinfo.children.{parent_id}", [])
+                    if not isinstance(children, list):
+                        children = []
+                    if run_id not in children:
+                        children.append(run_id)
+                        cache.set(f"runinfo.children.{parent_id}", children)
+                except Exception as e:
+                    logger.warning(f"运行记录 {run_id} 的父子关系保存失败, 已忽略: {type(e).__name__}")
 
         return run
 
