@@ -143,7 +143,10 @@ def check_rate_limit(ip: str) -> bool:
             del _failed_attempts[k]
     attempts = _failed_attempts.get(ip, [])
     attempts = [t for t in attempts if now - t < 3600]
-    _failed_attempts[ip] = attempts
+    if attempts:
+        _failed_attempts[ip] = attempts
+    else:
+        _failed_attempts.pop(ip, None)
     return len(attempts) < MAX_FAILED_PER_HOUR
 
 
