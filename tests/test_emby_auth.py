@@ -1493,6 +1493,13 @@ def test_watch_returns_false_when_no_items():
     assert asyncio.run(emby.watch()) is False
 
 
+def test_watch_returns_false_when_time_is_none():
+    account = EmbyAccount(url="https://example.com", username="alice", time=None)
+    emby = Emby(account)
+
+    assert asyncio.run(emby.watch()) is False
+
+
 def test_watch_returns_false_when_all_items_are_too_short():
     account = EmbyAccount(
         url="https://example.com",

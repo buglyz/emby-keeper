@@ -1309,7 +1309,9 @@ class Emby:
                 req_time = random.uniform(*self.a.time)
             else:
                 req_time = self.a.time
-        except TypeError:
+            if not isinstance(req_time, (int, float)) or isinstance(req_time, bool):
+                raise TypeError
+        except (TypeError, ValueError):
             self.log.warning(f"无法解析 time 配置, 请检查配置: {self.a.time} (应该为数字或两个数字的数组).")
             return False
         msg = " (允许播放多个)" if self.a.allow_multiple else ""
