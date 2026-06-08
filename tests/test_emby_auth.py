@@ -907,6 +907,33 @@ def test_play_fails_when_stream_request_fails(monkeypatch):
     asyncio.run(run_test())
 
 
+def test_play_fails_when_playback_info_json_is_invalid(monkeypatch):
+    async def run_test():
+        account = EmbyAccount(
+            url="https://example.com",
+            username="alice",
+            client="Fileball",
+            client_version="1.3.30",
+            device="Test Device",
+            device_id="test-device-id",
+            useragent="Fileball/1.3.30",
+        )
+        emby = Emby(account)
+        emby.set_credentials("token-1", "user-1")
+
+        async def fake_request(method, path, **kwargs):
+            if path.endswith("/PlaybackInfo"):
+                return BrokenJsonResponse()
+            return DummyResponse({})
+
+        monkeypatch.setattr(emby, "_request", fake_request)
+
+        with pytest.raises(EmbyPlayError, match="播放信息"):
+            await emby.play({"Id": "item-1", "Name": "Movie"}, time=1)
+
+    asyncio.run(run_test())
+
+
 def test_watch_returns_false_when_no_items():
     account = EmbyAccount(url="https://example.com", username="alice", time=30)
     emby = Emby(account)

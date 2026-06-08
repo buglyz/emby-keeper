@@ -760,7 +760,9 @@ class Emby:
             ),
             json=playback_info_data,
         )
-        playback_info = resp.json()
+        playback_info = self._json_or_none(resp, dict)
+        if playback_info is None:
+            raise EmbyPlayError("服务器未返回可解析播放信息")
 
         play_session_id = playback_info.get("PlaySessionId", "")
         media_source = self._first_media_source(playback_info)
