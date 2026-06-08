@@ -960,6 +960,19 @@ def test_audio_stream_index_ignores_non_object_media_streams():
     ) == 2
 
 
+@pytest.mark.parametrize(
+    ("item", "expected"),
+    [
+        (None, 0),
+        ({"UserData": []}, 0),
+        ({"UserData": {"PlayCount": True}}, 0),
+        ({"UserData": {"PlayCount": 2}}, 2),
+    ],
+)
+def test_item_play_count_handles_invalid_shapes(item, expected):
+    assert Emby._item_play_count(item) == expected
+
+
 def test_watch_returns_false_when_no_items():
     account = EmbyAccount(url="https://example.com", username="alice", time=30)
     emby = Emby(account)

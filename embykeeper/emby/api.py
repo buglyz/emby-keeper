@@ -549,6 +549,18 @@ class Emby:
                 return stream_info["Index"]
         return None
 
+    @staticmethod
+    def _item_play_count(item) -> int:
+        if not isinstance(item, dict):
+            return 0
+        user_data = item.get("UserData") or {}
+        if not isinstance(user_data, dict):
+            return 0
+        play_count = user_data.get("PlayCount", 0)
+        if isinstance(play_count, bool) or not isinstance(play_count, int):
+            return 0
+        return play_count
+
     async def use_cfsolver(self):
         from embykeeper.cloudflare import get_cf_clearance
 
@@ -1225,7 +1237,7 @@ class Emby:
                         await self.play(item, time=play_time)
                         await asyncio.sleep(random.random())
                         item = await self.get_item(iid)
-                        play_count = item.get("UserData", {}).get("PlayCount", 0)
+                        play_count = self._item_play_count(item)
                         if play_count < 1:
                             raise EmbyPlayError("播放后播放数低于 1")
                         self.log.info(f"[yellow]成功播放视频[/], 当前该视频播放 {play_count} 次.")
