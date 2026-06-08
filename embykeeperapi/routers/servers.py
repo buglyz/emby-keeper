@@ -133,8 +133,26 @@ def _normalize_auth_method(value):
     return value
 
 
-def _has_nonblank_text(value) -> bool:
-    return isinstance(value, str) and bool(value.strip())
+def _has_supplied_credential(source, fields_set: set, field: str) -> bool:
+    if field not in fields_set:
+        return False
+    value = getattr(source, field)
+    if value is None:
+        return False
+    if not isinstance(value, str):
+        raise HTTPException(status_code=400, detail=f"{field} must be a string")
+    return bool(value.strip())
+
+
+def _validate_credential_selection(auth_method: str, has_access_token: bool, has_password: bool):
+    if has_access_token and has_password:
+        raise HTTPException(status_code=400, detail="Provide either access_token or password, not both")
+    if auth_method == "token" and has_password:
+        raise HTTPException(status_code=400, detail="password cannot be supplied when auth_method is 'token'")
+    if auth_method == "password" and has_access_token:
+        raise HTTPException(
+            status_code=400, detail="access_token cannot be supplied when auth_method is 'password'"
+        )
 
 
 def _normalized_optional_text_updates(source) -> dict:
@@ -254,6 +272,10 @@ async def create_server(req: EmbyServerCreate, user: str = Depends(get_current_u
     time_range = _normalize_optional_text(req.time_range, "time_range")
     bool_values = {field: _normalize_bool(getattr(req, field), field) for field in BOOLEAN_FIELDS}
     auth_method = _normalize_auth_method(req.auth_method)
+    fields_set = _model_fields_set(req)
+    has_access_token = _has_supplied_credential(req, fields_set, "access_token")
+    has_password = _has_supplied_credential(req, fields_set, "password")
+    _validate_credential_selection(auth_method, has_access_token, has_password)
     name = optional_text["name"]
     _validate_server_fields(url=url, time=req.time)
     _validate_account_schedule(interval_days, time_range)
@@ -389,10 +411,17 @@ async def update_server(
         )
 
     auth_method = _normalize_auth_method(req.auth_method) if "auth_method" in fields_set else None
-    has_access_token = (
-        "access_token" in fields_set and req.access_token is not None and _has_nonblank_text(req.access_token)
-    )
-    has_password = "password" in fields_set and req.password is not None and _has_nonblank_text(req.password)
+    has_access_token = _has_supplied_credential(req, fields_set, "access_token")
+    has_password = _has_supplied_credential(req, fields_set, "password")
+    if auth_method is not None:
+        requested_auth_method = auth_method
+    elif has_access_token:
+        requested_auth_method = "token"
+    elif has_password:
+        requested_auth_method = "password"
+    else:
+        requested_auth_method = existing.get("auth_method", "token")
+    _validate_credential_selection(requested_auth_method, has_access_token, has_password)
     if auth_method is not None:
         if auth_method != existing.get("auth_method", "token") and not (has_access_token or has_password):
             raise HTTPException(

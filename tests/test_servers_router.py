@@ -651,6 +651,37 @@ def test_create_server_normalizes_auth_method(tmp_path):
     asyncio.run(run_test())
 
 
+def test_create_server_rejects_credential_auth_method_conflict(tmp_path, monkeypatch):
+    async def run_test():
+        config.basedir = tmp_path
+        config.set(Config())
+        await bridge.initialize(tmp_path)
+
+        async def fail_login(_self):
+            raise AssertionError("login should not be called for conflicting credentials")
+
+        monkeypatch.setattr(Emby, "login", fail_login)
+
+        try:
+            with pytest.raises(HTTPException) as exc:
+                await create_server(
+                    EmbyServerCreate(
+                        url="https://example.com",
+                        username="alice",
+                        auth_method="password",
+                        access_token="token-1",
+                    ),
+                    user="tester",
+                )
+
+            assert exc.value.status_code == 400
+            assert bridge.web_accounts.get_all() == {}
+        finally:
+            await reset_bridge()
+
+    asyncio.run(run_test())
+
+
 def test_create_server_trims_optional_text_fields(tmp_path):
     async def run_test():
         config.basedir = tmp_path
@@ -910,6 +941,78 @@ def test_update_server_trims_access_token_before_saving(tmp_path):
             )
 
             stored = bridge.web_accounts.get(account_id)
+            assert decrypt_token(stored["encrypted_token"], tmp_path) == "token-new"
+        finally:
+            await reset_bridge()
+
+    asyncio.run(run_test())
+
+
+def test_update_server_rejects_credential_auth_method_conflict(tmp_path, monkeypatch):
+    async def run_test():
+        config.basedir = tmp_path
+        config.set(Config())
+        await bridge.initialize(tmp_path)
+
+        account_id = "alice@example.com"
+        bridge.add_account(
+            account_id,
+            {
+                "url": "https://example.com",
+                "username": "alice",
+                "encrypted_token": encrypt_token("token-old", tmp_path),
+                "auth_method": "token",
+            },
+        )
+        original = bridge.web_accounts.get(account_id).copy()
+
+        async def fail_login(_self):
+            raise AssertionError("login should not be called for conflicting credentials")
+
+        monkeypatch.setattr(Emby, "login", fail_login)
+
+        try:
+            with pytest.raises(HTTPException) as exc:
+                await update_server(
+                    account_id,
+                    EmbyServerUpdate(auth_method="password", access_token="token-new"),
+                    user="tester",
+                )
+
+            assert exc.value.status_code == 400
+            assert bridge.web_accounts.get(account_id) == original
+        finally:
+            await reset_bridge()
+
+    asyncio.run(run_test())
+
+
+def test_update_server_access_token_only_switches_password_account_to_token(tmp_path):
+    async def run_test():
+        config.basedir = tmp_path
+        config.set(Config())
+        await bridge.initialize(tmp_path)
+
+        account_id = "alice@example.com"
+        bridge.add_account(
+            account_id,
+            {
+                "url": "https://example.com",
+                "username": "alice",
+                "encrypted_token": encrypt_token("token-old", tmp_path),
+                "auth_method": "password",
+            },
+        )
+
+        try:
+            await update_server(
+                account_id,
+                EmbyServerUpdate(access_token="token-new"),
+                user="tester",
+            )
+
+            stored = bridge.web_accounts.get(account_id)
+            assert stored["auth_method"] == "token"
             assert decrypt_token(stored["encrypted_token"], tmp_path) == "token-new"
         finally:
             await reset_bridge()
