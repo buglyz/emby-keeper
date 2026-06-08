@@ -71,6 +71,21 @@ def test_account_disable_cancels_independent_schedule(monkeypatch):
     asyncio.run(run_test())
 
 
+def test_watch_main_ignores_disabled_accounts(monkeypatch):
+    async def run_test():
+        manager = EmbyManager()
+        disabled = EmbyAccount(url="https://example.com", username="alice", enabled=False)
+
+        def fail_if_emby_is_created(_account):
+            raise AssertionError("disabled accounts should not create Emby clients")
+
+        monkeypatch.setattr("embykeeper.emby.main.Emby", fail_if_emby_is_created)
+
+        assert await manager._watch_main([disabled], instant=True) is None
+
+    asyncio.run(run_test())
+
+
 @pytest.mark.parametrize(
     ("url", "item_id"),
     [

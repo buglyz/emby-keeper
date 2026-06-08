@@ -334,7 +334,8 @@ class EmbyManager:
         return f"{a.username}@{a.name or a.url.host}"
 
     async def _watch_main(self, accounts: List[EmbyAccount], instant: bool = False):
-        if not accounts:
+        enabled_accounts = [account for account in accounts if account.enabled]
+        if not enabled_accounts:
             return None
         logger.info("开始执行 Emby 保活.")
         tasks = []
@@ -394,9 +395,8 @@ class EmbyManager:
                 finally:
                     self._running.discard(spec)
 
-        for account in accounts:
-            if account.enabled:
-                tasks.append(watch_wrapper(account, sem))
+        for account in enabled_accounts:
+            tasks.append(watch_wrapper(account, sem))
 
         failed_accounts = []
         successful_accounts = []
@@ -409,12 +409,12 @@ class EmbyManager:
         fails = len(failed_accounts)
 
         if fails:
-            if len(accounts) == 1:
+            if len(enabled_accounts) == 1:
                 logger.error(f"保活失败: {', '.join(failed_accounts)}")
             else:
                 logger.error(f"保活失败 ({fails}/{len(tasks)}): {', '.join(failed_accounts)}")
             return ctx.finish(RunStatus.FAIL, f"保活失败")
-        if len(accounts) == 1:
+        if len(enabled_accounts) == 1:
             logger.bind(log=True).info(f"保活成功: {', '.join(successful_accounts)}.")
         else:
             logger.bind(log=True).info(
