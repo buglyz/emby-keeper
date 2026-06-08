@@ -4,12 +4,21 @@ import stat
 import pytest
 import tomli as tomllib
 from fastapi import HTTPException
+from pydantic import ValidationError
 
 from embykeeper.config import config
 from embykeeper.schema import Config
 from embykeeperapi.models import GlobalConfigUpdate, ProxyConfigUpdate
 from embykeeperapi.routers import config as config_router
 from embykeeperapi.routers.config import update_config
+
+
+def test_global_config_models_reject_boolean_numeric_values():
+    with pytest.raises(ValidationError):
+        GlobalConfigUpdate(emby_concurrency=True)
+
+    with pytest.raises(ValidationError):
+        ProxyConfigUpdate(hostname="127.0.0.1", port=True, scheme="socks5")
 
 
 def test_update_config_persists_without_removing_existing_accounts(tmp_path):
