@@ -165,3 +165,34 @@ def test_run_context_ignores_children_cache_read_failure(monkeypatch):
 
     assert run.get_children() == []
     assert run.get_running_children() == []
+
+
+def test_run_context_cancel_tree_continues_after_cancel_failure(tmp_path):
+    config.set(Config())
+    config.basedir = tmp_path
+    cache._cache_file = tmp_path / "cache.json"
+    cache._data = {}
+    _running_runs.clear()
+
+    parent = RunContext(id="PARENT")
+    failing_child = RunContext(id="CHILD1")
+    cancelled_child = RunContext(id="CHILD2")
+    calls = []
+
+    def fail_cancel():
+        calls.append("fail")
+        raise RuntimeError("cancel failed")
+
+    failing_child._cancel = fail_cancel
+    cancelled_child._cancel = lambda: calls.append("child")
+    parent._cancel = lambda: calls.append("parent")
+    _running_runs.update({"CHILD1": failing_child, "CHILD2": cancelled_child})
+    cache.set("runinfo.children.PARENT", ["CHILD1", "CHILD2"])
+
+    try:
+        parent.cancel_tree()
+
+        assert calls == ["fail", "child", "parent"]
+    finally:
+        _running_runs.clear()
+        config.reset()

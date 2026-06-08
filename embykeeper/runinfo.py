@@ -293,11 +293,17 @@ class RunContext(BaseModel):
         # 先取消所有子任务
         for child in self.get_running_children():
             if child._cancel:
-                child._cancel()
+                try:
+                    child._cancel()
+                except Exception as e:
+                    logger.warning(f"运行记录 {child.id} 取消失败, 已忽略: {type(e).__name__}")
 
         # 取消自身任务
         if self._cancel:
-            self._cancel()
+            try:
+                self._cancel()
+            except Exception as e:
+                logger.warning(f"运行记录 {self.id} 取消失败, 已忽略: {type(e).__name__}")
 
     @classmethod
     def get_or_create(
