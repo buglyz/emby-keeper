@@ -98,3 +98,32 @@ def test_json_cache_delete_missing_key_is_noop(tmp_path, monkeypatch):
     assert cache.get("scheduler.example") == {"next_time": "old"}
 
     config.reset()
+
+
+def test_json_cache_delete_removes_empty_parent_dicts(tmp_path):
+    config.set(Config())
+    config.basedir = tmp_path
+
+    cache = Cache()
+    cache.set("scheduler.example.next_time", "old")
+    cache.delete("scheduler.example.next_time")
+
+    assert cache.get("scheduler") is None
+    assert json.loads((tmp_path / "cache.json").read_text(encoding="utf-8")) == {}
+
+    config.reset()
+
+
+def test_json_cache_delete_many_removes_empty_parent_dicts(tmp_path):
+    config.set(Config())
+    config.basedir = tmp_path
+
+    cache = Cache()
+    cache.set("scheduler.one.next_time", "old")
+    cache.set("scheduler.two.next_time", "old")
+    cache.delete_many(["scheduler.one.next_time", "scheduler.two.next_time"])
+
+    assert cache.get("scheduler") is None
+    assert json.loads((tmp_path / "cache.json").read_text(encoding="utf-8")) == {}
+
+    config.reset()

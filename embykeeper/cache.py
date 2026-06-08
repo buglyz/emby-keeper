@@ -100,8 +100,8 @@ class Cache:
             for part in parts[:-1]:
                 if not isinstance(current, dict) or part not in current:
                     return
+                path.append((current, part))
                 current = current[part]
-                path.append((part, current))
 
             # 检查并删除最后一个键
             if isinstance(current, dict) and parts[-1] in current:
@@ -109,7 +109,7 @@ class Cache:
                 changed = True
 
                 # 清理空字典
-                for part, parent in reversed(path):
+                for parent, part in reversed(path):
                     if isinstance(parent, dict) and part in parent and not parent[part]:
                         del parent[part]
                     else:
@@ -166,8 +166,8 @@ class Cache:
                 for part in parts[:-1]:
                     if not isinstance(current, dict) or part not in current:
                         break
+                    path.append((current, part))
                     current = current[part]
-                    path.append((part, current))
 
                 # 检查并删除最后一个键
                 if isinstance(current, dict) and parts[-1] in current:
@@ -175,7 +175,7 @@ class Cache:
                     changed = True
 
                     # 清理空字典
-                    for part, parent in reversed(path):
+                    for parent, part in reversed(path):
                         if isinstance(parent, dict) and part in parent and not parent[part]:
                             del parent[part]
                         else:
