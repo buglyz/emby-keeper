@@ -13,6 +13,8 @@ class AppriseStream:
     def write(self, message):
         # The message from loguru has a newline at the end, remove it.
         message = message.strip()
+        if not message:
+            return
         # The message is formatted as "LEVEL#MESSAGE"
         level, _, body = message.partition("#")
         level = level.lower()
