@@ -138,3 +138,34 @@ def test_scheduler_ignores_non_object_cached_next_time(tmp_path, monkeypatch):
         assert scheduler.next_time == datetime(2026, 1, 1, 8, 0)
     finally:
         cache.delete("scheduler.test.invalid-cache-type")
+
+
+def test_scheduler_ignores_timezone_aware_cached_next_time(tmp_path, monkeypatch):
+    from embykeeper.cache import cache
+
+    cache._cache_file = tmp_path / "cache.json"
+    cache._data = {}
+    scheduler = Scheduler(
+        noop,
+        days=1,
+        start_time="8:00AM",
+        end_time="8:00AM",
+        sid="test.aware-cache-time",
+    )
+    cache.set(
+        "scheduler.test.aware-cache-time",
+        {
+            "config_hash": scheduler._get_scheduler_config(),
+            "next_time": "2026-01-01T08:00:00+00:00",
+        },
+    )
+    monkeypatch.setattr(
+        schedule_module,
+        "next_random_datetime",
+        lambda *, start_time, end_time, interval_days: datetime(2026, 1, 1, 8, 0),
+    )
+
+    try:
+        assert scheduler.next_time == datetime(2026, 1, 1, 8, 0)
+    finally:
+        cache.delete("scheduler.test.aware-cache-time")

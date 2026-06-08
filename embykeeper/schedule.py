@@ -148,11 +148,16 @@ class Scheduler:
                     cached_next_time = None
 
                 # Check if config hash matches and time hasn't passed
-                if (
-                    cached_config_hash == self._get_scheduler_config()
-                    and cached_next_time
-                    and cached_next_time > now
-                ):
+                try:
+                    use_cached_time = (
+                        cached_config_hash == self._get_scheduler_config()
+                        and cached_next_time
+                        and cached_next_time > now
+                    )
+                except TypeError:
+                    use_cached_time = False
+
+                if use_cached_time:
                     next_time = cached_next_time
 
         # Calculate new next_time if needed
