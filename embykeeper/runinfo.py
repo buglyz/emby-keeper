@@ -103,7 +103,10 @@ class RunContext(BaseModel):
                 pass
 
         # 保存到缓存
-        self.save()
+        try:
+            self.save()
+        except Exception as e:
+            logger.warning(f"运行记录 {self.id} 保存失败, 已忽略: {type(e).__name__}")
 
         return self
 

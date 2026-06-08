@@ -68,6 +68,27 @@ def test_run_context_prepare_replaces_invalid_children_cache(tmp_path, monkeypat
         config.reset()
 
 
+def test_run_context_finish_survives_cache_save_failure(monkeypatch):
+    _running_runs.clear()
+    run = RunContext(id="FAILSAVE")
+    _running_runs[run.id] = run
+
+    def fail_save(self):
+        raise OSError("write failed")
+
+    monkeypatch.setattr(RunContext, "save", fail_save)
+
+    try:
+        finished = run.finish(RunStatus.SUCCESS, "done")
+    finally:
+        _running_runs.clear()
+
+    assert finished is run
+    assert run.status == RunStatus.SUCCESS
+    assert run.status_info == "done"
+    assert run._finished.is_set()
+
+
 def test_run_context_ignores_invalid_children_cache(tmp_path):
     config.set(Config())
     config.basedir = tmp_path
