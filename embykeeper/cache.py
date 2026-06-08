@@ -1,4 +1,6 @@
 import json
+from pathlib import Path
+from tempfile import NamedTemporaryFile
 from typing import Any, List
 
 from loguru import logger
@@ -34,6 +36,28 @@ class Cache:
             except json.JSONDecodeError:
                 logger.warning("缓存文件损坏, 将使用全新缓存.")
 
+    def _write_json_cache(self):
+        tmp_path = None
+        try:
+            with NamedTemporaryFile(
+                "w",
+                encoding="utf-8",
+                dir=self._cache_file.parent,
+                prefix=f".{self._cache_file.name}.",
+                suffix=".tmp",
+                delete=False,
+            ) as f:
+                json.dump(self._data, f, ensure_ascii=False, indent=2)
+                tmp_path = Path(f.name)
+            tmp_path.replace(self._cache_file)
+        except OSError:
+            if tmp_path is not None:
+                try:
+                    tmp_path.unlink(missing_ok=True)
+                except OSError:
+                    pass
+            raise
+
     def get(self, key: str, default: Any = None) -> Any:
         if self._mongo_client:
             result = self._collection.find_one({"_id": key})
@@ -56,8 +80,7 @@ class Cache:
             for part in parts[:-1]:
                 current = current.setdefault(part, {})
             current[parts[-1]] = value
-            with open(self._cache_file, "w", encoding="utf-8") as f:
-                json.dump(self._data, f, ensure_ascii=False)
+            self._write_json_cache()
 
     def delete(self, key: str) -> None:
         if self._mongo_client:
@@ -85,8 +108,7 @@ class Cache:
                     else:
                         break
 
-            with open(self._cache_file, "w", encoding="utf-8") as f:
-                json.dump(self._data, f, ensure_ascii=False, indent=2)
+            self._write_json_cache()
 
     def find_by_prefix(self, prefix: str) -> List[str]:
         if self._mongo_client:
@@ -151,8 +173,7 @@ class Cache:
 
             # 只在有改动时写入一次文件
             if changed:
-                with open(self._cache_file, "w", encoding="utf-8") as f:
-                    json.dump(self._data, f, ensure_ascii=False, indent=2)
+                self._write_json_cache()
 
 
 cache: Cache = CachedFuncProxy(lambda: Cache())
