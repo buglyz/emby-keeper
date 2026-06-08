@@ -104,7 +104,9 @@
       baseUrl: `${window.location.origin}${API_BASE_PATH}`,
       _getHeaders() {
         const token = sessionStorage.getItem('ek_jwt');
-        return { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' };
+        const headers = { 'Content-Type': 'application/json' };
+        if (token) headers.Authorization = `Bearer ${token}`;
+        return headers;
       },
       _formatErrorDetail(detail) {
         if (typeof detail === 'string') return detail;

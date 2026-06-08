@@ -69,3 +69,10 @@ def test_frontend_formats_structured_api_errors():
     assert "item.loc.join('.')" in html
     assert "detail.msg || detail.message || JSON.stringify(detail)" in html
     assert "this._formatErrorDetail(data && data.detail) || 'Request failed'" in html
+
+
+def test_frontend_only_sends_authorization_header_with_token():
+    html = STATIC_INDEX.read_text(encoding="utf-8")
+
+    assert "if (token) headers.Authorization = `Bearer ${token}`" in html
+    assert "return { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' }" not in html
