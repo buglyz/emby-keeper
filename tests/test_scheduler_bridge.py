@@ -423,6 +423,21 @@ def test_web_account_data_save_preserves_existing_file_when_replace_fails(tmp_pa
     assert not list(tmp_path.glob(".web_accounts.json.*.tmp"))
 
 
+def test_web_account_data_save_cleans_temp_file_when_json_dump_fails(tmp_path):
+    accounts = WebAccountData(tmp_path)
+    accounts.add("alice@example.com", {"url": "https://example.com", "username": "alice"})
+
+    with pytest.raises(TypeError):
+        accounts.add("bad@example.com", {"url": object(), "username": "bob"})
+
+    assert accounts.get_all() == {"alice@example.com": {"url": "https://example.com", "username": "alice"}}
+    assert json.loads((tmp_path / "web_accounts.json").read_text(encoding="utf-8")) == {
+        "alice@example.com": {"url": "https://example.com", "username": "alice"}
+    }
+    assert not (tmp_path / "web_accounts.json.tmp").exists()
+    assert not list(tmp_path.glob(".web_accounts.json.*.tmp"))
+
+
 def test_web_account_data_returns_copies(tmp_path):
     accounts = WebAccountData(tmp_path)
     accounts.add("alice@example.com", {"username": "alice"})

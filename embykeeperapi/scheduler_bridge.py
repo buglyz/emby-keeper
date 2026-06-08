@@ -87,14 +87,14 @@ class WebAccountData:
                 suffix=".tmp",
                 delete=False,
             ) as tmp:
-                json.dump(payload, tmp, ensure_ascii=False, indent=2)
                 tmp_path = Path(tmp.name)
+                json.dump(payload, tmp, ensure_ascii=False, indent=2)
             try:
                 tmp_path.chmod(0o600)
             except OSError:
                 pass
             tmp_path.replace(filepath)
-        except OSError:
+        except Exception:
             if tmp_path is not None:
                 try:
                     tmp_path.unlink(missing_ok=True)

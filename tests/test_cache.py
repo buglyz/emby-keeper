@@ -76,6 +76,25 @@ def test_json_cache_preserves_existing_file_when_replace_fails(tmp_path, monkeyp
     config.reset()
 
 
+def test_json_cache_cleans_temp_file_when_json_dump_fails(tmp_path):
+    config.set(Config())
+    config.basedir = tmp_path
+
+    cache = Cache()
+    cache.set("scheduler.example", {"next_time": "old"})
+
+    with pytest.raises(TypeError):
+        cache.set("scheduler.example", {"next_time": object()})
+
+    assert cache.get("scheduler.example") == {"next_time": "old"}
+    assert json.loads((tmp_path / "cache.json").read_text(encoding="utf-8")) == {
+        "scheduler": {"example": {"next_time": "old"}}
+    }
+    assert not list(tmp_path.glob(".cache.json.*.tmp"))
+
+    config.reset()
+
+
 def test_json_cache_isolates_mutable_values(tmp_path):
     config.set(Config())
     config.basedir = tmp_path

@@ -53,10 +53,10 @@ class Cache:
                 suffix=".tmp",
                 delete=False,
             ) as f:
-                json.dump(payload, f, ensure_ascii=False, indent=2)
                 tmp_path = Path(f.name)
+                json.dump(payload, f, ensure_ascii=False, indent=2)
             tmp_path.replace(self._cache_file)
-        except OSError:
+        except Exception:
             if tmp_path is not None:
                 try:
                     tmp_path.unlink(missing_ok=True)
