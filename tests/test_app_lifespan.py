@@ -8,6 +8,7 @@ from embykeeperapi.app import (
     ProxyFixMiddleware,
     _is_reserved_spa_path,
     _normalize_root_path,
+    _shutdown_bridge,
     create_app,
     lifespan,
 )
@@ -30,6 +31,24 @@ def test_lifespan_resets_bridge_when_initialize_fails(tmp_path, monkeypatch):
     asyncio.run(run_test())
 
 
+def test_lifespan_ignores_shutdown_failure_after_initialize_failure(tmp_path, monkeypatch):
+    async def run_test():
+        async def fail_initialize(_basedir):
+            raise RuntimeError("initialize failed")
+
+        async def fail_shutdown():
+            raise RuntimeError("shutdown failed")
+
+        monkeypatch.setenv("EK_BASEDIR", str(tmp_path))
+        monkeypatch.setattr(bridge, "initialize", fail_initialize)
+        monkeypatch.setattr(bridge, "shutdown", fail_shutdown)
+
+        async with lifespan(None):
+            pass
+
+    asyncio.run(run_test())
+
+
 def test_lifespan_ignores_blank_basedir_env(tmp_path, monkeypatch):
     async def run_test():
         seen = {}
@@ -47,6 +66,18 @@ def test_lifespan_ignores_blank_basedir_env(tmp_path, monkeypatch):
 
         async with lifespan(None):
             assert seen["basedir"] == tmp_path
+
+    asyncio.run(run_test())
+
+
+def test_shutdown_bridge_ignores_shutdown_failure(monkeypatch):
+    async def run_test():
+        async def fail_shutdown():
+            raise RuntimeError("shutdown failed")
+
+        monkeypatch.setattr(bridge, "shutdown", fail_shutdown)
+
+        await _shutdown_bridge("test")
 
     asyncio.run(run_test())
 

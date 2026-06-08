@@ -64,6 +64,13 @@ def _is_reserved_spa_path(path: str) -> bool:
     return path == "api" or path.startswith("api/") or path == "healthz"
 
 
+async def _shutdown_bridge(reason: str):
+    try:
+        await bridge.shutdown()
+    except Exception as e:
+        logger.warning(f"Failed to shutdown scheduler bridge during {reason}: {e}")
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Initialize scheduler bridge on startup, cleanup on shutdown."""
@@ -89,14 +96,14 @@ async def lifespan(app: FastAPI):
         await bridge.initialize(basedir)
     except Exception as e:
         logger.error(f"Failed to initialize scheduler bridge: {e}")
-        await bridge.shutdown()
+        await _shutdown_bridge("startup cleanup")
         # Continue anyway - the API can work without the scheduler
 
     yield
 
     # Shutdown
     logger.info("Shutting down scheduler bridge...")
-    await bridge.shutdown()
+    await _shutdown_bridge("application shutdown")
     logger.info("Shutdown complete.")
 
 
