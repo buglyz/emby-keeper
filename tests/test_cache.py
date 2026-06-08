@@ -95,6 +95,22 @@ def test_json_cache_isolates_mutable_values(tmp_path):
     config.reset()
 
 
+def test_json_cache_set_replaces_non_object_parent(tmp_path):
+    config.set(Config())
+    config.basedir = tmp_path
+
+    cache = Cache()
+    cache.set("scheduler", "bad")
+    cache.set("scheduler.example.next_time", "new")
+
+    assert cache.get("scheduler.example.next_time") == "new"
+    assert json.loads((tmp_path / "cache.json").read_text(encoding="utf-8")) == {
+        "scheduler": {"example": {"next_time": "new"}}
+    }
+
+    config.reset()
+
+
 def test_json_cache_delete_missing_key_is_noop(tmp_path, monkeypatch):
     config.set(Config())
     config.basedir = tmp_path

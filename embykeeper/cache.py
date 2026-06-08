@@ -84,7 +84,11 @@ class Cache:
             next_data = deepcopy(self._data)
             current = next_data
             for part in parts[:-1]:
-                current = current.setdefault(part, {})
+                next_value = current.get(part)
+                if not isinstance(next_value, dict):
+                    next_value = {}
+                    current[part] = next_value
+                current = next_value
             current[parts[-1]] = deepcopy(value)
             self._write_json_cache(next_data)
             self._data = next_data
