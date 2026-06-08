@@ -1,4 +1,5 @@
 import asyncio
+import importlib
 import os
 from pathlib import Path
 import sys
@@ -30,6 +31,12 @@ def test_version():
     result = runner.invoke(app, ["--version"])
     assert embykeeper.__version__ in result.stdout
     assert result.exit_code == 0
+
+
+def test_main_module_import_does_not_start_cli():
+    module = importlib.import_module("embykeeper.__main__")
+
+    assert module.app is app
 
 
 def test_create_config(in_temp_dir: Path):
