@@ -55,7 +55,7 @@ cd deploy
 docker compose up -d
 ```
 
-数据目录挂载到宿主机 `./data`，确持久化。
+数据目录挂载到宿主机 `./data`，确保持久化。
 
 ### 方式四：HuggingFace Spaces
 
@@ -146,14 +146,14 @@ emby-keeper/
 - **前端**: Vue 3 + Naive UI（CDN，无需构建）
 - **认证**: JWT + Token/Password 双模式
 - **加密**: cryptography (Fernet)
-- **调度**: APScheduler + embykeeper Scheduler
+- **调度**: embykeeper 内置 Scheduler
 - **HTTP**: curl_cffi (浏览器指纹模拟)
 
 ## HuggingFace Spaces 注意事项
 
 HF Spaces 的文件系统在重启后会重置，配置数据会丢失。建议：
-- 使用 MongoDB 外部存储（设置 `EK_MONGODB` 环境变量）
 - 定期备份 `web_accounts.json`
+- 需要长期保留数据时，优先使用带持久化卷的 VPS 或容器部署
 
 VPS 部署时务必挂载卷持久化数据目录。
 
