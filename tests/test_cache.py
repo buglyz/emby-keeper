@@ -221,3 +221,15 @@ def test_mongo_cache_find_by_prefix_escapes_regex_metacharacters():
     assert cache.find_by_prefix("emby.credential") == ["emby.credential.example"]
     assert seen["query"] == {"_id": {"$regex": r"^emby\.credential"}}
     assert seen["projection"] == {"_id": 1}
+
+
+def test_mongo_cache_get_ignores_documents_without_value():
+    class FakeCollection:
+        def find_one(self, query):
+            return {"_id": query["_id"]}
+
+    cache = Cache.__new__(Cache)
+    cache._mongo_client = object()
+    cache._collection = FakeCollection()
+
+    assert cache.get("missing-value", default="fallback") == "fallback"

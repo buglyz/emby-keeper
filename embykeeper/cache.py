@@ -67,7 +67,9 @@ class Cache:
     def get(self, key: str, default: Any = None) -> Any:
         if self._mongo_client:
             result = self._collection.find_one({"_id": key})
-            return result["value"] if result else default
+            if not result or "value" not in result:
+                return default
+            return result["value"]
         else:
             missing = object()
             value = self._data
