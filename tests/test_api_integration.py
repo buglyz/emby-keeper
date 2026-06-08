@@ -321,6 +321,31 @@ def test_config_restore_stages_files_before_overwriting_current_config(tmp_path,
     assert 'interval_days = "99"' in config_file.read_text(encoding="utf-8")
 
 
+def test_config_restore_cleans_current_temp_file_on_stage_failure(tmp_path, api_app, monkeypatch):
+    config.basedir = tmp_path
+    config_file = tmp_path / "config.toml"
+    config_file.write_text("[emby]\ninterval_days = \"7\"\n", encoding="utf-8")
+    config._conf_file = config_file
+    config.set(Config())
+    bridge.web_accounts = WebAccountData(tmp_path)
+
+    backup_response = asyncio.run(_asgi_request(api_app, "POST", "/api/config/backup"))
+    backup_dir = Path(backup_response.json()["backup_dir"])
+
+    def fail_copy(_source, _target):
+        raise OSError("stage failed")
+
+    monkeypatch.setattr("embykeeperapi.routers.config.shutil.copy2", fail_copy)
+
+    response = asyncio.run(
+        _asgi_request(api_app, "POST", f"/api/config/backups/{backup_dir.name}/restore", {"confirm": True})
+    )
+
+    assert response.status_code == 500
+    assert not list(tmp_path.glob(".config.toml.restore.*.tmp"))
+    assert not list(tmp_path.glob(".web_accounts.json.restore.*.tmp"))
+
+
 def test_config_backup_list_ignores_symlink_entries(tmp_path, api_app):
     config.basedir = tmp_path
     backup_root = tmp_path / "backups"

@@ -233,6 +233,16 @@ def test_run_history_supports_offset_and_status_filter(tmp_path):
     asyncio.run(run_test())
 
 
+def test_run_history_rejects_unknown_status_filter():
+    async def run_test():
+        with pytest.raises(HTTPException) as exc:
+            await list_runs(limit=10, status="unknown-status", user="tester")
+
+        assert exc.value.status_code == 400
+
+    asyncio.run(run_test())
+
+
 def test_cleanup_runs_rejects_invalid_days():
     async def run_test():
         with pytest.raises(HTTPException) as exc:

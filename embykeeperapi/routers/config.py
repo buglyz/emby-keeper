@@ -304,8 +304,10 @@ def _validate_restore_sources(restored):
 
 def _stage_restore_files(restored):
     staged = []
+    current_tmp_path = None
     try:
         for source, target in restored:
+            current_tmp_path = None
             target.parent.mkdir(parents=True, exist_ok=True)
             with NamedTemporaryFile(
                 "wb",
@@ -315,14 +317,21 @@ def _stage_restore_files(restored):
                 delete=False,
             ) as tmp:
                 tmp_path = Path(tmp.name)
+            current_tmp_path = tmp_path
             shutil.copy2(source, tmp_path)
             try:
                 tmp_path.chmod(0o600)
             except OSError:
                 pass
             staged.append((tmp_path, target))
+            current_tmp_path = None
         return staged
     except Exception:
+        if current_tmp_path is not None:
+            try:
+                current_tmp_path.unlink(missing_ok=True)
+            except OSError:
+                pass
         for tmp_path, _target in staged:
             try:
                 tmp_path.unlink(missing_ok=True)

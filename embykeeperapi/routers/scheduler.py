@@ -6,7 +6,7 @@ from typing import List
 from fastapi import APIRouter, Depends, HTTPException
 
 from embykeeper.config import config
-from embykeeper.runinfo import RunContext, _running_runs
+from embykeeper.runinfo import RunContext, RunStatus, _running_runs
 from embykeeper.schedule import Scheduler
 from embykeeper.schema import EmbyConfig
 
@@ -71,6 +71,20 @@ def _latest_run():
     except Exception:
         return None
     return runs[0] if runs else None
+
+
+def _normalize_run_status_filter(status: str):
+    if status is None:
+        return None
+    if not isinstance(status, str):
+        raise HTTPException(status_code=400, detail="status must be a string")
+    status = status.strip().lower()
+    if not status:
+        return None
+    valid_statuses = {item.name.lower() for item in RunStatus}
+    if status not in valid_statuses:
+        raise HTTPException(status_code=400, detail="Invalid run status")
+    return status
 
 
 @router.get("/healthz")
@@ -258,6 +272,7 @@ async def list_runs(
     """List recent run records."""
     limit = min(max(limit, 1), 200)
     offset = max(offset, 0)
+    status = _normalize_run_status_filter(status)
     return [
         _run_to_history_item(run)
         for run in RunContext.list_recent(limit=limit, offset=offset, status=status)
