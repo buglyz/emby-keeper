@@ -108,6 +108,10 @@ def _normalize_optional_text(value: Optional[str], field: str = "value"):
     return value or None
 
 
+def _has_nonblank_text(value) -> bool:
+    return isinstance(value, str) and bool(value.strip())
+
+
 def _normalized_optional_text_updates(source) -> dict:
     return {
         field: _normalize_optional_text(getattr(source, field), field)
@@ -357,12 +361,12 @@ async def update_server(
     has_access_token = (
         "access_token" in fields_set
         and req.access_token is not None
-        and bool(req.access_token.strip())
+        and _has_nonblank_text(req.access_token)
     )
     has_password = (
         "password" in fields_set
         and req.password is not None
-        and bool(req.password.strip())
+        and _has_nonblank_text(req.password)
     )
     if auth_method is not None:
         if auth_method not in {"token", "password"}:

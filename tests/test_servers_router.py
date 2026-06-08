@@ -823,6 +823,42 @@ def test_update_server_rejects_blank_password_without_login(tmp_path, monkeypatc
     asyncio.run(run_test())
 
 
+def test_update_server_rejects_non_string_password_without_crashing(tmp_path, monkeypatch):
+    async def run_test():
+        config.basedir = tmp_path
+        config.set(Config())
+        await bridge.initialize(tmp_path)
+
+        account_id = "alice@example.com"
+        bridge.add_account(
+            account_id,
+            {
+                "url": "https://example.com",
+                "username": "alice",
+                "encrypted_token": encrypt_token("token-old", tmp_path),
+                "auth_method": "password",
+            },
+        )
+        original = bridge.web_accounts.get(account_id).copy()
+
+        async def fail_login(_self):
+            raise AssertionError("login should not be called for invalid password")
+
+        req = EmbyServerUpdate.model_construct(password=123, _fields_set={"password"})
+        monkeypatch.setattr(Emby, "login", fail_login)
+
+        try:
+            with pytest.raises(HTTPException) as exc:
+                await update_server(account_id, req, user="tester")
+
+            assert exc.value.status_code == 400
+            assert bridge.web_accounts.get(account_id) == original
+        finally:
+            await reset_bridge()
+
+    asyncio.run(run_test())
+
+
 def test_create_server_rejects_invalid_schedule_settings(tmp_path):
     async def run_test():
         config.basedir = tmp_path
