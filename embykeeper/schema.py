@@ -65,7 +65,7 @@ class ProxyConfig(ConfigModel):
 
 class NotifierConfig(ConfigModel):
     enabled: Optional[bool] = False
-    account: Optional[Union[int, str]] = 1
+    account: Optional[Union[StrictInt, str]] = 1
     immediately: Optional[bool] = False
     once: Optional[bool] = False
     method: Optional[str] = "apprise"

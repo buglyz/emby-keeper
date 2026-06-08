@@ -131,3 +131,11 @@ def test_emby_account_time_accepts_positive_integer_and_range():
 
     assert cfg.emby.account[0].time == 300
     assert cfg.emby.account[1].time == [300, 600]
+
+
+def test_notifier_account_rejects_boolean_values():
+    with pytest.raises(ValidationError):
+        Config(notifier={"account": True})
+
+    cfg = Config(notifier={"account": 2})
+    assert cfg.notifier.account == 2
