@@ -122,6 +122,24 @@ async def _shutdown_bridge(reason: str):
         logger.warning(f"Failed to shutdown scheduler bridge during {reason}: {e}")
 
 
+async def _start_notifier(reason: str):
+    try:
+        from embykeeper.notify import start_notifier
+
+        await start_notifier()
+    except Exception as e:
+        logger.warning(f"Failed to start notifier during {reason}: {type(e).__name__}")
+
+
+async def _stop_notifier(reason: str):
+    try:
+        from embykeeper.notify import _stop_notifier
+
+        await _stop_notifier()
+    except Exception as e:
+        logger.warning(f"Failed to stop notifier during {reason}: {type(e).__name__}")
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Initialize scheduler bridge on startup, cleanup on shutdown."""
@@ -149,12 +167,14 @@ async def lifespan(app: FastAPI):
         logger.error(f"Failed to initialize scheduler bridge: {e}")
         await _shutdown_bridge("startup cleanup")
         # Continue anyway - the API can work without the scheduler
+    await _start_notifier("application startup")
 
     yield
 
     # Shutdown
     logger.info("Shutting down scheduler bridge...")
     await _shutdown_bridge("application shutdown")
+    await _stop_notifier("application shutdown")
     logger.info("Shutdown complete.")
 
 

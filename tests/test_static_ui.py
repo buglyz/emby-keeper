@@ -168,3 +168,35 @@ def test_frontend_only_sends_authorization_header_with_token():
 
     assert "if (token) headers.Authorization = `Bearer ${token}`" in html
     assert "return { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' }" not in html
+
+
+def test_frontend_exposes_run_history_and_cancel_actions():
+    html = STATIC_INDEX.read_text(encoding="utf-8")
+
+    assert "getRuns(limit = 50)" in html
+    assert "const RunHistoryPage = {" in html
+    assert "{ path: 'runs', component: RunHistoryPage }" in html
+    assert "cancelWatch(id)" in html
+    assert "cancelSchedule(id)" in html
+    assert "取消任务" in html
+
+
+def test_frontend_exposes_schedule_preview_and_health_status():
+    html = STATIC_INDEX.read_text(encoding="utf-8")
+
+    assert "previewSchedule(data)" in html
+    assert "调度预览" in html
+    assert "getHealth()" in html
+    assert "运行健康" in html
+
+
+def test_frontend_exposes_telegram_notifier_controls_without_echoing_token():
+    html = STATIC_INDEX.read_text(encoding="utf-8")
+
+    assert "getNotifier()" in html
+    assert "updateNotifier(data)" in html
+    assert "testNotifier(data)" in html
+    assert "Telegram" in html
+    assert "telegram_bot_token" in html
+    assert 'show-password-on="click"' in html
+    assert "留空则保留现有 Token" in html

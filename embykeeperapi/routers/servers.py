@@ -541,6 +541,17 @@ async def trigger_watch(account_id: str, user: str = Depends(get_current_user)):
     )
 
 
+@router.post("/{account_id:path}/cancel", response_model=ActionResponse)
+async def cancel_watch(account_id: str, user: str = Depends(get_current_user)):
+    """Cancel a running watch task for this account."""
+    _require_bridge()
+    if not bridge.web_accounts.get(account_id):
+        raise HTTPException(status_code=404, detail="Server not found")
+    if not bridge.cancel_account_task(account_id):
+        raise HTTPException(status_code=404, detail="No running task found")
+    return ActionResponse(run_id="", status="cancelled", message="Task cancellation requested")
+
+
 @router.post("/actions/watch-all", response_model=ActionResponse)
 async def watch_all(user: str = Depends(get_current_user)):
     """Trigger watch for all enabled accounts."""

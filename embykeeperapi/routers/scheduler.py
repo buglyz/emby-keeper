@@ -1,11 +1,27 @@
 from datetime import datetime, timezone
+import os
+from pathlib import Path
 from typing import List
 
 from fastapi import APIRouter, Depends, HTTPException
 
-from ..auth import get_current_user
-from ..models import ScheduleInfo, DashboardStatus
+from embykeeper.config import config
+from embykeeper.runinfo import RunContext, _running_runs
+from embykeeper.schedule import Scheduler
+from embykeeper.schema import EmbyConfig
+
+from ..auth import _get_env_secret, get_current_user
+from ..models import (
+    CancelResponse,
+    DashboardStatus,
+    HealthStatus,
+    RunHistoryItem,
+    ScheduleInfo,
+    SchedulePreviewRequest,
+    SchedulePreviewResponse,
+)
 from ..scheduler_bridge import bridge
+from ..validation import validate_schedule_fields
 
 router = APIRouter(tags=["scheduler & status"])
 
@@ -22,6 +38,29 @@ def _datetime_sort_key(value):
     if value.tzinfo is None:
         value = value.replace(tzinfo=timezone.utc)
     return value.timestamp()
+
+
+def _run_account_spec(run: RunContext):
+    description = run.description or ""
+    for prefix in ("Manual watch: ", "Login test: "):
+        if description.startswith(prefix):
+            return description.removeprefix(prefix)
+    return None
+
+
+def _run_to_history_item(run: RunContext) -> RunHistoryItem:
+    return RunHistoryItem(
+        run_id=run.id,
+        description=run.description,
+        status=run.status.name.lower(),
+        status_info=run.status_info,
+        start_time=run.start_time,
+        end_time=run.end_time,
+        duration=run.duration,
+        account_spec=_run_account_spec(run),
+        is_running=run.id in _running_runs,
+        log_count=len(run.log or []),
+    )
 
 
 @router.get("/healthz")
@@ -102,3 +141,74 @@ async def get_dashboard_status(user: str = Depends(get_current_user)):
         online_servers=online,
         last_global_watch_time=last_global_watch_time,
     )
+
+
+@router.get("/api/status/health", response_model=HealthStatus)
+async def get_health_status(user: str = Depends(get_current_user)):
+    """Get operational health details for the Web UI."""
+    accounts = bridge.web_accounts.get_all() if bridge.web_accounts else {}
+    schedules = bridge.get_schedule_info()
+    config_file = Path(config._conf_file) if config._conf_file else Path(config.basedir) / "config.toml"
+    writable_target = config_file if config_file.exists() else config_file.parent
+    notifier = config._cache.notifier if config._cache and config._cache.notifier else None
+
+    config_writable = writable_target.exists() and os.access(writable_target, os.W_OK)
+
+    healthy = bool(config._cache and bridge.web_accounts is not None)
+    return HealthStatus(
+        status="ok" if healthy else "degraded",
+        config_loaded=bool(config._cache),
+        scheduler_initialized=bridge.web_accounts is not None and bridge.emby_manager is not None,
+        account_count=len(accounts),
+        schedule_count=len(schedules),
+        config_writable=config_writable,
+        auth_configured=bool(_get_env_secret("EK_TOKEN") or _get_env_secret("EK_WEBPASS")),
+        notifier_configured=bool(notifier and notifier.enabled and notifier.apprise_uri),
+    )
+
+
+@router.post("/api/schedule/preview", response_model=SchedulePreviewResponse)
+async def preview_schedule(req: SchedulePreviewRequest, user: str = Depends(get_current_user)):
+    """Preview the next schedule time for interval/time-range input."""
+    emby_config = config._cache.emby if config._cache and config._cache.emby else EmbyConfig()
+    interval_days = req.interval_days if req.interval_days is not None else emby_config.interval_days
+    time_range = req.time_range if req.time_range is not None else emby_config.time_range
+    validate_schedule_fields(interval_days, time_range, use_defaults=False)
+
+    scheduler = Scheduler.from_str(
+        func=lambda _ctx: None,
+        interval_days=interval_days,
+        time_range=time_range,
+        description="Schedule preview",
+    )
+    return SchedulePreviewResponse(
+        interval_days=str(interval_days).strip(),
+        time_range=str(time_range).strip(),
+        next_time=scheduler.next_time,
+    )
+
+
+@router.post("/api/schedule/{schedule_id:path}/cancel", response_model=CancelResponse)
+async def cancel_schedule_run(schedule_id: str, user: str = Depends(get_current_user)):
+    """Cancel a currently running scheduled/manual watch task."""
+    _require_bridge()
+    account_spec = schedule_id.removeprefix("emby.watch.")
+    if not bridge.cancel_account_task(account_spec):
+        raise HTTPException(status_code=404, detail="No running task found")
+    return CancelResponse(status="cancelled", message="Task cancellation requested")
+
+
+@router.get("/api/runs", response_model=List[RunHistoryItem])
+async def list_runs(limit: int = 50, user: str = Depends(get_current_user)):
+    """List recent run records."""
+    limit = min(max(limit, 1), 200)
+    return [_run_to_history_item(run) for run in RunContext.list_recent(limit=limit)]
+
+
+@router.get("/api/runs/{run_id}", response_model=RunHistoryItem)
+async def get_run(run_id: str, user: str = Depends(get_current_user)):
+    """Get a single run record."""
+    run = RunContext.get(run_id)
+    if not run:
+        raise HTTPException(status_code=404, detail="Run not found")
+    return _run_to_history_item(run)

@@ -380,6 +380,30 @@ class SchedulerBridge:
         if task and not task.done():
             task.cancel()
 
+    def cancel_account_task(self, account_id: str) -> bool:
+        """Cancel a currently running manual or scheduled watch task."""
+        cancelled = False
+
+        task = self._running_tasks.pop(account_id, None)
+        if task and not task.done():
+            task.cancel()
+            cancelled = True
+
+        if self.emby_manager:
+            manager_tasks = getattr(self.emby_manager, "_tasks", {})
+            manager_running = getattr(self.emby_manager, "_running", set())
+            task_keys = ["unified"] if account_id in {"global", "unified"} else [account_id]
+            for task_key in task_keys:
+                task = manager_tasks.pop(task_key, None)
+                if task and not task.done():
+                    task.cancel()
+                    cancelled = True
+                manager_running.discard(task_key)
+
+        if cancelled and account_id not in {"global", "unified"}:
+            self._record_status(account_id, last_watch_status="cancelled", is_running=False)
+        return cancelled
+
     def _cache_account_credentials(self, data: dict):
         try:
             token = self.web_accounts._get_account_token(data)
@@ -603,6 +627,7 @@ class SchedulerBridge:
                 self._record_status(account_id, last_watch_time=now, last_watch_status="error")
 
         task = asyncio.create_task(run_watch(), name=f"watch-{account_id}")
+        ctx._cancel = task.cancel
         self._running_tasks[account_id] = task
 
         def cleanup(done_task: asyncio.Task):

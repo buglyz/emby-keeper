@@ -171,6 +171,66 @@ def test_run_context_finish_survives_cache_save_failure(monkeypatch):
     assert run._finished.is_set()
 
 
+def test_run_context_finish_indexes_recent_runs(tmp_path):
+    config.set(Config())
+    config.basedir = tmp_path
+    cache._cache_file = tmp_path / "cache.json"
+    cache._data = {}
+    _running_runs.clear()
+
+    try:
+        first = RunContext(id="FIRST", description="first")
+        second = RunContext(id="SECOND", description="second")
+
+        first.start()
+        first.finish(RunStatus.SUCCESS)
+        second.start()
+        second.finish(RunStatus.FAIL, "failed")
+
+        recent = RunContext.list_recent(limit=2)
+
+        assert [run.id for run in recent] == ["SECOND", "FIRST"]
+        assert cache.get("runinfo.index") == ["SECOND", "FIRST"]
+    finally:
+        _running_runs.clear()
+        config.reset()
+
+
+def test_run_context_list_recent_includes_running_runs_before_indexed(tmp_path):
+    config.set(Config())
+    config.basedir = tmp_path
+    cache._cache_file = tmp_path / "cache.json"
+    cache._data = {}
+    _running_runs.clear()
+
+    try:
+        finished = RunContext(id="DONE")
+        finished.start()
+        finished.finish(RunStatus.SUCCESS)
+
+        running = RunContext(id="RUNNING")
+        running.start()
+        _running_runs[running.id] = running
+
+        assert [run.id for run in RunContext.list_recent(limit=2)] == ["RUNNING", "DONE"]
+    finally:
+        _running_runs.clear()
+        config.reset()
+
+
+def test_run_context_list_recent_ignores_invalid_index(tmp_path):
+    config.set(Config())
+    config.basedir = tmp_path
+    cache._cache_file = tmp_path / "cache.json"
+    cache._data = {}
+    cache.set("runinfo.index", "invalid")
+
+    try:
+        assert RunContext.list_recent(limit=10) == []
+    finally:
+        config.reset()
+
+
 def test_run_context_run_finishes_successful_function(tmp_path):
     config.set(Config())
     config.basedir = tmp_path

@@ -170,17 +170,25 @@
       // Actions
       triggerLogin(id) { return this.post(this.serverPath(id, '/login')); },
       triggerWatch(id) { return this.post(this.serverPath(id, '/watch')); },
+      cancelWatch(id) { return this.post(this.serverPath(id, '/cancel')); },
       watchAll() { return this.post('/api/servers/actions/watch-all'); },
 
       // Schedule & Status
       getSchedule() { return this.get('/api/schedule'); },
       runNow(id) { return this.post(`/api/schedule/${encodeURIComponent(id)}/run-now`); },
+      cancelSchedule(id) { return this.post(`/api/schedule/${encodeURIComponent(id)}/cancel`); },
+      previewSchedule(data) { return this.post('/api/schedule/preview', data); },
       getStatus() { return this.get('/api/status'); },
+      getHealth() { return this.get('/api/status/health'); },
+      getRuns(limit = 50) { return this.get(`/api/runs?limit=${limit}`); },
       healthz() { return this.get('/healthz'); },
 
       // Config
       getConfig() { return this.get('/api/config'); },
       updateConfig(data) { return this.put('/api/config', data); },
+      getNotifier() { return this.get('/api/config/notifier'); },
+      updateNotifier(data) { return this.put('/api/config/notifier', data); },
+      testNotifier(data) { return this.post('/api/config/notifier/test', data); },
     };
 
     // ============ Auth Guard Component ============
@@ -334,6 +342,7 @@
                   <n-space justify="end">
                     <n-button size="small" @click.stop="handleLogin(s.id)" :loading="actionLoading[s.id]">登录测试</n-button>
                     <n-button size="small" type="primary" @click.stop="handleWatch(s.id)" :loading="actionLoading[s.id+'-w']">保活</n-button>
+                    <n-button v-if="s.is_running" size="small" type="warning" @click.stop="handleCancel(s.id)" :loading="actionLoading[s.id+'-c']">取消</n-button>
                   </n-space>
                 </template>
               </n-card>
@@ -376,6 +385,16 @@
           finally { actionLoading[id + '-w'] = false; }
         }
 
+        async function handleCancel(id) {
+          actionLoading[id + '-c'] = true;
+          try {
+            await API.cancelWatch(id);
+            message.success('已请求取消任务');
+            await loadData();
+          } catch (e) { message.error(e.message); }
+          finally { actionLoading[id + '-c'] = false; }
+        }
+
         async function handleWatchAll() {
           try {
             const res = await API.watchAll();
@@ -389,7 +408,7 @@
         });
         onUnmounted(() => { if (pollTimer) clearInterval(pollTimer); });
 
-        return { API, servers, status, loading, actionLoading, handleLogin, handleWatch, handleWatchAll };
+        return { API, servers, status, loading, actionLoading, handleLogin, handleWatch, handleCancel, handleWatchAll };
       }
     };
 
@@ -673,6 +692,7 @@
               <n-space justify="center" :size="12">
                 <n-button type="primary" :loading="actionLoading.watch" @click="handleWatch">立即保活</n-button>
                 <n-button :loading="actionLoading.login" @click="handleLogin">登录测试</n-button>
+                <n-button v-if="server.is_running" type="warning" :loading="actionLoading.cancel" @click="handleCancel">取消任务</n-button>
                 <n-button @click="handleToggle(!server.enabled)">
                   {{ server.enabled ? '禁用' : '启用' }}
                 </n-button>
@@ -691,7 +711,7 @@
         const message = useMessage();
         const server = ref(null);
         const loading = ref(true);
-        const actionLoading = reactive({ watch: false, login: false });
+        const actionLoading = reactive({ watch: false, login: false, cancel: false });
 
         async function loadData() {
           try {
@@ -714,6 +734,16 @@
           finally { actionLoading.login = false; }
         }
 
+        async function handleCancel() {
+          actionLoading.cancel = true;
+          try {
+            await API.cancelWatch(route.params.id);
+            message.success('已请求取消任务');
+            await loadData();
+          } catch (e) { message.error(e.message); }
+          finally { actionLoading.cancel = false; }
+        }
+
         async function handleToggle(enabled) {
           try {
             await API.toggleServer(route.params.id, enabled);
@@ -731,20 +761,88 @@
         }
 
         onMounted(loadData);
-        return { API, server, loading, actionLoading, handleWatch, handleLogin, handleToggle, handleDelete };
+        return { API, server, loading, actionLoading, handleWatch, handleLogin, handleCancel, handleToggle, handleDelete };
+      }
+    };
+
+    // ============ Schedule Page ============
+    const RunHistoryPage = {
+      components: { NCard, NDataTable, NButton, NSpace, NTag, NEmpty, NSpin },
+      template: `
+        <div class="page-container">
+          <n-card title="运行历史">
+            <template #header-extra>
+              <n-button size="small" @click="loadData">刷新</n-button>
+            </template>
+            <n-spin :show="loading">
+              <n-data-table v-if="runs.length" :columns="columns" :data="runs" :bordered="false" />
+              <n-empty v-else description="暂无运行记录" />
+            </n-spin>
+          </n-card>
+        </div>
+      `,
+      setup() {
+        const message = useMessage();
+        const runs = ref([]);
+        const loading = ref(true);
+
+        function statusType(status) {
+          if (status === 'success') return 'success';
+          if (status === 'running' || status === 'initializing') return 'warning';
+          if (status === 'fail' || status === 'error') return 'error';
+          if (status === 'cancelled') return 'default';
+          return 'info';
+        }
+
+        function formatDate(value) {
+          return value ? new Date(value).toLocaleString() : '-';
+        }
+
+        const columns = [
+          { title: 'Run ID', key: 'run_id', width: 120 },
+          { title: '任务', key: 'description' },
+          { title: '账号', key: 'account_spec' },
+          { title: '状态', key: 'status', render(row) {
+            return Vue.h(naiveUI.NTag, { type: statusType(row.status), size: 'small' }, () => row.status_info || row.status);
+          }},
+          { title: '开始时间', key: 'start_time', render(row) { return formatDate(row.start_time); } },
+          { title: '耗时', key: 'duration', render(row) { return row.duration == null ? '-' : `${row.duration.toFixed(1)}s`; } },
+        ];
+
+        async function loadData() {
+          loading.value = true;
+          try { runs.value = await API.getRuns(100); }
+          catch (e) { message.error(e.message); }
+          finally { loading.value = false; }
+        }
+
+        onMounted(loadData);
+        return { runs, loading, columns, loadData };
       }
     };
 
     // ============ Schedule Page ============
     const SchedulePage = {
-      components: { NCard, NDataTable, NButton, NSpace, NTag, NEmpty, NSpin },
+      components: { NCard, NDataTable, NButton, NSpace, NTag, NEmpty, NSpin, NInput, NAlert },
       template: `
         <div class="page-container">
-          <n-card title="计划任务">
+          <n-card title="计划任务" style="margin-bottom:16px">
             <n-spin :show="loading">
               <n-data-table v-if="schedules.length" :columns="columns" :data="schedules" :bordered="false" />
               <n-empty v-else description="暂无计划任务" />
             </n-spin>
+          </n-card>
+          <n-card title="调度预览">
+            <n-space vertical :size="12">
+              <n-space>
+                <n-input v-model:value="previewForm.interval_days" placeholder="间隔天数，如 <7,12>" style="width:180px" />
+                <n-input v-model:value="previewForm.time_range" placeholder="时间范围，如 <11:00AM,11:00PM>" style="width:260px" />
+                <n-button :loading="previewLoading" @click="handlePreview">预览</n-button>
+              </n-space>
+              <n-alert v-if="previewResult" type="success" :bordered="false">
+                下次运行：{{ formatDate(previewResult.next_time) }}
+              </n-alert>
+            </n-space>
           </n-card>
         </div>
       `,
@@ -752,6 +850,9 @@
         const message = useMessage();
         const schedules = ref([]);
         const loading = ref(true);
+        const previewLoading = ref(false);
+        const previewResult = ref(null);
+        const previewForm = reactive({ interval_days: '', time_range: '' });
 
         const columns = [
           { title: 'ID', key: 'id', width: 200 },
@@ -762,7 +863,10 @@
             return Vue.h(naiveUI.NTag, { type: row.is_running ? 'warning' : 'info', size: 'small' }, () => row.is_running ? '运行中' : '等待');
           }},
           { title: '操作', key: 'actions', render(row) {
-            return Vue.h(naiveUI.NButton, { size: 'small', onClick: () => handleRunNow(row.id) }, () => '立即执行');
+            return Vue.h(naiveUI.NSpace, { size: 8 }, () => [
+              Vue.h(naiveUI.NButton, { size: 'small', onClick: () => handleRunNow(row.id) }, () => '立即执行'),
+              row.is_running ? Vue.h(naiveUI.NButton, { size: 'small', type: 'warning', onClick: () => handleCancel(row.id) }, () => '取消') : null,
+            ]);
           }},
         ];
 
@@ -779,18 +883,62 @@
           } catch (e) { message.error(e.message); }
         }
 
+        async function handleCancel(id) {
+          try {
+            await API.cancelSchedule(id);
+            message.success('已请求取消任务');
+            await loadData();
+          } catch (e) { message.error(e.message); }
+        }
+
+        function optionalText(value) {
+          const trimmed = typeof value === 'string' ? value.trim() : value;
+          return trimmed || null;
+        }
+
+        function formatDate(value) {
+          if (!value) return '-';
+          return new Date(value).toLocaleString();
+        }
+
+        async function handlePreview() {
+          previewLoading.value = true;
+          try {
+            previewResult.value = await API.previewSchedule({
+              interval_days: optionalText(previewForm.interval_days),
+              time_range: optionalText(previewForm.time_range),
+            });
+          } catch (e) { message.error(e.message); }
+          finally { previewLoading.value = false; }
+        }
+
         onMounted(loadData);
-        return { schedules, loading, columns };
+        return { schedules, loading, columns, previewForm, previewLoading, previewResult, handlePreview, formatDate };
       }
     };
 
     // ============ Config Page ============
     const ConfigPage = {
-      components: { NCard, NButton, NSpace, NInput, NInputNumber, NSelect, NDescriptions, NDescriptionsItem, NSpin, NText },
+      components: { NCard, NButton, NSpace, NInput, NInputNumber, NSelect, NDescriptions, NDescriptionsItem, NSpin, NText, NSwitch, NTag, NAlert },
       template: `
         <div class="page-container">
           <n-spin :show="loading">
-            <n-card title="全局配置">
+            <n-card title="运行健康" style="margin-bottom:16px">
+              <n-descriptions v-if="healthData" label-placement="left" :column="3" bordered>
+                <n-descriptions-item label="状态">
+                  <n-tag :type="healthData.status === 'ok' ? 'success' : 'warning'">{{ healthData.status }}</n-tag>
+                </n-descriptions-item>
+                <n-descriptions-item label="账号数">{{ healthData.account_count }}</n-descriptions-item>
+                <n-descriptions-item label="计划数">{{ healthData.schedule_count }}</n-descriptions-item>
+                <n-descriptions-item label="配置已加载">{{ healthData.config_loaded ? '是' : '否' }}</n-descriptions-item>
+                <n-descriptions-item label="调度器">{{ healthData.scheduler_initialized ? '已初始化' : '未初始化' }}</n-descriptions-item>
+                <n-descriptions-item label="配置可写">{{ healthData.config_writable ? '是' : '否' }}</n-descriptions-item>
+                <n-descriptions-item label="Web 认证">{{ healthData.auth_configured ? '已配置' : '未配置' }}</n-descriptions-item>
+                <n-descriptions-item label="通知">{{ healthData.notifier_configured ? '已配置' : '未配置' }}</n-descriptions-item>
+              </n-descriptions>
+            </n-card>
+
+            <n-card title="全局配置" style="margin-bottom:16px">
               <n-descriptions v-if="configData" label-placement="left" :column="2" bordered>
                 <n-descriptions-item label="Emby 时间范围">
                   <n-input v-model:value="editConfig.emby_time_range" size="small" />
@@ -816,23 +964,64 @@
                 <n-button :loading="saving" type="primary" @click="handleSave">保存配置</n-button>
               </n-space>
             </n-card>
+
+            <n-card title="通知配置">
+              <n-alert v-if="notifierData && notifierData.configured" type="success" :bordered="false" style="margin-bottom:12px">
+                当前目标：{{ notifierData.target_label }}
+              </n-alert>
+              <n-descriptions label-placement="left" :column="2" bordered>
+                <n-descriptions-item label="启用通知">
+                  <n-switch v-model:value="notifierForm.enabled" />
+                </n-descriptions-item>
+                <n-descriptions-item label="方式">
+                  <n-select v-model:value="notifierForm.method" :options="[{label:'Telegram',value:'telegram'},{label:'Apprise URI',value:'apprise'}]" size="small" />
+                </n-descriptions-item>
+                <n-descriptions-item v-if="notifierForm.method === 'telegram'" label="Bot Token">
+                  <n-input v-model:value="notifierForm.telegram_bot_token" type="password" show-password-on="click" size="small" placeholder="留空则保留现有 Token" />
+                </n-descriptions-item>
+                <n-descriptions-item v-if="notifierForm.method === 'telegram'" label="Chat ID">
+                  <n-input v-model:value="notifierForm.telegram_chat_id" size="small" placeholder="@channel 或 -100..." />
+                </n-descriptions-item>
+                <n-descriptions-item v-if="notifierForm.method === 'apprise'" label="Apprise URI">
+                  <n-input v-model:value="notifierForm.apprise_uri" type="password" show-password-on="click" size="small" placeholder="留空则保留现有 URI" />
+                </n-descriptions-item>
+              </n-descriptions>
+              <n-divider />
+              <n-space justify="end">
+                <n-button :loading="testingNotifier" @click="handleTestNotifier">测试发送</n-button>
+                <n-button :loading="savingNotifier" type="primary" @click="handleSaveNotifier">保存通知</n-button>
+              </n-space>
+            </n-card>
           </n-spin>
         </div>
       `,
       setup() {
         const message = useMessage();
         const configData = ref(null);
+        const healthData = ref(null);
+        const notifierData = ref(null);
         const loading = ref(true);
         const saving = ref(false);
+        const savingNotifier = ref(false);
+        const testingNotifier = ref(false);
         const editConfig = reactive({
           emby_time_range: '', emby_interval_days: '', emby_concurrency: 1,
           proxy_hostname: '', proxy_port: null, proxy_scheme: null,
+        });
+        const notifierForm = reactive({
+          enabled: false, method: 'telegram', apprise_uri: '',
+          telegram_bot_token: '', telegram_chat_id: '',
         });
 
         async function loadData() {
           try {
             configData.value = await API.getConfig();
             Object.assign(editConfig, configData.value);
+            healthData.value = await API.getHealth();
+            notifierData.value = await API.getNotifier();
+            notifierForm.enabled = notifierData.value.enabled;
+            notifierForm.method = notifierData.value.method === 'telegram' ? 'telegram' : 'apprise';
+            notifierForm.telegram_chat_id = notifierData.value.telegram_chat_id || '';
           } catch (e) { message.error(e.message); }
           finally { loading.value = false; }
         }
@@ -877,8 +1066,47 @@
           finally { saving.value = false; }
         }
 
+        function notifierPayload() {
+          const data = {
+            enabled: notifierForm.enabled,
+            method: notifierForm.method,
+          };
+          if (notifierForm.method === 'telegram') {
+            const botToken = optionalText(notifierForm.telegram_bot_token);
+            const chatId = optionalText(notifierForm.telegram_chat_id);
+            if (botToken) {
+              data.telegram_bot_token = botToken;
+              data.telegram_chat_id = chatId;
+            } else if (!notifierData.value || !notifierData.value.configured) {
+              data.telegram_chat_id = chatId;
+            }
+          } else {
+            data.apprise_uri = optionalText(notifierForm.apprise_uri);
+          }
+          return data;
+        }
+
+        async function handleSaveNotifier() {
+          savingNotifier.value = true;
+          try {
+            notifierData.value = await API.updateNotifier(notifierPayload());
+            message.success('通知配置已保存');
+            await loadData();
+          } catch (e) { message.error(e.message); }
+          finally { savingNotifier.value = false; }
+        }
+
+        async function handleTestNotifier() {
+          testingNotifier.value = true;
+          try {
+            await API.testNotifier(notifierPayload());
+            message.success('测试通知已发送');
+          } catch (e) { message.error(e.message); }
+          finally { testingNotifier.value = false; }
+        }
+
         onMounted(loadData);
-        return { configData, loading, saving, editConfig, handleSave };
+        return { configData, healthData, notifierData, loading, saving, savingNotifier, testingNotifier, editConfig, notifierForm, handleSave, handleSaveNotifier, handleTestNotifier };
       }
     };
 
@@ -892,6 +1120,7 @@
             <n-space class="header-actions" :size="8">
               <n-button text @click="$router.push('/')">仪表盘</n-button>
               <n-button text @click="$router.push('/schedule')">计划任务</n-button>
+              <n-button text @click="$router.push('/runs')">运行历史</n-button>
               <n-button text @click="$router.push('/config')">配置</n-button>
               <n-button text type="error" @click="handleLogout">退出</n-button>
             </n-space>
@@ -923,6 +1152,7 @@
           { path: 'servers/:id', component: ServerDetailPage },
           { path: 'servers/:id/edit', component: ServerFormPage },
           { path: 'schedule', component: SchedulePage },
+          { path: 'runs', component: RunHistoryPage },
           { path: 'config', component: ConfigPage },
         ],
       },

@@ -4,7 +4,21 @@ from datetime import datetime, timezone
 import pytest
 from fastapi import HTTPException
 
-from embykeeperapi.routers.scheduler import get_dashboard_status, healthz, list_schedule, run_now
+from embykeeper.cache import cache
+from embykeeper.config import config
+from embykeeper.runinfo import RunContext, RunStatus, _running_runs
+from embykeeper.schema import Config
+from embykeeperapi.models import SchedulePreviewRequest
+from embykeeperapi.routers.scheduler import (
+    cancel_schedule_run,
+    get_dashboard_status,
+    get_health_status,
+    healthz,
+    list_runs,
+    list_schedule,
+    preview_schedule,
+    run_now,
+)
 from embykeeperapi.scheduler_bridge import bridge
 
 
@@ -158,3 +172,120 @@ def test_dashboard_status_tolerates_mixed_watch_time_timezones(monkeypatch):
         assert response.last_global_watch_time == latest
 
     asyncio.run(run_test())
+
+
+def test_run_history_lists_indexed_runs(tmp_path):
+    async def run_test():
+        config.basedir = tmp_path
+        config.set(Config())
+        cache._setup_json_cache()
+        _running_runs.clear()
+
+        try:
+            run = RunContext(id="RUN123", description="Manual watch: alice@example.com")
+            run.start()
+            run.finish(RunStatus.SUCCESS, "done")
+
+            response = await list_runs(limit=10, user="tester")
+
+            assert len(response) == 1
+            assert response[0].run_id == "RUN123"
+            assert response[0].status == "success"
+            assert response[0].status_info == "done"
+            assert response[0].account_spec == "alice@example.com"
+        finally:
+            _running_runs.clear()
+            config.reset()
+
+    asyncio.run(run_test())
+
+
+def test_schedule_preview_uses_global_defaults(tmp_path):
+    async def run_test():
+        config.basedir = tmp_path
+        config.set(Config(emby={"interval_days": "7", "time_range": "<10:00AM,11:00AM>"}))
+
+        response = await preview_schedule(SchedulePreviewRequest(), user="tester")
+
+        assert response.interval_days == "7"
+        assert response.time_range == "<10:00AM,11:00AM>"
+        assert response.next_time is not None
+
+    asyncio.run(run_test())
+    config.reset()
+
+
+def test_schedule_preview_rejects_invalid_values(tmp_path):
+    async def run_test():
+        config.basedir = tmp_path
+        config.set(Config())
+
+        with pytest.raises(HTTPException) as exc:
+            await preview_schedule(
+                SchedulePreviewRequest(interval_days="<9,3>", time_range="not-a-time"),
+                user="tester",
+            )
+
+        assert exc.value.status_code == 400
+
+    asyncio.run(run_test())
+    config.reset()
+
+
+def test_cancel_schedule_run_delegates_to_bridge(monkeypatch):
+    async def run_test():
+        bridge.web_accounts = object()
+        seen = {}
+
+        def fake_cancel(account_id):
+            seen["account_id"] = account_id
+            return True
+
+        monkeypatch.setattr(bridge, "cancel_account_task", fake_cancel)
+
+        response = await cancel_schedule_run("emby.watch.alice@example.com", user="tester")
+
+        assert seen["account_id"] == "alice@example.com"
+        assert response.status == "cancelled"
+
+    asyncio.run(run_test())
+
+
+def test_cancel_schedule_run_returns_404_when_nothing_running(monkeypatch):
+    async def run_test():
+        bridge.web_accounts = object()
+        monkeypatch.setattr(bridge, "cancel_account_task", lambda _account_id: False)
+
+        with pytest.raises(HTTPException) as exc:
+            await cancel_schedule_run("alice@example.com", user="tester")
+
+        assert exc.value.status_code == 404
+
+    asyncio.run(run_test())
+
+
+def test_health_status_reports_runtime_state(tmp_path, monkeypatch):
+    async def run_test():
+        class WebAccounts:
+            def get_all(self):
+                return {"alice": {}, "bob": {}}
+
+        config.basedir = tmp_path
+        config.set(Config(notifier={"enabled": True, "method": "apprise", "apprise_uri": "dummy://n"}))
+        bridge.web_accounts = WebAccounts()
+        bridge.emby_manager = object()
+        monkeypatch.setattr(bridge, "get_schedule_info", lambda: [{"id": "one"}])
+        monkeypatch.setenv("EK_TOKEN", "secret")
+
+        response = await get_health_status(user="tester")
+
+        assert response.status == "ok"
+        assert response.config_loaded is True
+        assert response.scheduler_initialized is True
+        assert response.account_count == 2
+        assert response.schedule_count == 1
+        assert response.auth_configured is True
+        assert response.notifier_configured is True
+
+    asyncio.run(run_test())
+    config.reset()

@@ -125,6 +125,11 @@ class ActionResponse(BaseModel):
     message: str
 
 
+class CancelResponse(BaseModel):
+    status: str
+    message: str
+
+
 # ============ Schedule Models ============
 
 
@@ -137,6 +142,17 @@ class ScheduleInfo(BaseModel):
     is_running: bool = False
     last_status: Optional[str] = None
     enabled: bool = True
+
+
+class SchedulePreviewRequest(BaseModel):
+    interval_days: Optional[str] = None
+    time_range: Optional[str] = None
+
+
+class SchedulePreviewResponse(BaseModel):
+    interval_days: str
+    time_range: str
+    next_time: datetime
 
 
 # ============ Config Models ============
@@ -164,6 +180,23 @@ class GlobalConfigResponse(BaseModel):
     proxy_scheme: Optional[str] = None
 
 
+class NotifierConfigUpdate(BaseModel):
+    enabled: Optional[bool] = None
+    method: Optional[str] = "apprise"
+    apprise_uri: Optional[str] = None
+    telegram_bot_token: Optional[str] = None
+    telegram_chat_id: Optional[str] = None
+    clear: Optional[bool] = False
+
+
+class NotifierConfigResponse(BaseModel):
+    enabled: bool = False
+    method: str = "apprise"
+    configured: bool = False
+    target_label: Optional[str] = None
+    telegram_chat_id: Optional[str] = None
+
+
 # ============ Status Models ============
 
 
@@ -175,10 +208,25 @@ class DashboardStatus(BaseModel):
     last_global_watch_time: Optional[datetime] = None
 
 
+class HealthStatus(BaseModel):
+    status: str
+    config_loaded: bool = False
+    scheduler_initialized: bool = False
+    account_count: int = 0
+    schedule_count: int = 0
+    config_writable: bool = False
+    auth_configured: bool = False
+    notifier_configured: bool = False
+
+
 class RunHistoryItem(BaseModel):
     run_id: str
     description: Optional[str] = None
     status: str = "unknown"
+    status_info: Optional[str] = None
     start_time: Optional[datetime] = None
     end_time: Optional[datetime] = None
+    duration: Optional[float] = None
     account_spec: Optional[str] = None
+    is_running: bool = False
+    log_count: int = 0

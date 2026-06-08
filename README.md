@@ -70,6 +70,8 @@ docker compose up -d
 | `EK_SECRET` | Fernet 加密密钥 / JWT 签名密钥 | 自动生成 |
 | `EK_BASEDIR` | 数据存储目录 | 系统默认 |
 | `EK_MODE` | 运行模式：`api` / `cli`，默认启动新 Web UI | `api` |
+| `EK_TRUST_PROXY` | 是否信任所有反向代理转发头（`1`/`true` 启用） | `false` |
+| `EK_TRUSTED_PROXIES` | 可信反向代理 IP/CIDR，逗号分隔 | 仅本机 |
 | `PORT` | API 服务端口 | `1818` |
 
 ## Web UI 使用说明
@@ -92,7 +94,32 @@ docker compose up -d
 - **仪表盘** — 查看所有服务器状态（在线/离线、Token 配置情况）
 - **一键保活** — 点击"保活"按钮触发模拟观看
 - **计划任务** — 查看调度状态，支持立即执行
+- **运行历史** — 查看手动/自动任务的最近运行结果
 - **全局配置** — 编辑代理、保活间隔等设置
+- **通知配置** — 支持 Apprise URI 和 Telegram 测试通知
+
+### Telegram 通知
+
+在 Web UI 的"配置 → 通知配置"中选择 Telegram，填写 Bot Token 和 Chat ID 后保存。系统会转换为 Apprise 的 Telegram URI 并加密/持久化在配置目录中。
+
+也可以在 `config.toml` 中直接配置：
+
+```toml
+[notifier]
+enabled = true
+method = "apprise"
+apprise_uri = "tgram://123456:ABCDEF/-1001234567890"
+```
+
+### 反向代理客户端 IP
+
+登录限速依赖客户端 IP。出于安全考虑，默认只信任本机反向代理传入的 `X-Forwarded-For` / `X-Real-IP`。如果部署在外部反向代理后面，请优先配置可信代理网段：
+
+```bash
+export EK_TRUSTED_PROXIES="10.0.0.0/8,172.16.0.0/12"
+```
+
+仅在完全受控网络中才建议使用 `EK_TRUST_PROXY=1` 信任所有代理头。
 
 ## Emby API 认证说明
 

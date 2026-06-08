@@ -1,18 +1,22 @@
 from pathlib import Path
 from collections.abc import MutableMapping
 from tempfile import NamedTemporaryFile
+from urllib.parse import quote, unquote, urlparse
 
 from fastapi import APIRouter, Depends, HTTPException
+from loguru import logger
 from pydantic import ValidationError
 from tomlkit import document, dumps, parse
 
 from ..auth import get_current_user
-from ..models import GlobalConfigResponse, GlobalConfigUpdate
+from ..models import GlobalConfigResponse, GlobalConfigUpdate, NotifierConfigResponse, NotifierConfigUpdate
 from ..validation import validate_schedule_fields
 from embykeeper.config import config
-from embykeeper.schema import EmbyConfig, ProxyConfig
+from embykeeper.apprise import AppriseStream
+from embykeeper.schema import EmbyConfig, NotifierConfig, ProxyConfig
 
 router = APIRouter(prefix="/api/config", tags=["config"])
+logger = logger.bind(scheme="embykeeperapi")
 
 
 def _model_fields_set(model) -> set:
@@ -41,6 +45,57 @@ def _normalize_optional_positive_int(field: str, value):
     if value <= 0:
         raise HTTPException(status_code=400, detail=f"{field} must be greater than 0")
     return value
+
+
+def _normalize_optional_text(field: str, value):
+    if value is None:
+        return None
+    if not isinstance(value, str):
+        raise HTTPException(status_code=400, detail=f"{field} must be a string")
+    value = value.strip()
+    return value or None
+
+
+def _telegram_uri(bot_token: str, chat_id: str) -> str:
+    token = quote(bot_token, safe=":")
+    target = quote(chat_id, safe="@:-")
+    return f"tgram://{token}/{target}"
+
+
+def _telegram_chat_id_from_uri(uri: str):
+    if not isinstance(uri, str) or not uri.startswith("tgram://"):
+        return None
+    parsed = urlparse(uri)
+    path_parts = [unquote(part) for part in parsed.path.split("/") if part]
+    return path_parts[1] if len(path_parts) >= 2 else (path_parts[0] if path_parts else None)
+
+
+def _notifier_response() -> NotifierConfigResponse:
+    notifier = config._cache.notifier if config._cache and config._cache.notifier else NotifierConfig()
+    uri = notifier.apprise_uri
+    telegram_chat_id = _telegram_chat_id_from_uri(uri)
+    if telegram_chat_id:
+        target_label = f"Telegram: {telegram_chat_id}"
+    elif uri:
+        target_label = "Apprise URI configured"
+    else:
+        target_label = None
+    return NotifierConfigResponse(
+        enabled=bool(notifier.enabled),
+        method="telegram" if telegram_chat_id else (notifier.method or "apprise"),
+        configured=bool(uri),
+        target_label=target_label,
+        telegram_chat_id=telegram_chat_id,
+    )
+
+
+async def _refresh_notifier():
+    try:
+        from embykeeper.notify import start_notifier
+
+        await start_notifier()
+    except Exception as e:
+        logger.warning(f"Failed to refresh notifier: {type(e).__name__}")
 
 
 def _set_toml_value(table, key: str, value):
@@ -106,6 +161,16 @@ def _persist_global_config(next_config=None):
         _set_toml_value(doc["proxy"], "scheme", proxy.scheme)
     else:
         doc.pop("proxy", None)
+
+    notifier = target_config.notifier
+    if notifier:
+        if "notifier" not in doc or not isinstance(doc["notifier"], MutableMapping):
+            doc["notifier"] = {}
+        _set_toml_value(doc["notifier"], "enabled", notifier.enabled)
+        _set_toml_value(doc["notifier"], "method", notifier.method)
+        _set_toml_value(doc["notifier"], "apprise_uri", notifier.apprise_uri)
+    else:
+        doc.pop("notifier", None)
 
     try:
         _write_text_atomic(config_file, dumps(doc))
@@ -199,3 +264,87 @@ async def update_config(req: GlobalConfigUpdate, user: str = Depends(get_current
         raise HTTPException(status_code=400, detail="Invalid config")
 
     return {"status": "updated"}
+
+
+@router.get("/notifier", response_model=NotifierConfigResponse)
+async def get_notifier_config(user: str = Depends(get_current_user)):
+    """Read notification settings without exposing secret tokens."""
+    if not config._cache:
+        return NotifierConfigResponse()
+    return _notifier_response()
+
+
+@router.put("/notifier", response_model=NotifierConfigResponse)
+async def update_notifier_config(req: NotifierConfigUpdate, user: str = Depends(get_current_user)):
+    """Update notification settings. Telegram is stored as an Apprise URI."""
+    if not config._cache:
+        raise HTTPException(status_code=503, detail="Config not loaded")
+
+    fields_set = _model_fields_set(req)
+    new_config = config._cache.model_copy(deep=True)
+    existing = new_config.notifier or NotifierConfig()
+    enabled = existing.enabled if "enabled" not in fields_set else req.enabled
+    if enabled is not None and not isinstance(enabled, bool):
+        raise HTTPException(status_code=400, detail="enabled must be a boolean")
+
+    method = _normalize_optional_text("method", req.method) if "method" in fields_set else existing.method
+    method = (method or "apprise").lower()
+    if method not in {"apprise", "telegram"}:
+        raise HTTPException(status_code=400, detail="method must be 'apprise' or 'telegram'")
+
+    uri = existing.apprise_uri
+    if req.clear:
+        uri = None
+
+    bot_token = _normalize_optional_text("telegram_bot_token", req.telegram_bot_token)
+    chat_id = _normalize_optional_text("telegram_chat_id", req.telegram_chat_id)
+    apprise_uri = _normalize_optional_text("apprise_uri", req.apprise_uri)
+
+    if bot_token or chat_id:
+        if not bot_token or not chat_id:
+            raise HTTPException(
+                status_code=400, detail="telegram_bot_token and telegram_chat_id are required"
+            )
+        uri = _telegram_uri(bot_token, chat_id)
+        method = "apprise"
+    elif apprise_uri is not None:
+        uri = apprise_uri
+        method = "apprise"
+
+    if enabled and not uri:
+        raise HTTPException(status_code=400, detail="Notification target is required when enabled")
+
+    new_config.notifier = NotifierConfig(enabled=bool(enabled), method="apprise", apprise_uri=uri)
+    _persist_global_config(new_config)
+    if not config.set(new_config, preserve_conf_file=True):
+        raise HTTPException(status_code=400, detail="Invalid config")
+    await _refresh_notifier()
+    return _notifier_response()
+
+
+@router.post("/notifier/test")
+async def test_notifier(req: NotifierConfigUpdate, user: str = Depends(get_current_user)):
+    """Send a test notification to the provided or currently configured target."""
+    uri = None
+    bot_token = _normalize_optional_text("telegram_bot_token", req.telegram_bot_token)
+    chat_id = _normalize_optional_text("telegram_chat_id", req.telegram_chat_id)
+    apprise_uri = _normalize_optional_text("apprise_uri", req.apprise_uri)
+    if bot_token or chat_id:
+        if not bot_token or not chat_id:
+            raise HTTPException(
+                status_code=400, detail="telegram_bot_token and telegram_chat_id are required"
+            )
+        uri = _telegram_uri(bot_token, chat_id)
+    elif apprise_uri:
+        uri = apprise_uri
+    elif config._cache and config._cache.notifier:
+        uri = config._cache.notifier.apprise_uri
+    if not uri:
+        raise HTTPException(status_code=400, detail="Notification target is required")
+
+    stream = AppriseStream(uri)
+    if not getattr(stream, "ready", True):
+        raise HTTPException(status_code=400, detail="Notification target is invalid")
+    stream.write("INFO#Emby Keeper notification test")
+    await stream.join()
+    return {"status": "sent"}

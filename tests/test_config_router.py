@@ -8,9 +8,15 @@ from pydantic import ValidationError
 
 from embykeeper.config import config
 from embykeeper.schema import Config
-from embykeeperapi.models import GlobalConfigUpdate, ProxyConfigUpdate
+from embykeeperapi.models import GlobalConfigUpdate, NotifierConfigUpdate, ProxyConfigUpdate
 from embykeeperapi.routers import config as config_router
-from embykeeperapi.routers.config import get_config, update_config
+from embykeeperapi.routers.config import (
+    get_config,
+    get_notifier_config,
+    test_notifier as send_test_notifier,
+    update_config,
+    update_notifier_config,
+)
 
 
 def test_global_config_models_reject_boolean_numeric_values():
@@ -522,6 +528,119 @@ scheme = "socks5"
         assert config._cache.proxy is None
         data = tomllib.loads(config_file.read_text(encoding="utf-8"))
         assert "proxy" not in data
+
+    asyncio.run(run_test())
+    config.reset()
+
+
+def test_update_notifier_config_saves_telegram_as_apprise_uri(tmp_path, monkeypatch):
+    async def run_test():
+        async def noop_refresh():
+            return None
+
+        monkeypatch.setattr(config_router, "_refresh_notifier", noop_refresh)
+        config_file = tmp_path / "config.toml"
+        config_file.write_text("", encoding="utf-8")
+        config.basedir = tmp_path
+        config.set(Config())
+
+        response = await update_notifier_config(
+            NotifierConfigUpdate(
+                enabled=True,
+                method="telegram",
+                telegram_bot_token="123456:ABCDEF",
+                telegram_chat_id="-1001234567890",
+            ),
+            user="tester",
+        )
+
+        assert response.enabled is True
+        assert response.method == "telegram"
+        assert response.configured is True
+        assert response.telegram_chat_id == "-1001234567890"
+        assert "ABCDEF" not in response.model_dump_json()
+        assert config._cache.notifier.apprise_uri == "tgram://123456:ABCDEF/-1001234567890"
+        data = tomllib.loads(config_file.read_text(encoding="utf-8"))
+        assert data["notifier"]["enabled"] is True
+        assert data["notifier"]["method"] == "apprise"
+        assert data["notifier"]["apprise_uri"] == "tgram://123456:ABCDEF/-1001234567890"
+
+    asyncio.run(run_test())
+    config.reset()
+
+
+def test_get_notifier_config_masks_existing_apprise_secret(tmp_path):
+    async def run_test():
+        config.basedir = tmp_path
+        config.set(
+            Config(
+                notifier={
+                    "enabled": True,
+                    "method": "apprise",
+                    "apprise_uri": "mailto://user:secret@example.com",
+                }
+            )
+        )
+
+        response = await get_notifier_config(user="tester")
+
+        assert response.enabled is True
+        assert response.configured is True
+        assert response.target_label == "Apprise URI configured"
+        assert "secret" not in response.model_dump_json()
+
+    asyncio.run(run_test())
+    config.reset()
+
+
+def test_update_notifier_config_rejects_enabled_without_target(tmp_path):
+    async def run_test():
+        config.basedir = tmp_path
+        config.set(Config())
+
+        with pytest.raises(HTTPException) as exc:
+            await update_notifier_config(NotifierConfigUpdate(enabled=True, clear=True), user="tester")
+
+        assert exc.value.status_code == 400
+
+    asyncio.run(run_test())
+    config.reset()
+
+
+def test_notifier_test_sends_to_telegram_target(tmp_path, monkeypatch):
+    class FakeStream:
+        ready = True
+
+        def __init__(self, uri):
+            calls.append(("init", uri))
+
+        def write(self, message):
+            calls.append(("write", message))
+
+        async def join(self):
+            calls.append(("join",))
+
+    calls = []
+
+    async def run_test():
+        config.basedir = tmp_path
+        config.set(Config())
+        monkeypatch.setattr(config_router, "AppriseStream", FakeStream)
+
+        response = await send_test_notifier(
+            NotifierConfigUpdate(
+                telegram_bot_token="123456:ABCDEF",
+                telegram_chat_id="@channel",
+            ),
+            user="tester",
+        )
+
+        assert response == {"status": "sent"}
+        assert calls == [
+            ("init", "tgram://123456:ABCDEF/@channel"),
+            ("write", "INFO#Emby Keeper notification test"),
+            ("join",),
+        ]
 
     asyncio.run(run_test())
     config.reset()

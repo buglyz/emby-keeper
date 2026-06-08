@@ -19,6 +19,8 @@ if TYPE_CHECKING:
     from loguru import Logger
 
 _running_runs: Dict[str, RunContext] = {}
+RUNINFO_INDEX_KEY = "runinfo.index"
+RUNINFO_INDEX_LIMIT = 200
 
 
 class RunStatus(IntEnum):
@@ -113,6 +115,52 @@ class RunContext(BaseModel):
     def save(self):
         """保存当前任务到缓存"""
         cache.set(f"runinfo.{self.id}", self.model_dump_json())
+        self._remember_run_id(self.id)
+
+    @classmethod
+    def _read_run_index(cls) -> List[str]:
+        try:
+            run_ids = cache.get(RUNINFO_INDEX_KEY, [])
+        except Exception as e:
+            logger.warning(f"运行记录索引读取失败, 已忽略: {type(e).__name__}")
+            return []
+        if not isinstance(run_ids, list):
+            return []
+        return [run_id for run_id in run_ids if isinstance(run_id, str) and run_id]
+
+    @classmethod
+    def _remember_run_id(cls, run_id: str):
+        if not isinstance(run_id, str) or not run_id:
+            return
+        run_ids = [existing for existing in cls._read_run_index() if existing != run_id]
+        run_ids.insert(0, run_id)
+        try:
+            cache.set(RUNINFO_INDEX_KEY, run_ids[:RUNINFO_INDEX_LIMIT])
+        except Exception as e:
+            logger.warning(f"运行记录索引保存失败, 已忽略: {type(e).__name__}")
+
+    @classmethod
+    def list_recent(cls, limit: int = 50) -> List["RunContext"]:
+        """List recent finished and currently running task records."""
+        if not isinstance(limit, int) or isinstance(limit, bool) or limit <= 0:
+            limit = 50
+
+        run_ids = list(_running_runs.keys())
+        for run_id in cls._read_run_index():
+            if run_id not in run_ids:
+                run_ids.append(run_id)
+
+        runs = []
+        for run_id in run_ids[: max(limit, 1) * 2]:
+            run = cls.get(run_id)
+            if run:
+                runs.append(run)
+
+        def sort_key(run: "RunContext"):
+            return run.start_time or run.end_time or datetime.min
+
+        runs.sort(key=sort_key, reverse=True)
+        return runs[:limit]
 
     @classmethod
     def cancel_all(cls):
