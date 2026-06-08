@@ -26,6 +26,18 @@ def test_jwt_secret_file_does_not_break_fernet_key_generation(tmp_path, monkeypa
     assert decrypt_token(encrypted, tmp_path) == "emby-token"
 
 
+def test_fernet_key_generation_creates_missing_basedir(tmp_path, monkeypatch):
+    for key in ("EK_SECRET", "EK_WEBPASS", "EK_TOKEN"):
+        monkeypatch.delenv(key, raising=False)
+    basedir = tmp_path / "missing" / "secrets"
+
+    reset_fernet()
+    encrypted = encrypt_token("emby-token", basedir)
+
+    assert (basedir / "secret.key").is_file()
+    assert decrypt_token(encrypted, basedir) == "emby-token"
+
+
 def test_existing_jwt_secret_file_is_owner_only(tmp_path, monkeypatch):
     for key in ("EK_SECRET", "EK_WEBPASS", "EK_TOKEN"):
         monkeypatch.delenv(key, raising=False)

@@ -56,6 +56,7 @@ def _get_key(basedir: Path) -> bytes:
         except Exception:
             key = _derive_fernet_key(env_secret.encode())
         return key
+    basedir.mkdir(parents=True, exist_ok=True)
     # Auto-generate and store in basedir
     key_file = basedir / FERNET_KEY_FILE
     if key_file.is_file():
