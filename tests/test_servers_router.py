@@ -635,6 +635,34 @@ def test_create_server_trims_optional_text_fields(tmp_path):
     asyncio.run(run_test())
 
 
+def test_create_server_trims_account_schedule_overrides(tmp_path):
+    async def run_test():
+        config.basedir = tmp_path
+        config.set(Config())
+        await bridge.initialize(tmp_path)
+
+        try:
+            await create_server(
+                EmbyServerCreate(
+                    url="https://example.com",
+                    username="alice",
+                    auth_method="token",
+                    access_token="token-1",
+                    interval_days=" 7 ",
+                    time_range=" <10:00AM,11:00AM> ",
+                ),
+                user="tester",
+            )
+
+            stored = bridge.web_accounts.get("alice@example.com")
+            assert stored["interval_days"] == "7"
+            assert stored["time_range"] == "<10:00AM,11:00AM>"
+        finally:
+            await reset_bridge()
+
+    asyncio.run(run_test())
+
+
 def test_update_server_rejects_url_with_invalid_port_without_mutating_account(tmp_path):
     async def run_test():
         config.basedir = tmp_path
@@ -696,6 +724,40 @@ def test_update_server_rejects_invalid_schedule_settings_without_mutating_accoun
             assert exc.value.status_code == 400
             assert bridge.web_accounts.get(account_id)["interval_days"] == "7"
             assert "time_range" not in bridge.web_accounts.get(account_id)
+        finally:
+            await reset_bridge()
+
+    asyncio.run(run_test())
+
+
+def test_update_server_trims_and_clears_account_schedule_overrides(tmp_path):
+    async def run_test():
+        config.basedir = tmp_path
+        config.set(Config())
+        await bridge.initialize(tmp_path)
+
+        account_id = "alice@example.com"
+        bridge.add_account(
+            account_id,
+            {
+                "url": "https://example.com",
+                "username": "alice",
+                "encrypted_token": encrypt_token("token-old", tmp_path),
+                "interval_days": "7",
+                "time_range": "<8:00AM,9:00AM>",
+            },
+        )
+
+        try:
+            await update_server(
+                account_id,
+                EmbyServerUpdate(interval_days=" ", time_range=" <10:00AM,11:00AM> "),
+                user="tester",
+            )
+
+            stored = bridge.web_accounts.get(account_id)
+            assert "interval_days" not in stored
+            assert stored["time_range"] == "<10:00AM,11:00AM>"
         finally:
             await reset_bridge()
 

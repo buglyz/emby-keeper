@@ -38,6 +38,7 @@ OPTIONAL_TEXT_FIELDS = {
     "device",
     "device_id",
 }
+SCHEDULE_TEXT_FIELDS = {"interval_days", "time_range"}
 
 
 def _make_account_id(username: str, name: Optional[str], url: str) -> str:
@@ -230,9 +231,11 @@ async def create_server(req: EmbyServerCreate, user: str = Depends(get_current_u
     url = _validate_required_text("url", req.url)
     username = _validate_required_text("username", req.username)
     optional_text = _normalized_optional_text_updates(req)
+    interval_days = _normalize_optional_text(req.interval_days, "interval_days")
+    time_range = _normalize_optional_text(req.time_range, "time_range")
     name = optional_text["name"]
     _validate_server_fields(url=url, time=req.time)
-    _validate_account_schedule(req.interval_days, req.time_range)
+    _validate_account_schedule(interval_days, time_range)
     account_id = _make_account_id(username, name, url)
 
     # Check for duplicate
@@ -293,8 +296,8 @@ async def create_server(req: EmbyServerCreate, user: str = Depends(get_current_u
         "use_proxy": req.use_proxy,
         "play_id": optional_text["play_id"],
         "enabled": req.enabled,
-        "interval_days": req.interval_days,
-        "time_range": req.time_range,
+        "interval_days": interval_days,
+        "time_range": time_range,
         "useragent": optional_text["useragent"],
         "client": optional_text["client"],
         "client_version": optional_text["client_version"],
@@ -354,6 +357,8 @@ async def update_server(
             elif field == "username":
                 value = _validate_required_text(field, value)
             elif field in OPTIONAL_TEXT_FIELDS:
+                value = _normalize_optional_text(value, field)
+            elif field in SCHEDULE_TEXT_FIELDS:
                 value = _normalize_optional_text(value, field)
             update_data[field] = value
 
