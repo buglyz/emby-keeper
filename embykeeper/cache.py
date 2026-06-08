@@ -55,6 +55,10 @@ class Cache:
             ) as f:
                 tmp_path = Path(f.name)
                 json.dump(payload, f, ensure_ascii=False, indent=2)
+            try:
+                tmp_path.chmod(0o600)
+            except OSError:
+                pass
             tmp_path.replace(self._cache_file)
         except Exception:
             if tmp_path is not None:

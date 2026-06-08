@@ -1,4 +1,5 @@
 import json
+import stat
 
 import pytest
 
@@ -43,7 +44,32 @@ def test_json_cache_writes_atomically(tmp_path):
     assert json.loads((tmp_path / "cache.json").read_text(encoding="utf-8")) == {
         "scheduler": {"example": {"next_time": "2026-01-01T00:00:00"}}
     }
+    assert stat.S_IMODE((tmp_path / "cache.json").stat().st_mode) == 0o600
     assert not list(tmp_path.glob(".cache.json.*.tmp"))
+
+    config.reset()
+
+
+def test_json_cache_write_ignores_chmod_failure(tmp_path, monkeypatch):
+    config.set(Config())
+    config.basedir = tmp_path
+
+    cache = Cache()
+    original_chmod = type(tmp_path).chmod
+
+    def fail_tmp_chmod(self, mode):
+        if self.name.startswith(".cache.json."):
+            raise OSError("chmod unsupported")
+        return original_chmod(self, mode)
+
+    monkeypatch.setattr(type(tmp_path), "chmod", fail_tmp_chmod)
+
+    cache.set("scheduler.example", {"next_time": "new"})
+
+    assert cache.get("scheduler.example") == {"next_time": "new"}
+    assert json.loads((tmp_path / "cache.json").read_text(encoding="utf-8")) == {
+        "scheduler": {"example": {"next_time": "new"}}
+    }
 
     config.reset()
 

@@ -265,16 +265,22 @@ def random_time(start_time: time = None, end_time: time = None):
 
 def next_random_datetime(start_time: time = None, end_time: time = None, interval_days: int = 1):
     """在特定的开始和结束时间之间生成时间, 并设定最小间隔天数."""
+    now = datetime.now()
     if interval_days == 0:
-        min_datetime = datetime.now()
+        min_datetime = now
+        min_date = now.date()
     else:
-        min_date = (datetime.now() + timedelta(days=interval_days)).date()
+        min_date = (now + timedelta(days=interval_days)).date()
         min_datetime = datetime.combine(min_date, time(0, 0))
     target_time = random_time(start_time, end_time)
+    crosses_midnight = bool(start_time and end_time and end_time < start_time)
     offset_date = 0
     while True:
-        t = datetime.combine(datetime.now() + timedelta(days=offset_date), target_time)
-        if t >= min_datetime:
+        base_date = (now + timedelta(days=offset_date)).date()
+        t = datetime.combine(base_date, target_time)
+        if crosses_midnight and target_time <= end_time:
+            t += timedelta(days=1)
+        if t >= min_datetime and (not crosses_midnight or base_date >= min_date):
             break
         else:
             offset_date += 1

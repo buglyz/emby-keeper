@@ -1,4 +1,5 @@
 import asyncio
+from datetime import datetime, time
 
 import pytest
 
@@ -11,6 +12,7 @@ from embykeeper.utils import (
     get_proxy_str,
     looks_like_time_text,
     nonblocking,
+    next_random_datetime,
     truncate_str,
 )
 
@@ -64,6 +66,18 @@ def test_get_proxy_str_ignores_incomplete_proxy():
     assert get_proxy_str(ProxyConfig(scheme="http", hostname=None, port=1080)) is None
     assert get_proxy_str(ProxyConfig(scheme="http", hostname="127.0.0.1", port=None)) is None
     assert get_proxy_str(ProxyConfig(scheme=None, hostname="127.0.0.1", port=1080)) is None
+
+
+def test_next_random_datetime_keeps_overnight_tail_in_target_interval(monkeypatch):
+    class FrozenDateTime(datetime):
+        @classmethod
+        def now(cls):
+            return cls(2026, 1, 1, 12, 0)
+
+    monkeypatch.setattr("embykeeper.utils.datetime", FrozenDateTime)
+    monkeypatch.setattr("embykeeper.utils.random_time", lambda _start, _end: time(0, 30))
+
+    assert next_random_datetime(time(23, 0), time(1, 0), interval_days=1) == datetime(2026, 1, 3, 0, 30)
 
 
 def test_distribute_numbers_accepts_default_min_distance():
