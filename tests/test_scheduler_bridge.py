@@ -794,6 +794,37 @@ def test_trigger_watch_uses_stored_credentials_and_play_id(tmp_path, monkeypatch
     asyncio.run(run_test())
 
 
+def test_trigger_watch_handles_invalid_encrypted_token(tmp_path):
+    async def run_test():
+        bridge = SchedulerBridge()
+        await bridge.initialize(tmp_path)
+
+        account_id = "alice@example.com"
+        bridge.add_account(
+            account_id,
+            {
+                "url": "https://example.com",
+                "username": "alice",
+                "encrypted_token": "not-a-fernet-token",
+                "enabled": True,
+            },
+        )
+
+        try:
+            result = await bridge.trigger_watch(account_id)
+            assert result["status"] == "started"
+
+            task = bridge._running_tasks[account_id]
+            await task
+
+            status = bridge.get_account_status(account_id)
+            assert status["last_watch_status"] == "error"
+        finally:
+            await bridge.shutdown()
+
+    asyncio.run(run_test())
+
+
 def test_trigger_watch_returns_running_for_duplicate_account_task(tmp_path):
     async def run_test():
         bridge = SchedulerBridge()

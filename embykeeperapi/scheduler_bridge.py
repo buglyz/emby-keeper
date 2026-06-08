@@ -384,9 +384,9 @@ class SchedulerBridge:
         async def run_watch():
             from embykeeper.emby.api import EmbyError
 
-            emby, account = self._prepare_emby(account_data)
             now = datetime.now(timezone.utc)
             try:
+                emby, account = self._prepare_emby(account_data)
                 if not await self._authenticate_emby(emby):
                     ctx.finish(RunStatus.FAIL, "Token authentication failed")
                     self._record_status(
