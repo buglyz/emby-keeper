@@ -1042,6 +1042,64 @@ def test_play_builds_stream_url_when_server_omits_stream_urls(monkeypatch):
     asyncio.run(run_test())
 
 
+def test_play_ignores_invalid_stream_url_and_container_values(monkeypatch):
+    async def run_test():
+        account = EmbyAccount(
+            url="https://example.com",
+            username="alice",
+            client="Fileball",
+            client_version="1.3.30",
+            device="Test Device",
+            device_id="test-device-id",
+            useragent="Fileball/1.3.30",
+        )
+        emby = Emby(account)
+        emby.set_credentials("token-1", "user-1")
+
+        requests = []
+
+        async def fake_request(method, path, **kwargs):
+            requests.append((method, path, kwargs))
+            if path.endswith("/PlaybackInfo"):
+                return DummyResponse(
+                    {
+                        "PlaySessionId": "play-session-1",
+                        "MediaSources": [
+                            {
+                                "Id": "media-source-1",
+                                "DirectStreamUrl": True,
+                                "Container": {"bad": "value"},
+                            }
+                        ],
+                    }
+                )
+            return DummyResponse({})
+
+        original_sleep = asyncio.sleep
+
+        async def fake_sleep(_seconds):
+            await original_sleep(0)
+
+        monkeypatch.setattr(emby, "_request", fake_request)
+        monkeypatch.setattr("embykeeper.emby.api.asyncio.sleep", fake_sleep)
+        monkeypatch.setattr("embykeeper.emby.api.random.uniform", lambda a, b: 0)
+
+        assert await emby.play({"Id": "item-1", "Name": "Movie"}, time=1) is True
+
+        stream_params = [
+            kwargs["params"]
+            for method, path, kwargs in requests
+            if method == "GET" and path == "/Videos/item-1/stream"
+        ]
+        assert stream_params
+        assert all(params["Static"] == "true" for params in stream_params)
+        assert all(params["MediaSourceId"] == "media-source-1" for params in stream_params)
+        assert all(params["PlaySessionId"] == "play-session-1" for params in stream_params)
+        assert all("{" not in str(path) for _method, path, _kwargs in requests)
+
+    asyncio.run(run_test())
+
+
 def test_play_restarts_stream_after_range_end_when_bytes_were_read(monkeypatch):
     async def run_test():
         account = EmbyAccount(
@@ -1243,6 +1301,18 @@ def test_media_source_id_normalizes_values(monkeypatch):
     monkeypatch.setattr("embykeeper.emby.api.random.choice", lambda _choices: "a")
 
     assert Emby._media_source_id({"Id": True}) == "a" * 32
+
+
+def test_media_source_url_and_container_normalize_values():
+    assert Emby._media_source_url({"DirectStreamUrl": " /Videos/item-1/stream "}, "DirectStreamUrl") == (
+        "/Videos/item-1/stream"
+    )
+    assert Emby._media_source_url({"DirectStreamUrl": ""}, "DirectStreamUrl") is None
+    assert Emby._media_source_url({"DirectStreamUrl": True}, "DirectStreamUrl") is None
+    assert Emby._media_source_url({"DirectStreamUrl": {"bad": "value"}}, "DirectStreamUrl") is None
+
+    assert Emby._media_source_container({"Container": " mkv "}) == "mkv"
+    assert Emby._media_source_container({"Container": {"bad": "value"}}) is None
 
 
 def test_audio_stream_index_rejects_non_list_media_streams():

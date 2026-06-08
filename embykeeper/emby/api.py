@@ -597,7 +597,23 @@ class Emby:
         return headers
 
     @staticmethod
-    def _first_media_source(playback_info: dict) -> dict:
+    def _media_source_url(media_source: dict, key: str) -> Optional[str]:
+        url = media_source.get(key)
+        if not isinstance(url, str):
+            return None
+        url = url.strip()
+        return url or None
+
+    @staticmethod
+    def _media_source_container(media_source: dict) -> Optional[str]:
+        container = media_source.get("Container")
+        if not isinstance(container, str):
+            return None
+        container = container.strip()
+        return container or None
+
+    @classmethod
+    def _first_media_source(cls, playback_info: dict) -> dict:
         raw_media_sources = playback_info.get("MediaSources") or []
         if not isinstance(raw_media_sources, list):
             raw_media_sources = []
@@ -605,10 +621,10 @@ class Emby:
         if not media_sources:
             raise EmbyPlayError("服务器未返回可播放媒体源")
         for media_source in media_sources:
-            if media_source.get("DirectStreamUrl"):
+            if cls._media_source_url(media_source, "DirectStreamUrl"):
                 return media_source
         for media_source in media_sources:
-            if media_source.get("TranscodingUrl"):
+            if cls._media_source_url(media_source, "TranscodingUrl"):
                 return media_source
         return media_sources[0]
 
@@ -895,12 +911,10 @@ class Emby:
         play_session_id = playback_info.get("PlaySessionId", "")
         media_source = self._first_media_source(playback_info)
         media_source_id = self._media_source_id(media_source)
-        stream_url = media_source.get("DirectStreamUrl") or media_source.get("TranscodingUrl")
-        play_method = (
-            "Transcode"
-            if media_source.get("TranscodingUrl") and not media_source.get("DirectStreamUrl")
-            else "DirectStream"
-        )
+        direct_stream_url = self._media_source_url(media_source, "DirectStreamUrl")
+        transcoding_url = self._media_source_url(media_source, "TranscodingUrl")
+        stream_url = direct_stream_url or transcoding_url
+        play_method = "Transcode" if transcoding_url and not direct_stream_url else "DirectStream"
         audio_stream_index = self._audio_stream_index(media_source)
         subtitle_stream_index = self._stream_index(media_source.get("DefaultSubtitleStreamIndex"))
         live_stream_id = media_source.get("LiveStreamId")
@@ -973,7 +987,7 @@ class Emby:
             return data
 
         async def stream():
-            container = media_source.get("Container")
+            container = self._media_source_container(media_source)
             url = stream_url or f"/Videos/{iid}/stream{f'.{container}' if container else ''}"
             stream_params = None
             if not stream_url:
