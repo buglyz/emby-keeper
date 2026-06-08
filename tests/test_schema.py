@@ -91,6 +91,21 @@ def test_use_str_fields_accept_integer_values():
     assert cfg.emby.account[0].interval_days == "7"
 
 
+def test_emby_account_url_trims_outer_whitespace_and_adds_scheme():
+    cfg = Config(emby={"account": [{"url": " example.com/path ", "username": "alice"}]})
+
+    assert str(cfg.emby.account[0].url) == "https://example.com/path"
+
+    cfg = Config(emby={"account": [{"url": " https://example.net ", "username": "bob"}]})
+
+    assert str(cfg.emby.account[0].url) == "https://example.net/"
+
+
+def test_emby_account_url_rejects_internal_whitespace():
+    with pytest.raises(ValidationError):
+        Config(emby={"account": [{"url": "exa mple.com", "username": "alice"}]})
+
+
 def test_use_str_fields_reject_boolean_values():
     with pytest.raises(ValidationError):
         Config(emby={"interval_days": True})

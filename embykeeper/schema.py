@@ -47,8 +47,10 @@ class UseHttpUrl(HttpUrl):
 
     @classmethod
     def validate(cls, v):
-        if isinstance(v, str) and not v.startswith(("http://", "https://")):
-            v = f"https://{v}"
+        if isinstance(v, str):
+            v = v.strip()
+            if v and not v.startswith(("http://", "https://")):
+                v = f"https://{v}"
         return v
 
     def __str__(self):
