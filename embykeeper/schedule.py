@@ -68,6 +68,27 @@ class Scheduler:
             **kw,
         )
 
+    @staticmethod
+    def _validate_days(days):
+        if isinstance(days, (list, tuple)):
+            if len(days) != 2:
+                raise ValueError("执行间隔天数范围必须包含两个值")
+            normalized = []
+            for day in days:
+                if not isinstance(day, int) or isinstance(day, bool):
+                    raise ValueError("执行间隔天数必须为整数")
+                if day < 0:
+                    raise ValueError("执行间隔天数不能小于 0")
+                normalized.append(day)
+            if normalized[0] > normalized[1]:
+                raise ValueError("执行间隔天数范围无效")
+            return normalized
+        if not isinstance(days, int) or isinstance(days, bool):
+            raise ValueError("执行间隔天数必须为整数")
+        if days < 0:
+            raise ValueError("执行间隔天数不能小于 0")
+        return days
+
     def __init__(
         self,
         func: Callable,
@@ -96,7 +117,7 @@ class Scheduler:
             self.start_time = debug_time
             self.end_time = debug_time
         else:
-            self.days = days
+            self.days = self._validate_days(days)
             self.start_time = self._parse_time(start_time)
             self.end_time = self._parse_time(end_time)
         self.sid = sid

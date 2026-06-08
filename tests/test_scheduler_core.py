@@ -90,6 +90,18 @@ def test_scheduler_with_zero_days_runs_once(monkeypatch):
     asyncio.run(run_test())
 
 
+@pytest.mark.parametrize("days", [-1, True, "7", [7], [12, 7], [-1, 7], [True, 7]])
+def test_scheduler_constructor_rejects_invalid_days(days):
+    with pytest.raises(ValueError):
+        Scheduler(noop, days=days, start_time=None, end_time=None)
+
+
+def test_scheduler_constructor_accepts_zero_day_range():
+    scheduler = Scheduler(noop, days=[0, 0], start_time=None, end_time=None)
+
+    assert scheduler.days == [0, 0]
+
+
 def test_scheduler_ignores_invalid_cached_next_time(tmp_path, monkeypatch):
     from embykeeper.cache import cache
 
