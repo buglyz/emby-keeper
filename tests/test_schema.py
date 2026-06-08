@@ -36,3 +36,18 @@ def test_legacy_emby_account_alias_does_not_mutate_source_dict():
         "username": "alice",
         "ua": "Fileball/1.3.30",
     }
+
+
+def test_legacy_global_alias_does_not_mutate_source_dict():
+    raw = {"emby": {"account": []}, "interval": "7"}
+
+    cfg = Config(**raw)
+
+    assert cfg.emby.interval_days == "7"
+    assert raw == {"emby": {"account": []}, "interval": "7"}
+
+
+def test_legacy_global_alias_replaces_none_emby_section():
+    cfg = Config(emby=None, interval="7")
+
+    assert cfg.emby.interval_days == "7"

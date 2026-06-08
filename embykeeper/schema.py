@@ -191,8 +191,13 @@ class Config(ConfigModel):
                 parts = new_field.split(".")
                 target = values
                 for part in parts[:-1]:
-                    target.setdefault(part, {})
-                    target = target[part]
+                    next_target = target.get(part)
+                    if isinstance(next_target, dict):
+                        next_target = next_target.copy()
+                    else:
+                        next_target = {}
+                    target[part] = next_target
+                    target = next_target
                 target[parts[-1]] = values[old_field]
                 values.pop(old_field, None)
 
