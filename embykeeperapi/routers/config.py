@@ -23,6 +23,7 @@ def _model_fields_set(model) -> set:
 
 
 def _write_text_atomic(path: Path, content: str):
+    path.parent.mkdir(parents=True, exist_ok=True)
     tmp_path = None
     try:
         with NamedTemporaryFile(
@@ -33,8 +34,8 @@ def _write_text_atomic(path: Path, content: str):
             suffix=".tmp",
             delete=False,
         ) as tmp:
-            tmp.write(content)
             tmp_path = Path(tmp.name)
+            tmp.write(content)
         try:
             tmp_path.chmod(0o600)
         except OSError:

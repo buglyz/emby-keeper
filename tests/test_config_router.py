@@ -134,6 +134,15 @@ def test_write_text_atomic_preserves_existing_file_when_replace_fails(tmp_path, 
     assert not list(tmp_path.glob(".config.toml.*.tmp"))
 
 
+def test_write_text_atomic_creates_missing_parent(tmp_path):
+    config_file = tmp_path / "missing" / "config.toml"
+
+    config_router._write_text_atomic(config_file, "[emby]\nconcurrency = 1\n")
+
+    assert tomllib.loads(config_file.read_text(encoding="utf-8"))["emby"]["concurrency"] == 1
+    assert stat.S_IMODE(config_file.stat().st_mode) == 0o600
+
+
 def test_update_config_rejects_invalid_runtime_values(tmp_path):
     async def run_test():
         config.basedir = tmp_path
