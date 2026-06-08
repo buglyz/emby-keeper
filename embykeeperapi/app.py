@@ -133,6 +133,10 @@ def create_app() -> FastAPI:
     app.include_router(scheduler_router)
     app.include_router(config_router)
 
+    @app.get("/healthz")
+    async def healthz():
+        return {"status": "ok"}
+
     # Serve SPA frontend
     static_dir = Path(__file__).parent / "static"
     if static_dir.is_dir():

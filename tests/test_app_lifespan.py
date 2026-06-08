@@ -4,7 +4,13 @@ import pytest
 from starlette.requests import Request
 from starlette.responses import Response
 
-from embykeeperapi.app import ProxyFixMiddleware, _is_reserved_spa_path, _normalize_root_path, lifespan
+from embykeeperapi.app import (
+    ProxyFixMiddleware,
+    _is_reserved_spa_path,
+    _normalize_root_path,
+    create_app,
+    lifespan,
+)
 from embykeeperapi.scheduler_bridge import bridge
 
 
@@ -70,6 +76,13 @@ def test_normalize_root_path(value, expected):
 )
 def test_reserved_spa_paths(path, expected):
     assert _is_reserved_spa_path(path) is expected
+
+
+def test_healthz_route_is_not_spa_fallback():
+    app = create_app()
+    route = next(route for route in app.routes if getattr(route, "path", None) == "/healthz")
+
+    assert asyncio.run(route.endpoint()) == {"status": "ok"}
 
 
 def test_proxy_fix_middleware_uses_first_non_empty_forwarded_for():
