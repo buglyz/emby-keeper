@@ -96,7 +96,7 @@ class ConfigManager(ProxyBase):
             new_val = get_value(new_config, key) if new_config else None
 
             if old_val != new_val:
-                for callback in self._callbacks["change"][key]:
+                for callback in list(self._callbacks["change"][key]):
                     try:
                         callback(old_val, new_val)
                     except Exception as e:
@@ -114,7 +114,7 @@ class ConfigManager(ProxyBase):
                 deleted = [item for item in old_list if item not in new_list]
 
                 if added or deleted:
-                    for callback in self._callbacks["list_change"][key]:
+                    for callback in list(self._callbacks["list_change"][key]):
                         try:
                             callback(added, deleted)
                         except Exception as e:

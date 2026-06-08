@@ -2,6 +2,7 @@ import asyncio
 import base64
 
 from embykeeper.config import ConfigManager
+from embykeeper.schema import Config
 
 
 def test_reload_conf_rejects_invalid_env_config(monkeypatch):
@@ -108,3 +109,56 @@ interval_days = "7"
         assert manager._conf_file == config_file
 
     asyncio.run(run_test())
+
+
+def test_change_callback_can_unregister_without_skipping_next_callback():
+    manager = ConfigManager()
+    manager.set(Config(emby={"interval_days": "7"}))
+    calls = []
+    holder = {}
+
+    def first_callback(_old, _new):
+        calls.append("first")
+        holder["handle"].__exit__(None, None, None)
+
+    def second_callback(_old, _new):
+        calls.append("second")
+
+    holder["handle"] = manager.on_change("emby.interval_days", first_callback)
+    manager.on_change("emby.interval_days", second_callback)
+
+    manager.set(Config(emby={"interval_days": "8"}))
+
+    assert calls == ["first", "second"]
+
+
+def test_list_change_callback_can_unregister_without_skipping_next_callback():
+    manager = ConfigManager()
+    manager.set(Config(emby={"account": []}))
+    calls = []
+    holder = {}
+
+    def first_callback(_added, _deleted):
+        calls.append("first")
+        holder["handle"].__exit__(None, None, None)
+
+    def second_callback(_added, _deleted):
+        calls.append("second")
+
+    holder["handle"] = manager.on_list_change("emby.account", first_callback)
+    manager.on_list_change("emby.account", second_callback)
+
+    manager.set(
+        Config(
+            emby={
+                "account": [
+                    {
+                        "url": "https://example.com",
+                        "username": "alice",
+                    }
+                ]
+            }
+        )
+    )
+
+    assert calls == ["first", "second"]
