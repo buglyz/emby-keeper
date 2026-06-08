@@ -5,6 +5,7 @@ import pytest
 
 from embykeeper.config import config
 from embykeeper.emby.main import EmbyManager, _extract_emby_item_id, _same_emby_origin
+from embykeeper.runinfo import RunStatus, _running_runs
 from embykeeper.schema import Config, EmbyAccount
 
 
@@ -82,6 +83,51 @@ def test_watch_main_ignores_disabled_accounts(monkeypatch):
         monkeypatch.setattr("embykeeper.emby.main.Emby", fail_if_emby_is_created)
 
         assert await manager._watch_main([disabled], instant=True) is None
+
+    asyncio.run(run_test())
+
+
+def test_watch_main_marks_context_cancelled(monkeypatch):
+    async def run_test():
+        manager = EmbyManager()
+        account = EmbyAccount(url="https://example.com", username="alice")
+        started = asyncio.Event()
+        blocker = asyncio.Event()
+
+        class DummyLog:
+            def info(self, *_args, **_kwargs):
+                return None
+
+            def warning(self, *_args, **_kwargs):
+                return None
+
+        class DummyEmby:
+            log = DummyLog()
+
+            def __init__(self, _account):
+                return None
+
+            async def ensure_authenticated(self):
+                started.set()
+                await blocker.wait()
+                return True
+
+        monkeypatch.setattr("embykeeper.emby.main.Emby", DummyEmby)
+        _running_runs.clear()
+
+        task = asyncio.create_task(manager._watch_main([account], instant=True))
+        await asyncio.wait_for(started.wait(), timeout=1)
+        ctx = next(iter(_running_runs.values()))
+        task.cancel()
+
+        try:
+            with pytest.raises(asyncio.CancelledError):
+                await task
+
+            assert ctx.status == RunStatus.CANCELLED
+            assert ctx.id not in _running_runs
+        finally:
+            _running_runs.clear()
 
     asyncio.run(run_test())
 

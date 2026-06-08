@@ -400,7 +400,11 @@ class EmbyManager:
 
         failed_accounts = []
         successful_accounts = []
-        results = await asyncio.gather(*tasks)
+        try:
+            results = await asyncio.gather(*tasks)
+        except asyncio.CancelledError:
+            ctx.finish(RunStatus.CANCELLED, "任务被取消")
+            raise
         for a, success in results:
             if success:
                 successful_accounts.append(self.get_spec(a))
