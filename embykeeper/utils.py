@@ -215,6 +215,8 @@ def time_in_range(start, end, x):
 
 def batch(iterable, n=1):
     """将数组分成 N 份."""
+    if n <= 0:
+        raise ValueError("batch size must be greater than 0")
     l = len(iterable)
     for ndx in range(0, l, n):
         yield iterable[ndx : min(ndx + n, l)]

@@ -1,4 +1,6 @@
-from embykeeper.utils import truncate_str
+import pytest
+
+from embykeeper.utils import batch, truncate_str
 
 
 def test_truncate_str_uses_requested_prefix_length():
@@ -7,3 +9,12 @@ def test_truncate_str_uses_requested_prefix_length():
 
 def test_truncate_str_keeps_short_text():
     assert truncate_str("abc", 10) == "abc"
+
+
+def test_batch_splits_iterable():
+    assert list(batch([1, 2, 3, 4, 5], 2)) == [[1, 2], [3, 4], [5]]
+
+
+def test_batch_rejects_non_positive_size():
+    with pytest.raises(ValueError):
+        list(batch([1, 2, 3], 0))
