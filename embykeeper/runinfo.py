@@ -185,7 +185,11 @@ class RunContext(BaseModel):
             return _running_runs[run_id]
 
         # 从缓存加载
-        run_json = cache.get(f"runinfo.{run_id}")
+        try:
+            run_json = cache.get(f"runinfo.{run_id}")
+        except Exception as e:
+            logger.warning(f"运行记录 {run_id} 读取失败, 已忽略: {type(e).__name__}")
+            return None
         if run_json:
             if not isinstance(run_json, (str, bytes, bytearray)):
                 logger.warning(f"运行记录 {run_id} 格式无效, 已忽略.")

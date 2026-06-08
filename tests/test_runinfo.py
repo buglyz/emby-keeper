@@ -28,6 +28,19 @@ def test_run_context_get_ignores_non_json_cached_record(tmp_path):
     config.reset()
 
 
+def test_run_context_get_ignores_cache_read_failure(monkeypatch):
+    _running_runs.clear()
+
+    def fail_get(key, default=None):
+        if key == "runinfo.FAILREAD":
+            raise OSError("read failed")
+        return default
+
+    monkeypatch.setattr("embykeeper.runinfo.cache.get", fail_get)
+
+    assert RunContext.get("FAILREAD") is None
+
+
 def test_run_context_prepare_avoids_existing_ids(tmp_path, monkeypatch):
     config.set(Config())
     config.basedir = tmp_path
