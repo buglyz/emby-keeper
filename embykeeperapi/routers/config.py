@@ -10,7 +10,7 @@ from ..auth import get_current_user
 from ..models import GlobalConfigResponse, GlobalConfigUpdate
 from ..validation import validate_schedule_fields
 from embykeeper.config import config
-from embykeeper.schema import ProxyConfig
+from embykeeper.schema import EmbyConfig, ProxyConfig
 
 router = APIRouter(prefix="/api/config", tags=["config"])
 
@@ -63,9 +63,10 @@ def _persist_global_config(next_config=None):
 
     if "emby" not in doc or not isinstance(doc["emby"], MutableMapping):
         doc["emby"] = {}
-    doc["emby"]["time_range"] = target_config.emby.time_range
-    doc["emby"]["interval_days"] = target_config.emby.interval_days
-    doc["emby"]["concurrency"] = target_config.emby.concurrency
+    emby = target_config.emby or EmbyConfig()
+    doc["emby"]["time_range"] = emby.time_range
+    doc["emby"]["interval_days"] = emby.interval_days
+    doc["emby"]["concurrency"] = emby.concurrency
 
     if target_config.proxy:
         if "proxy" not in doc or not isinstance(doc["proxy"], MutableMapping):
@@ -102,9 +103,9 @@ async def get_config(user: str = Depends(get_current_user)):
     proxy = config._cache.proxy
 
     return GlobalConfigResponse(
-        emby_time_range=emby.time_range,
-        emby_interval_days=emby.interval_days,
-        emby_concurrency=emby.concurrency,
+        emby_time_range=emby.time_range if emby else None,
+        emby_interval_days=emby.interval_days if emby else None,
+        emby_concurrency=emby.concurrency if emby else None,
         proxy_hostname=proxy.hostname if proxy else None,
         proxy_port=proxy.port if proxy else None,
         proxy_scheme=proxy.scheme if proxy else None,
@@ -118,6 +119,8 @@ async def update_config(req: GlobalConfigUpdate, user: str = Depends(get_current
         raise HTTPException(status_code=503, detail="Config not loaded")
 
     new_config = config._cache.model_copy(deep=True)
+    if new_config.emby is None:
+        new_config.emby = EmbyConfig()
 
     fields_set = _model_fields_set(req)
 

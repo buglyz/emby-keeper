@@ -10,7 +10,7 @@ from embykeeper.config import config
 from embykeeper.schema import Config
 from embykeeperapi.models import GlobalConfigUpdate, ProxyConfigUpdate
 from embykeeperapi.routers import config as config_router
-from embykeeperapi.routers.config import update_config
+from embykeeperapi.routers.config import get_config, update_config
 
 
 def test_global_config_models_reject_boolean_numeric_values():
@@ -76,6 +76,38 @@ password = "secret"
         assert stat.S_IMODE(config_file.stat().st_mode) == 0o600
         assert not (tmp_path / "config.toml.tmp").exists()
         assert not list(tmp_path.glob(".config.toml.*.tmp"))
+
+    asyncio.run(run_test())
+    config.reset()
+
+
+def test_get_config_handles_missing_emby_section(tmp_path):
+    async def run_test():
+        config.basedir = tmp_path
+        config.set(Config(emby=None))
+
+        response = await get_config(user="tester")
+
+        assert response.emby_time_range is None
+        assert response.emby_interval_days is None
+        assert response.emby_concurrency is None
+
+    asyncio.run(run_test())
+    config.reset()
+
+
+def test_update_config_creates_missing_emby_section(tmp_path):
+    async def run_test():
+        config_file = tmp_path / "config.toml"
+        config_file.write_text("", encoding="utf-8")
+        config.basedir = tmp_path
+        config.set(Config(emby=None))
+
+        await update_config(GlobalConfigUpdate(emby_concurrency=2), user="tester")
+
+        assert config._cache.emby.concurrency == 2
+        data = tomllib.loads(config_file.read_text(encoding="utf-8"))
+        assert data["emby"]["concurrency"] == 2
 
     asyncio.run(run_test())
     config.reset()
