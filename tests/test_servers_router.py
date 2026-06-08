@@ -220,6 +220,34 @@ def test_create_server_rejects_boolean_time_when_model_validation_is_bypassed(tm
     asyncio.run(run_test())
 
 
+@pytest.mark.parametrize("time_value", [1.5, "300", [300, 600.5], [300, "600"]])
+def test_create_server_rejects_non_integer_time_when_model_validation_is_bypassed(tmp_path, time_value):
+    async def run_test():
+        config.basedir = tmp_path
+        config.set(Config())
+        await bridge.initialize(tmp_path)
+
+        req = EmbyServerCreate.model_construct(
+            url="https://example.com",
+            username="alice",
+            auth_method="token",
+            access_token="token-1",
+            time=time_value,
+            _fields_set={"url", "username", "auth_method", "access_token", "time"},
+        )
+
+        try:
+            with pytest.raises(HTTPException) as exc:
+                await create_server(req, user="tester")
+
+            assert exc.value.status_code == 400
+            assert bridge.web_accounts.get_all() == {}
+        finally:
+            await reset_bridge()
+
+    asyncio.run(run_test())
+
+
 def test_create_server_rejects_empty_username_without_saving(tmp_path):
     async def run_test():
         config.basedir = tmp_path
