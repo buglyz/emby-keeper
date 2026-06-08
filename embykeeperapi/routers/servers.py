@@ -15,6 +15,7 @@ from ..scheduler_bridge import bridge
 from ..crypto import encrypt_token
 from ..validation import validate_schedule_fields
 from embykeeper.config import config
+from embykeeper.schema import EmbyConfig
 
 logger = logger.bind(scheme="embykeeperapi")
 
@@ -123,9 +124,10 @@ def _normalized_optional_text_updates(source) -> dict:
 def _validate_account_schedule(interval_days=None, time_range=None):
     if interval_days is None and time_range is None:
         return
+    emby_config = config._cache.emby if config._cache and config._cache.emby else EmbyConfig()
     validate_schedule_fields(
-        interval_days if interval_days is not None else config.emby.interval_days,
-        time_range if time_range is not None else config.emby.time_range,
+        interval_days if interval_days is not None else emby_config.interval_days,
+        time_range if time_range is not None else emby_config.time_range,
     )
 
 

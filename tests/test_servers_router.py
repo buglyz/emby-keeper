@@ -179,6 +179,32 @@ def test_create_server_rejects_invalid_interval_without_saving(tmp_path):
     asyncio.run(run_test())
 
 
+def test_create_server_uses_default_schedule_when_global_emby_missing(tmp_path):
+    async def run_test():
+        config.basedir = tmp_path
+        config.set(Config(emby=None))
+        await bridge.initialize(tmp_path)
+
+        try:
+            response = await create_server(
+                EmbyServerCreate(
+                    url="https://example.com",
+                    username="alice",
+                    auth_method="token",
+                    access_token="token-1",
+                    interval_days="7",
+                ),
+                user="tester",
+            )
+
+            assert response.id == "alice@example.com"
+            assert bridge.web_accounts.get("alice@example.com")["interval_days"] == "7"
+        finally:
+            await reset_bridge()
+
+    asyncio.run(run_test())
+
+
 def test_server_models_reject_boolean_time_values():
     with pytest.raises(ValidationError):
         EmbyServerCreate(
