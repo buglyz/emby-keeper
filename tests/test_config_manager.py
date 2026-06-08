@@ -81,6 +81,25 @@ def test_start_observer_waits_for_previous_observer_cancel(tmp_path, monkeypatch
     asyncio.run(run_test())
 
 
+def test_start_observer_task_handles_watch_errors(tmp_path, monkeypatch):
+    async def run_test():
+        manager = ConfigManager(tmp_path / "config.toml")
+
+        async def fail_awatch(_path):
+            raise OSError("watch failed")
+            yield []
+
+        monkeypatch.setattr("embykeeper.config.awatch", fail_awatch)
+
+        await manager.start_observer()
+        await manager._observer
+
+        assert manager._observer.done()
+        assert manager._observer.exception() is None
+
+    asyncio.run(run_test())
+
+
 def test_reset_cancels_observer_task():
     async def run_test():
         manager = ConfigManager()

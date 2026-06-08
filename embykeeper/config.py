@@ -289,9 +289,14 @@ class ConfigManager(ProxyBase):
 
     async def start_observer(self):
         async def observer():
-            async for changes in awatch(self._conf_file):
-                logger.info(f"配置文件已更改, 正在重新加载.")
-                await self.reload_conf(self._conf_file)
+            try:
+                async for changes in awatch(self._conf_file):
+                    logger.info(f"配置文件已更改, 正在重新加载.")
+                    await self.reload_conf(self._conf_file)
+            except asyncio.CancelledError:
+                raise
+            except Exception as e:
+                logger.warning(f"配置文件监听任务异常停止: {type(e).__name__}")
 
         if self._observer:
             self._observer.cancel()
