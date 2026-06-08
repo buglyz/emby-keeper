@@ -357,6 +357,10 @@ class ConfigManager(ProxyBase):
         if not cfg_model:
             return False
 
+        if env_config:
+            self.set(cfg_model)
+            return True
+
         if conf_file:
             logger.debug(f"现在使用的配置文件为: {conf_file.absolute()}")
             self.set(cfg_model)
