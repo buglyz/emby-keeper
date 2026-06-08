@@ -28,6 +28,25 @@ def test_reload_conf_rejects_non_base64_env_config(monkeypatch):
     asyncio.run(run_test())
 
 
+def test_reload_conf_rejects_config_read_errors(tmp_path, monkeypatch):
+    async def run_test():
+        manager = ConfigManager()
+        config_file = tmp_path / "config.toml"
+        config_file.write_text("[emby]\ninterval_days = '7'\n", encoding="utf-8")
+
+        def fail_open(path, *_args, **_kwargs):
+            if path == config_file:
+                raise PermissionError("denied")
+            raise AssertionError(f"unexpected open path: {path}")
+
+        monkeypatch.setattr("builtins.open", fail_open)
+
+        assert await manager.reload_conf(config_file) is False
+        assert manager._cache is None
+
+    asyncio.run(run_test())
+
+
 def test_reload_conf_rejects_blank_env_config(monkeypatch):
     async def run_test():
         manager = ConfigManager()

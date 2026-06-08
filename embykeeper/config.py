@@ -356,6 +356,9 @@ class ConfigManager(ProxyBase):
                     except FileNotFoundError:
                         logger.error(f'配置文件 "{conf_file}" 不存在, 请您检查.')
                         return False
+                    except OSError as e:
+                        logger.error(f'无法读取配置文件 "{conf_file}": {e}.')
+                        return False
                 else:
                     logger.error(f'配置文件 "{conf_file}" 不是 TOML 格式的配置文件.')
                     return False
