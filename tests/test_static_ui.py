@@ -187,7 +187,11 @@ def test_frontend_exposes_run_history_and_cancel_actions():
     html = STATIC_INDEX.read_text(encoding="utf-8")
 
     assert "getRuns(limit = 50)" in html
+    assert "getRunLogs(id)" in html
     assert "const RunHistoryPage = {" in html
+    assert "logModalVisible" in html
+    assert "openRunLogs(row.run_id)" in html
+    assert "API.getRunLogs(runId)" in html
     assert "{ path: 'runs', component: RunHistoryPage }" in html
     assert "cancelWatch(id)" in html
     assert "cancelSchedule(id)" in html
@@ -204,17 +208,38 @@ def test_schedule_page_refreshes_after_manual_run():
 def test_server_actions_refresh_after_runtime_operations():
     html = STATIC_INDEX.read_text(encoding="utf-8")
 
-    assert "message.success(res && res.message ? res.message : '保活任务已启动')" in html
-    assert "message.success(res && res.message ? res.message : '全部保活任务已启动')" in html
+    assert "async function runUiAction({" in html
+    assert "function responseMessage(res, fallback)" in html
+    assert "setTimeout(async () =>" in html
+    assert "hasRunning ? 5000 : 30000" in html
+    assert "clearTimeout(pollTimer)" in html
+    assert "responseMessage(res, '保活任务已启动')" in html
+    assert "responseMessage(res, '全部保活任务已启动')" in html
     assert "message.success(res && res.message ? res.message : '保活已启动')" in html
     assert "message.success(res.message || '登录测试已完成')" in html
-    assert "message.success(res.message || '登录测试已触发')" in html
     assert ':loading="watchAllLoading"' in html
     assert "const watchAllLoading = ref(false)" in html
-    assert "watchAllLoading.value = true" in html
-    assert "finally { watchAllLoading.value = false; }" in html
+    assert "watchAllLoading.value = value" in html
     assert "await API.toggleServer(route.params.id, enabled)" in html
     assert "await loadData();" in html
+
+
+def test_config_page_exposes_backup_and_health_diagnostics():
+    html = STATIC_INDEX.read_text(encoding="utf-8")
+
+    assert "exportConfig() { return this.get('/api/config/export'); }" in html
+    assert "backupConfig() { return this.post('/api/config/backup'); }" in html
+    assert "function downloadJson(filename, data)" in html
+    assert "handleExportConfig" in html
+    assert "handleCreateBackup" in html
+    assert "下载备份" in html
+    assert "创建本地备份" in html
+    assert "scheduler_task_running" in html
+    assert "web_accounts_writable" in html
+    assert "notifier_ready" in html
+    assert "latest_run_id" in html
+    assert "config_path" in html
+    assert "web_accounts_path" in html
 
 
 def test_frontend_exposes_schedule_preview_and_health_status():

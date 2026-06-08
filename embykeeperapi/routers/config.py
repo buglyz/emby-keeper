@@ -1,5 +1,7 @@
 from pathlib import Path
 from collections.abc import MutableMapping
+from datetime import datetime, timezone
+import shutil
 from tempfile import NamedTemporaryFile
 from urllib.parse import quote, unquote, urlparse
 
@@ -9,8 +11,16 @@ from pydantic import ValidationError
 from tomlkit import document, dumps, parse
 
 from ..auth import get_current_user
-from ..models import GlobalConfigResponse, GlobalConfigUpdate, NotifierConfigResponse, NotifierConfigUpdate
+from ..models import (
+    ConfigBackupResponse,
+    ConfigExportResponse,
+    GlobalConfigResponse,
+    GlobalConfigUpdate,
+    NotifierConfigResponse,
+    NotifierConfigUpdate,
+)
 from ..validation import validate_schedule_fields
+from ..scheduler_bridge import bridge
 from embykeeper.config import config
 from embykeeper.apprise import AppriseStream
 from embykeeper.schema import EmbyConfig, NotifierConfig, ProxyConfig
@@ -137,10 +147,20 @@ def _write_text_atomic(path: Path, content: str):
         raise
 
 
+def _config_file_path() -> Path:
+    return Path(config._conf_file) if config._conf_file else Path(config.basedir) / "config.toml"
+
+
+def _web_accounts_file_path() -> Path:
+    if bridge.web_accounts:
+        return bridge.web_accounts.basedir / "web_accounts.json"
+    return Path(config.basedir) / "web_accounts.json"
+
+
 def _persist_global_config(next_config=None):
     """Persist Web UI global settings without rewriting account secrets."""
     target_config = next_config or config._cache
-    config_file = Path(config._conf_file) if config._conf_file else Path(config.basedir) / "config.toml"
+    config_file = _config_file_path()
     if config_file.is_file():
         try:
             doc = parse(config_file.read_text(encoding="utf-8"))
@@ -199,6 +219,67 @@ async def get_config(user: str = Depends(get_current_user)):
         proxy_port=proxy.port if proxy else None,
         proxy_scheme=proxy.scheme if proxy else None,
     )
+
+
+@router.get("/export", response_model=ConfigExportResponse)
+async def export_config_bundle(user: str = Depends(get_current_user)):
+    """Export current config and encrypted web account data for backup."""
+    config_file = _config_file_path()
+    accounts_file = _web_accounts_file_path()
+    config_toml = None
+    if config_file.is_file():
+        try:
+            config_toml = config_file.read_text(encoding="utf-8")
+        except OSError as e:
+            raise HTTPException(status_code=500, detail=f"Failed to read config.toml: {e}")
+    return ConfigExportResponse(
+        generated_at=datetime.now(timezone.utc),
+        config_path=str(config_file),
+        web_accounts_path=str(accounts_file),
+        config_toml=config_toml,
+        web_accounts=bridge.web_accounts.get_all() if bridge.web_accounts else {},
+    )
+
+
+@router.post("/backup", response_model=ConfigBackupResponse)
+async def create_config_backup(user: str = Depends(get_current_user)):
+    """Create a local timestamped backup of config.toml and web_accounts.json."""
+    basedir = Path(config.basedir)
+    backup_root = basedir / "backups"
+    timestamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+    backup_dir = backup_root / timestamp
+    for counter in range(100):
+        candidate = backup_dir if counter == 0 else backup_root / f"{timestamp}-{counter}"
+        try:
+            candidate.mkdir(parents=True, exist_ok=False)
+            backup_dir = candidate
+            break
+        except FileExistsError:
+            continue
+        except OSError as e:
+            raise HTTPException(status_code=500, detail=f"Failed to create backup directory: {e}")
+    else:
+        raise HTTPException(status_code=500, detail="Failed to create unique backup directory")
+
+    copied = []
+    for source in (_config_file_path(), _web_accounts_file_path()):
+        if not source.is_file():
+            continue
+        target = backup_dir / source.name
+        try:
+            shutil.copy2(source, target)
+        except OSError as e:
+            raise HTTPException(status_code=500, detail=f"Failed to back up {source.name}: {e}")
+        copied.append(source.name)
+
+    if not copied:
+        try:
+            backup_dir.rmdir()
+        except OSError:
+            pass
+        raise HTTPException(status_code=404, detail="No config files found to back up")
+
+    return ConfigBackupResponse(status="created", backup_dir=str(backup_dir), files=copied)
 
 
 @router.put("")

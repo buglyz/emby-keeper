@@ -212,11 +212,19 @@ class HealthStatus(BaseModel):
     status: str
     config_loaded: bool = False
     scheduler_initialized: bool = False
+    scheduler_task_running: bool = False
     account_count: int = 0
     schedule_count: int = 0
     config_writable: bool = False
+    web_accounts_writable: bool = False
     auth_configured: bool = False
     notifier_configured: bool = False
+    notifier_ready: bool = False
+    config_path: Optional[str] = None
+    web_accounts_path: Optional[str] = None
+    latest_run_id: Optional[str] = None
+    latest_run_status: Optional[str] = None
+    latest_run_status_info: Optional[str] = None
 
 
 class RunHistoryItem(BaseModel):
@@ -230,3 +238,28 @@ class RunHistoryItem(BaseModel):
     account_spec: Optional[str] = None
     is_running: bool = False
     log_count: int = 0
+
+
+class RunLogItem(BaseModel):
+    level: str
+    message: str
+    time: datetime
+
+
+class RunLogResponse(BaseModel):
+    run_id: str
+    logs: List[RunLogItem] = Field(default_factory=list)
+
+
+class ConfigExportResponse(BaseModel):
+    generated_at: datetime
+    config_path: Optional[str] = None
+    web_accounts_path: Optional[str] = None
+    config_toml: Optional[str] = None
+    web_accounts: dict = Field(default_factory=dict)
+
+
+class ConfigBackupResponse(BaseModel):
+    status: str
+    backup_dir: str
+    files: List[str] = Field(default_factory=list)

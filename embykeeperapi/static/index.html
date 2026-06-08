@@ -181,15 +181,50 @@
       getStatus() { return this.get('/api/status'); },
       getHealth() { return this.get('/api/status/health'); },
       getRuns(limit = 50) { return this.get(`/api/runs?limit=${limit}`); },
+      getRunLogs(id) { return this.get(`/api/runs/${encodeURIComponent(id)}/logs`); },
       healthz() { return this.get('/healthz'); },
 
       // Config
       getConfig() { return this.get('/api/config'); },
       updateConfig(data) { return this.put('/api/config', data); },
+      exportConfig() { return this.get('/api/config/export'); },
+      backupConfig() { return this.post('/api/config/backup'); },
       getNotifier() { return this.get('/api/config/notifier'); },
       updateNotifier(data) { return this.put('/api/config/notifier', data); },
       testNotifier(data) { return this.post('/api/config/notifier/test', data); },
     };
+
+    function responseMessage(res, fallback) {
+      return res && res.message ? res.message : fallback;
+    }
+
+    async function runUiAction({ setLoading, action, message, success, refresh }) {
+      if (setLoading) setLoading(true);
+      try {
+        const res = await action();
+        const text = typeof success === 'function' ? success(res) : success;
+        if (text) message.success(text);
+        if (refresh) await refresh(res);
+        return res;
+      } catch (e) {
+        message.error(e.message);
+        return null;
+      } finally {
+        if (setLoading) setLoading(false);
+      }
+    }
+
+    function downloadJson(filename, data) {
+      const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = filename;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      URL.revokeObjectURL(url);
+    }
 
     // ============ Auth Guard Component ============
     const AuthGuard = {
@@ -368,51 +403,65 @@
           finally { loading.value = false; }
         }
 
-        async function handleLogin(id) {
-          actionLoading[id] = true;
-          try {
-            const res = await API.triggerLogin(id);
-            message.success(res.message || '登录测试已触发');
+        function refreshPoll() {
+          if (pollTimer) clearTimeout(pollTimer);
+          const hasRunning = servers.value.some((server) => server.is_running);
+          pollTimer = setTimeout(async () => {
             await loadData();
-          } catch (e) { message.error(e.message); }
-          finally { actionLoading[id] = false; }
+            refreshPoll();
+          }, hasRunning ? 5000 : 30000);
+        }
+
+        async function refreshDataAndPoll() {
+          await loadData();
+          refreshPoll();
+        }
+
+        async function handleLogin(id) {
+          await runUiAction({
+            setLoading: (value) => { actionLoading[id] = value; },
+            action: () => API.triggerLogin(id),
+            message,
+            success: (res) => responseMessage(res, '登录测试已触发'),
+            refresh: refreshDataAndPoll,
+          });
         }
 
         async function handleWatch(id) {
-          actionLoading[id + '-w'] = true;
-          try {
-            const res = await API.triggerWatch(id);
-            message.success(res && res.message ? res.message : '保活任务已启动');
-            await loadData();
-          } catch (e) { message.error(e.message); }
-          finally { actionLoading[id + '-w'] = false; }
+          await runUiAction({
+            setLoading: (value) => { actionLoading[id + '-w'] = value; },
+            action: () => API.triggerWatch(id),
+            message,
+            success: (res) => responseMessage(res, '保活任务已启动'),
+            refresh: refreshDataAndPoll,
+          });
         }
 
         async function handleCancel(id) {
-          actionLoading[id + '-c'] = true;
-          try {
-            await API.cancelWatch(id);
-            message.success('已请求取消任务');
-            await loadData();
-          } catch (e) { message.error(e.message); }
-          finally { actionLoading[id + '-c'] = false; }
+          await runUiAction({
+            setLoading: (value) => { actionLoading[id + '-c'] = value; },
+            action: () => API.cancelWatch(id),
+            message,
+            success: '已请求取消任务',
+            refresh: refreshDataAndPoll,
+          });
         }
 
         async function handleWatchAll() {
-          watchAllLoading.value = true;
-          try {
-            const res = await API.watchAll();
-            message.success(res && res.message ? res.message : '全部保活任务已启动');
-            await loadData();
-          } catch (e) { message.error(e.message); }
-          finally { watchAllLoading.value = false; }
+          await runUiAction({
+            setLoading: (value) => { watchAllLoading.value = value; },
+            action: () => API.watchAll(),
+            message,
+            success: (res) => responseMessage(res, '全部保活任务已启动'),
+            refresh: refreshDataAndPoll,
+          });
         }
 
-        onMounted(() => {
-          loadData();
-          pollTimer = setInterval(loadData, 30000);
+        onMounted(async () => {
+          await loadData();
+          refreshPoll();
         });
-        onUnmounted(() => { if (pollTimer) clearInterval(pollTimer); });
+        onUnmounted(() => { if (pollTimer) clearTimeout(pollTimer); });
 
         return { API, servers, status, loading, watchAllLoading, actionLoading, handleLogin, handleWatch, handleCancel, handleWatchAll };
       }
@@ -781,7 +830,7 @@
 
     // ============ Schedule Page ============
     const RunHistoryPage = {
-      components: { NCard, NDataTable, NButton, NSpace, NTag, NEmpty, NSpin },
+      components: { NCard, NDataTable, NButton, NSpace, NTag, NEmpty, NSpin, NModal, NText },
       template: `
         <div class="page-container">
           <n-card title="运行历史">
@@ -793,12 +842,27 @@
               <n-empty v-else description="暂无运行记录" />
             </n-spin>
           </n-card>
+          <n-modal v-model:show="logModalVisible" preset="card" style="width:min(900px, 92vw)" title="运行日志">
+            <n-spin :show="logLoading">
+              <n-space vertical :size="8">
+                <n-text depth="3">Run ID: {{ selectedRunId || '-' }}</n-text>
+                <div v-if="runLogs.length" style="max-height:60vh;overflow:auto;border:1px solid #eee;border-radius:4px;background:#0f172a;color:#e2e8f0;padding:12px;font-family:monospace;font-size:12px;white-space:pre-wrap">
+                  <div v-for="(log, index) in runLogs" :key="index">[{{ formatDate(log.time) }}] {{ log.level }} {{ log.message }}</div>
+                </div>
+                <n-empty v-else description="暂无日志" />
+              </n-space>
+            </n-spin>
+          </n-modal>
         </div>
       `,
       setup() {
         const message = useMessage();
         const runs = ref([]);
         const loading = ref(true);
+        const logModalVisible = ref(false);
+        const logLoading = ref(false);
+        const selectedRunId = ref('');
+        const runLogs = ref([]);
 
         function statusType(status) {
           if (status === 'success') return 'success';
@@ -821,6 +885,9 @@
           }},
           { title: '开始时间', key: 'start_time', render(row) { return formatDate(row.start_time); } },
           { title: '耗时', key: 'duration', render(row) { return row.duration == null ? '-' : `${row.duration.toFixed(1)}s`; } },
+          { title: '操作', key: 'actions', width: 90, render(row) {
+            return Vue.h(naiveUI.NButton, { size: 'small', onClick: () => openRunLogs(row.run_id) }, () => '日志');
+          }},
         ];
 
         async function loadData() {
@@ -830,8 +897,20 @@
           finally { loading.value = false; }
         }
 
+        async function openRunLogs(runId) {
+          selectedRunId.value = runId;
+          runLogs.value = [];
+          logModalVisible.value = true;
+          logLoading.value = true;
+          try {
+            const data = await API.getRunLogs(runId);
+            runLogs.value = data.logs || [];
+          } catch (e) { message.error(e.message); }
+          finally { logLoading.value = false; }
+        }
+
         onMounted(loadData);
-        return { runs, loading, columns, loadData };
+        return { runs, loading, columns, logModalVisible, logLoading, selectedRunId, runLogs, loadData, openRunLogs, formatDate };
       }
     };
 
@@ -949,9 +1028,14 @@
                 <n-descriptions-item label="计划数">{{ healthData.schedule_count }}</n-descriptions-item>
                 <n-descriptions-item label="配置已加载">{{ healthData.config_loaded ? '是' : '否' }}</n-descriptions-item>
                 <n-descriptions-item label="调度器">{{ healthData.scheduler_initialized ? '已初始化' : '未初始化' }}</n-descriptions-item>
+                <n-descriptions-item label="调度任务">{{ healthData.scheduler_task_running ? '运行中' : '未运行' }}</n-descriptions-item>
                 <n-descriptions-item label="配置可写">{{ healthData.config_writable ? '是' : '否' }}</n-descriptions-item>
+                <n-descriptions-item label="账号文件可写">{{ healthData.web_accounts_writable ? '是' : '否' }}</n-descriptions-item>
                 <n-descriptions-item label="Web 认证">{{ healthData.auth_configured ? '已配置' : '未配置' }}</n-descriptions-item>
-                <n-descriptions-item label="通知">{{ healthData.notifier_configured ? '已配置' : '未配置' }}</n-descriptions-item>
+                <n-descriptions-item label="通知">{{ healthData.notifier_configured ? (healthData.notifier_ready ? '已就绪' : '已配置') : '未配置' }}</n-descriptions-item>
+                <n-descriptions-item label="最近运行">{{ healthData.latest_run_id ? healthData.latest_run_id + ' / ' + healthData.latest_run_status : '-' }}</n-descriptions-item>
+                <n-descriptions-item label="配置路径">{{ healthData.config_path || '-' }}</n-descriptions-item>
+                <n-descriptions-item label="账号路径">{{ healthData.web_accounts_path || '-' }}</n-descriptions-item>
               </n-descriptions>
             </n-card>
 
@@ -979,6 +1063,13 @@
               <n-divider />
               <n-space justify="end">
                 <n-button :loading="saving" type="primary" @click="handleSave">保存配置</n-button>
+              </n-space>
+            </n-card>
+
+            <n-card title="备份与导出" style="margin-bottom:16px">
+              <n-space justify="end">
+                <n-button :loading="exportingBackup" @click="handleExportConfig">下载备份</n-button>
+                <n-button :loading="creatingBackup" type="primary" @click="handleCreateBackup">创建本地备份</n-button>
               </n-space>
             </n-card>
 
@@ -1021,6 +1112,8 @@
         const saving = ref(false);
         const savingNotifier = ref(false);
         const testingNotifier = ref(false);
+        const exportingBackup = ref(false);
+        const creatingBackup = ref(false);
         const editConfig = reactive({
           emby_time_range: '', emby_interval_days: '', emby_concurrency: 1,
           proxy_hostname: '', proxy_port: null, proxy_scheme: null,
@@ -1126,8 +1219,29 @@
           finally { testingNotifier.value = false; }
         }
 
+        async function handleExportConfig() {
+          exportingBackup.value = true;
+          try {
+            const data = await API.exportConfig();
+            const stamp = new Date().toISOString().replace(/[:.]/g, '-');
+            downloadJson(`emby-keeper-backup-${stamp}.json`, data);
+            message.success('备份已下载');
+          } catch (e) { message.error(e.message); }
+          finally { exportingBackup.value = false; }
+        }
+
+        async function handleCreateBackup() {
+          creatingBackup.value = true;
+          try {
+            const res = await API.backupConfig();
+            message.success(`本地备份已创建：${res.backup_dir}`);
+            await loadData();
+          } catch (e) { message.error(e.message); }
+          finally { creatingBackup.value = false; }
+        }
+
         onMounted(loadData);
-        return { configData, healthData, notifierData, loading, saving, savingNotifier, testingNotifier, editConfig, notifierForm, handleSave, handleSaveNotifier, handleTestNotifier };
+        return { configData, healthData, notifierData, loading, saving, savingNotifier, testingNotifier, exportingBackup, creatingBackup, editConfig, notifierForm, handleSave, handleSaveNotifier, handleTestNotifier, handleExportConfig, handleCreateBackup };
       }
     };
 

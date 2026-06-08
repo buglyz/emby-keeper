@@ -15,6 +15,7 @@ from ..models import (
     CancelResponse,
     DashboardStatus,
     HealthStatus,
+    RunLogResponse,
     RunHistoryItem,
     ScheduleInfo,
     SchedulePreviewRequest,
@@ -61,6 +62,11 @@ def _run_to_history_item(run: RunContext) -> RunHistoryItem:
         is_running=run.id in _running_runs,
         log_count=len(run.log or []),
     )
+
+
+def _latest_run():
+    runs = RunContext.list_recent(limit=1)
+    return runs[0] if runs else None
 
 
 @router.get("/healthz")
@@ -149,21 +155,49 @@ async def get_health_status(user: str = Depends(get_current_user)):
     accounts = bridge.web_accounts.get_all() if bridge.web_accounts else {}
     schedules = bridge.get_schedule_info()
     config_file = Path(config._conf_file) if config._conf_file else Path(config.basedir) / "config.toml"
+    web_accounts_basedir = getattr(bridge.web_accounts, "basedir", None)
+    web_accounts_file = (
+        Path(web_accounts_basedir) / "web_accounts.json"
+        if web_accounts_basedir
+        else Path(config.basedir) / "web_accounts.json"
+    )
     writable_target = config_file if config_file.exists() else config_file.parent
     notifier = config._cache.notifier if config._cache and config._cache.notifier else None
+    scheduler_task = getattr(bridge, "_scheduler_task", None)
+    latest_run = _latest_run()
 
     config_writable = writable_target.exists() and os.access(writable_target, os.W_OK)
+    web_accounts_target = web_accounts_file if web_accounts_file.exists() else web_accounts_file.parent
+    web_accounts_writable = web_accounts_target.exists() and os.access(web_accounts_target, os.W_OK)
+    notifier_ready = False
+    if notifier and notifier.enabled and notifier.apprise_uri:
+        try:
+            from embykeeper import notify
+
+            notifier_ready = bool(
+                getattr(notify.stream_log, "ready", False) or getattr(notify.stream_msg, "ready", False)
+            )
+        except Exception:
+            notifier_ready = False
 
     healthy = bool(config._cache and bridge.web_accounts is not None)
     return HealthStatus(
         status="ok" if healthy else "degraded",
         config_loaded=bool(config._cache),
         scheduler_initialized=bridge.web_accounts is not None and bridge.emby_manager is not None,
+        scheduler_task_running=bool(scheduler_task and not scheduler_task.done()),
         account_count=len(accounts),
         schedule_count=len(schedules),
         config_writable=config_writable,
+        web_accounts_writable=web_accounts_writable,
         auth_configured=bool(_get_env_secret("EK_TOKEN") or _get_env_secret("EK_WEBPASS")),
         notifier_configured=bool(notifier and notifier.enabled and notifier.apprise_uri),
+        notifier_ready=notifier_ready,
+        config_path=str(config_file),
+        web_accounts_path=str(web_accounts_file),
+        latest_run_id=latest_run.id if latest_run else None,
+        latest_run_status=latest_run.status.name.lower() if latest_run else None,
+        latest_run_status_info=latest_run.status_info if latest_run else None,
     )
 
 
@@ -212,3 +246,15 @@ async def get_run(run_id: str, user: str = Depends(get_current_user)):
     if not run:
         raise HTTPException(status_code=404, detail="Run not found")
     return _run_to_history_item(run)
+
+
+@router.get("/api/runs/{run_id}/logs", response_model=RunLogResponse)
+async def get_run_logs(run_id: str, user: str = Depends(get_current_user)):
+    """Get log records captured for a run."""
+    run = RunContext.get(run_id)
+    if not run:
+        raise HTTPException(status_code=404, detail="Run not found")
+    return RunLogResponse(
+        run_id=run.id,
+        logs=[log.model_dump() if hasattr(log, "model_dump") else log for log in (run.log or [])],
+    )
