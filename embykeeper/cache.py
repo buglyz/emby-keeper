@@ -1,4 +1,5 @@
 import json
+from copy import deepcopy
 from pathlib import Path
 from tempfile import NamedTemporaryFile
 from typing import Any, List
@@ -36,8 +37,9 @@ class Cache:
             except json.JSONDecodeError:
                 logger.warning("缓存文件损坏, 将使用全新缓存.")
 
-    def _write_json_cache(self):
+    def _write_json_cache(self, data=None):
         tmp_path = None
+        payload = self._data if data is None else data
         try:
             with NamedTemporaryFile(
                 "w",
@@ -47,7 +49,7 @@ class Cache:
                 suffix=".tmp",
                 delete=False,
             ) as f:
-                json.dump(self._data, f, ensure_ascii=False, indent=2)
+                json.dump(payload, f, ensure_ascii=False, indent=2)
                 tmp_path = Path(f.name)
             tmp_path.replace(self._cache_file)
         except OSError:
@@ -76,18 +78,21 @@ class Cache:
             self._collection.update_one({"_id": key}, {"$set": {"value": value}}, upsert=True)
         else:
             parts = key.split(".")
-            current = self._data
+            next_data = deepcopy(self._data)
+            current = next_data
             for part in parts[:-1]:
                 current = current.setdefault(part, {})
             current[parts[-1]] = value
-            self._write_json_cache()
+            self._write_json_cache(next_data)
+            self._data = next_data
 
     def delete(self, key: str) -> None:
         if self._mongo_client:
             self._collection.delete_one({"_id": key})
         else:
             parts = key.split(".")
-            current = self._data
+            next_data = deepcopy(self._data)
+            current = next_data
             path = []
 
             # 遍历路径, 检查每一层
@@ -108,7 +113,8 @@ class Cache:
                     else:
                         break
 
-            self._write_json_cache()
+            self._write_json_cache(next_data)
+            self._data = next_data
 
     def find_by_prefix(self, prefix: str) -> List[str]:
         if self._mongo_client:
@@ -147,9 +153,10 @@ class Cache:
         else:
             # 批量删除所有键, 只写入一次文件
             changed = False
+            next_data = deepcopy(self._data)
             for key in keys:
                 parts = key.split(".")
-                current = self._data
+                current = next_data
                 path = []
 
                 # 遍历路径, 检查每一层
@@ -173,7 +180,8 @@ class Cache:
 
             # 只在有改动时写入一次文件
             if changed:
-                self._write_json_cache()
+                self._write_json_cache(next_data)
+                self._data = next_data
 
 
 cache: Cache = CachedFuncProxy(lambda: Cache())

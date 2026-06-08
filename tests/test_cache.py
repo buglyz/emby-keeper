@@ -57,6 +57,7 @@ def test_json_cache_preserves_existing_file_when_replace_fails(tmp_path, monkeyp
     assert json.loads(cache_file.read_text(encoding="utf-8")) == {
         "scheduler": {"example": {"next_time": "old"}}
     }
+    assert cache.get("scheduler.example") == {"next_time": "old"}
     assert not list(tmp_path.glob(".cache.json.*.tmp"))
 
     config.reset()
