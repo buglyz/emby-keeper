@@ -1,5 +1,3 @@
-import os
-
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 
 from ..auth import (
@@ -11,6 +9,7 @@ from ..auth import (
     record_failed_attempt,
     get_current_user,
     DEFAULT_EXPIRE_DAYS,
+    _get_env_secret,
 )
 from ..models import TokenExchangeRequest, PasswordLoginRequest, LoginResponse
 
@@ -77,8 +76,8 @@ async def verify_token(user: str = Depends(get_current_user)):
 @router.get("/methods")
 async def get_auth_methods():
     """Return available auth methods based on env config."""
-    has_token = bool(os.environ.get("EK_TOKEN"))
-    has_password = bool(os.environ.get("EK_WEBPASS"))
+    has_token = bool(_get_env_secret("EK_TOKEN"))
+    has_password = bool(_get_env_secret("EK_WEBPASS"))
     return {
         "token": has_token,
         "password": has_password,

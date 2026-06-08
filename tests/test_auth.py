@@ -1,6 +1,8 @@
 import time
+import asyncio
 
 import embykeeperapi.auth as auth
+from embykeeperapi.routers.auth_router import get_auth_methods
 
 
 def test_rate_limit_does_not_store_empty_attempts():
@@ -32,3 +34,18 @@ def test_password_validation_rejects_non_string(monkeypatch):
 
     assert auth.validate_password(None) is False
     assert auth.validate_password(123) is False
+
+
+def test_auth_secret_env_values_are_trimmed(monkeypatch):
+    monkeypatch.setenv("EK_TOKEN", " token-1 ")
+    monkeypatch.setenv("EK_WEBPASS", " secret ")
+
+    assert auth.validate_pre_shared_token("token-1") is True
+    assert auth.validate_password("secret") is True
+
+
+def test_auth_methods_ignore_blank_env_values(monkeypatch):
+    monkeypatch.setenv("EK_TOKEN", "   ")
+    monkeypatch.setenv("EK_WEBPASS", "")
+
+    assert asyncio.run(get_auth_methods()) == {"token": False, "password": False}

@@ -22,15 +22,23 @@ _failed_attempts: Dict[str, List[float]] = {}
 MAX_FAILED_PER_HOUR = 5
 
 
+def _get_env_secret(name: str):
+    value = os.environ.get(name)
+    if not isinstance(value, str):
+        return None
+    value = value.strip()
+    return value or None
+
+
 def _get_jwt_secret() -> str:
     """Get the JWT signing secret from env or derive from EK_WEBPASS."""
-    secret = os.environ.get("EK_SECRET")
+    secret = _get_env_secret("EK_SECRET")
     if secret:
         return secret
-    webpass = os.environ.get("EK_WEBPASS")
+    webpass = _get_env_secret("EK_WEBPASS")
     if webpass:
         return hashlib.sha256(webpass.encode()).hexdigest()
-    token = os.environ.get("EK_TOKEN")
+    token = _get_env_secret("EK_TOKEN")
     if token:
         return hashlib.sha256(token.encode()).hexdigest()
     return secrets.token_urlsafe(32)
@@ -63,7 +71,7 @@ def _write_secret_file_atomic(path, key_bytes: bytes):
 def init_jwt_secret_from_basedir(basedir):
     """Re-derive JWT secret using persistent key file when no env vars are set."""
     global JWT_SECRET
-    if os.environ.get("EK_SECRET") or os.environ.get("EK_WEBPASS") or os.environ.get("EK_TOKEN"):
+    if _get_env_secret("EK_SECRET") or _get_env_secret("EK_WEBPASS") or _get_env_secret("EK_TOKEN"):
         return
     from pathlib import Path
 
@@ -119,7 +127,7 @@ def _constant_time_equal(value: str, expected: str) -> bool:
 
 def validate_pre_shared_token(token: str) -> bool:
     """Validate a pre-shared token against EK_TOKEN env var."""
-    expected = os.environ.get("EK_TOKEN")
+    expected = _get_env_secret("EK_TOKEN")
     if not expected or not isinstance(token, str):
         return False
     return _constant_time_equal(token, expected)
@@ -127,7 +135,7 @@ def validate_pre_shared_token(token: str) -> bool:
 
 def validate_password(password: str) -> bool:
     """Validate a password against EK_WEBPASS env var."""
-    expected = os.environ.get("EK_WEBPASS")
+    expected = _get_env_secret("EK_WEBPASS")
     if not expected or not isinstance(password, str):
         return False
     return _constant_time_equal(password, expected)
