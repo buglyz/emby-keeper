@@ -607,6 +607,57 @@ def test_update_notifier_config_rejects_enabled_without_target(tmp_path):
     config.reset()
 
 
+def test_update_notifier_config_rejects_switching_method_without_new_target(tmp_path):
+    async def run_test():
+        config.basedir = tmp_path
+        config.set(
+            Config(
+                notifier={
+                    "enabled": True,
+                    "method": "apprise",
+                    "apprise_uri": "tgram://123456:ABCDEF/-1001234567890",
+                }
+            )
+        )
+
+        with pytest.raises(HTTPException) as exc:
+            await update_notifier_config(NotifierConfigUpdate(enabled=True, method="apprise"), user="tester")
+
+        assert exc.value.status_code == 400
+        assert "Apprise URI" in exc.value.detail
+
+    asyncio.run(run_test())
+    config.reset()
+
+
+def test_update_notifier_config_preserves_existing_telegram_target(tmp_path):
+    async def run_test():
+        config_file = tmp_path / "config.toml"
+        config_file.write_text("", encoding="utf-8")
+        config.basedir = tmp_path
+        config.set(
+            Config(
+                notifier={
+                    "enabled": True,
+                    "method": "apprise",
+                    "apprise_uri": "tgram://123456:ABCDEF/-1001234567890",
+                }
+            )
+        )
+
+        response = await update_notifier_config(
+            NotifierConfigUpdate(enabled=True, method="telegram"),
+            user="tester",
+        )
+
+        assert response.method == "telegram"
+        assert response.telegram_chat_id == "-1001234567890"
+        assert config._cache.notifier.apprise_uri == "tgram://123456:ABCDEF/-1001234567890"
+
+    asyncio.run(run_test())
+    config.reset()
+
+
 def test_notifier_test_sends_to_telegram_target(tmp_path, monkeypatch):
     class FakeStream:
         ready = True

@@ -167,6 +167,8 @@ def test_frontend_only_sends_authorization_header_with_token():
     html = STATIC_INDEX.read_text(encoding="utf-8")
 
     assert "if (token) headers.Authorization = `Bearer ${token}`" in html
+    assert "if (body !== null && body !== undefined) opts.body = JSON.stringify(body)" in html
+    assert "post(path, body = null)" in html
     assert "return { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' }" not in html
 
 
@@ -200,3 +202,4 @@ def test_frontend_exposes_telegram_notifier_controls_without_echoing_token():
     assert "telegram_bot_token" in html
     assert 'show-password-on="click"' in html
     assert "留空则保留现有 Token" in html
+    assert "修改 Telegram Chat ID 时必须重新输入 Bot Token" in html

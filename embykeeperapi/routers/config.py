@@ -70,6 +70,10 @@ def _telegram_chat_id_from_uri(uri: str):
     return path_parts[1] if len(path_parts) >= 2 else (path_parts[0] if path_parts else None)
 
 
+def _is_telegram_uri(uri: str) -> bool:
+    return bool(_telegram_chat_id_from_uri(uri))
+
+
 def _notifier_response() -> NotifierConfigResponse:
     notifier = config._cache.notifier if config._cache and config._cache.notifier else NotifierConfig()
     uri = notifier.apprise_uri
@@ -293,8 +297,10 @@ async def update_notifier_config(req: NotifierConfigUpdate, user: str = Depends(
         raise HTTPException(status_code=400, detail="method must be 'apprise' or 'telegram'")
 
     uri = existing.apprise_uri
+    existing_is_telegram = _is_telegram_uri(uri)
     if req.clear:
         uri = None
+        existing_is_telegram = False
 
     bot_token = _normalize_optional_text("telegram_bot_token", req.telegram_bot_token)
     chat_id = _normalize_optional_text("telegram_chat_id", req.telegram_chat_id)
@@ -310,6 +316,11 @@ async def update_notifier_config(req: NotifierConfigUpdate, user: str = Depends(
     elif apprise_uri is not None:
         uri = apprise_uri
         method = "apprise"
+    elif "method" in fields_set and enabled:
+        if method == "telegram" and not existing_is_telegram:
+            raise HTTPException(status_code=400, detail="Telegram target is required")
+        if method == "apprise" and existing_is_telegram:
+            raise HTTPException(status_code=400, detail="Apprise URI is required")
 
     if enabled and not uri:
         raise HTTPException(status_code=400, detail="Notification target is required when enabled")
@@ -318,7 +329,6 @@ async def update_notifier_config(req: NotifierConfigUpdate, user: str = Depends(
     _persist_global_config(new_config)
     if not config.set(new_config, preserve_conf_file=True):
         raise HTTPException(status_code=400, detail="Invalid config")
-    await _refresh_notifier()
     return _notifier_response()
 
 
