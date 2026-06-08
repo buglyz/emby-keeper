@@ -7,6 +7,7 @@ from embykeeperapi.validation import validate_schedule_fields
 def test_validate_schedule_fields_accepts_valid_interval_and_time_range():
     validate_schedule_fields("<7,12>", "<8:00AM,9:00AM>")
     validate_schedule_fields("7", "8:00AM")
+    validate_schedule_fields(" <7,12> ", " <8:00AM,9:00AM> ")
 
 
 @pytest.mark.parametrize(

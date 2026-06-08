@@ -17,13 +17,18 @@ def validate_schedule_fields(interval_days=None, time_range=None, *, use_default
     """Validate scheduler strings before saving Web UI config/account data."""
     interval = interval_days if interval_days is not None or not use_defaults else DEFAULT_EMBY_INTERVAL_DAYS
     watch_time = time_range if time_range is not None or not use_defaults else DEFAULT_TIME_RANGE
-    if interval in (None, ""):
+    if interval is None:
         raise HTTPException(status_code=400, detail="interval_days cannot be empty")
-    if watch_time in (None, ""):
+    interval = str(interval).strip()
+    if not interval:
+        raise HTTPException(status_code=400, detail="interval_days cannot be empty")
+    if watch_time is None:
+        raise HTTPException(status_code=400, detail="time_range cannot be empty")
+    watch_time = str(watch_time).strip()
+    if not watch_time:
         raise HTTPException(status_code=400, detail="time_range cannot be empty")
 
     try:
-        interval = str(interval)
         interval_range_match = re.fullmatch(r"<\s*(\d+)\s*,\s*(\d+)\s*>", interval)
         if interval_range_match:
             min_days = int(interval_range_match.group(1))
@@ -37,7 +42,6 @@ def validate_schedule_fields(interval_days=None, time_range=None, *, use_default
             if fixed_days <= 0:
                 raise ValueError("interval_days must be greater than 0")
 
-        watch_time = str(watch_time)
         time_range_match = re.fullmatch(r"<\s*(.*?)\s*,\s*(.*?)\s*>", watch_time)
         if time_range_match:
             _parse_time_value(time_range_match.group(1))

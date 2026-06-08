@@ -50,6 +50,14 @@ def test_scheduler_from_str_accepts_valid_interval_range():
     assert scheduler.end_time.hour == 9
 
 
+def test_scheduler_from_str_trims_outer_schedule_whitespace():
+    scheduler = Scheduler.from_str(noop, interval_days=" <7,12> ", time_range=" <8:00AM,9:00AM> ")
+
+    assert scheduler.days == [7, 12]
+    assert scheduler.start_time.hour == 8
+    assert scheduler.end_time.hour == 9
+
+
 def test_scheduler_from_str_accepts_integer_interval():
     scheduler = Scheduler.from_str(noop, interval_days=7, time_range="8:00AM")
 

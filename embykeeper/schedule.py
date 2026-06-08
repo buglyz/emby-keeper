@@ -34,8 +34,8 @@ class Scheduler:
         Returns:
             Scheduler: 调度器实例
         """
-        interval_days = str(interval_days)
-        time_range = str(time_range)
+        interval_days = str(interval_days).strip()
+        time_range = str(time_range).strip()
 
         # Parse interval days
         interval_range_match = re.fullmatch(r"<\s*(\d+)\s*,\s*(\d+)\s*>", interval_days)
