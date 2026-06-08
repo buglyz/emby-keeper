@@ -303,6 +303,10 @@ async def create_config_backup(user: str = Depends(get_current_user)):
         candidate = backup_dir if counter == 0 else backup_root / f"{timestamp}-{counter}"
         try:
             candidate.mkdir(parents=True, exist_ok=False)
+            try:
+                candidate.chmod(0o700)
+            except OSError:
+                pass
             backup_dir = candidate
             break
         except FileExistsError:
@@ -319,6 +323,10 @@ async def create_config_backup(user: str = Depends(get_current_user)):
                 continue
             target = backup_dir / source.name
             shutil.copy2(source, target)
+            try:
+                target.chmod(0o600)
+            except OSError:
+                pass
             copied.append(source.name)
     except OSError as e:
         shutil.rmtree(backup_dir, ignore_errors=True)

@@ -213,6 +213,10 @@ def test_server_actions_refresh_after_runtime_operations():
     assert "setTimeout(async () =>" in html
     assert "hasRunning ? 5000 : 30000" in html
     assert "clearTimeout(pollTimer)" in html
+    assert "let disposed = false" in html
+    assert "if (disposed) return" in html
+    assert "if (!disposed) refreshPoll()" in html
+    assert "disposed = true" in html
     assert "responseMessage(res, '保活任务已启动')" in html
     assert "responseMessage(res, '全部保活任务已启动')" in html
     assert "message.success(res && res.message ? res.message : '保活已启动')" in html

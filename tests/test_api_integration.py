@@ -1,6 +1,8 @@
 import asyncio
 import json
+import stat
 from datetime import datetime
+from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
@@ -225,6 +227,10 @@ def test_config_export_and_backup_api_uses_encrypted_account_data(tmp_path, api_
     backup = backup_response.json()
     assert backup["status"] == "created"
     assert sorted(backup["files"]) == ["config.toml", "web_accounts.json"]
+    backup_dir = Path(backup["backup_dir"])
+    assert stat.S_IMODE(backup_dir.stat().st_mode) == 0o700
+    assert stat.S_IMODE((backup_dir / "config.toml").stat().st_mode) == 0o600
+    assert stat.S_IMODE((backup_dir / "web_accounts.json").stat().st_mode) == 0o600
 
     second_backup_response = asyncio.run(_asgi_request(api_app, "POST", "/api/config/backup"))
 

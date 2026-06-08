@@ -393,6 +393,7 @@
         const watchAllLoading = ref(false);
         const actionLoading = reactive({});
         let pollTimer = null;
+        let disposed = false;
 
         async function loadData() {
           try {
@@ -404,11 +405,12 @@
         }
 
         function refreshPoll() {
+          if (disposed) return;
           if (pollTimer) clearTimeout(pollTimer);
           const hasRunning = servers.value.some((server) => server.is_running);
           pollTimer = setTimeout(async () => {
             await loadData();
-            refreshPoll();
+            if (!disposed) refreshPoll();
           }, hasRunning ? 5000 : 30000);
         }
 
@@ -458,10 +460,14 @@
         }
 
         onMounted(async () => {
+          disposed = false;
           await loadData();
           refreshPoll();
         });
-        onUnmounted(() => { if (pollTimer) clearTimeout(pollTimer); });
+        onUnmounted(() => {
+          disposed = true;
+          if (pollTimer) clearTimeout(pollTimer);
+        });
 
         return { API, servers, status, loading, watchAllLoading, actionLoading, handleLogin, handleWatch, handleCancel, handleWatchAll };
       }
