@@ -328,8 +328,15 @@ def test_web_account_data_filters_non_object_accounts(tmp_path):
 
     accounts = WebAccountData(tmp_path)
 
-    assert accounts.get_all() == {"alice@example.com": {"url": "https://example.com", "username": "alice"}}
-    assert not list(tmp_path.glob("web_accounts.json.corrupt.*"))
+    expected = {"alice@example.com": {"url": "https://example.com", "username": "alice"}}
+    assert accounts.get_all() == expected
+    assert json.loads(accounts_file.read_text(encoding="utf-8")) == expected
+    backups = list(tmp_path.glob("web_accounts.json.corrupt.*"))
+    assert len(backups) == 1
+    assert json.loads(backups[0].read_text(encoding="utf-8")) == {
+        "alice@example.com": {"url": "https://example.com", "username": "alice"},
+        "bad": "value",
+    }
 
 
 def test_web_account_data_filters_accounts_missing_required_fields(tmp_path):
@@ -347,7 +354,14 @@ def test_web_account_data_filters_accounts_missing_required_fields(tmp_path):
 
     accounts = WebAccountData(tmp_path)
 
-    assert accounts.get_all() == {"alice@example.com": {"url": "https://example.com", "username": "alice"}}
+    expected = {"alice@example.com": {"url": "https://example.com", "username": "alice"}}
+    assert accounts.get_all() == expected
+    assert json.loads(accounts_file.read_text(encoding="utf-8")) == expected
+    backups = list(tmp_path.glob("web_accounts.json.corrupt.*"))
+    assert len(backups) == 1
+    backup_data = json.loads(backups[0].read_text(encoding="utf-8"))
+    assert "missing-username" in backup_data
+    assert "blank-url" in backup_data
 
 
 def test_web_account_data_filters_non_string_required_fields(tmp_path):
@@ -365,7 +379,14 @@ def test_web_account_data_filters_non_string_required_fields(tmp_path):
 
     accounts = WebAccountData(tmp_path)
 
-    assert accounts.get_all() == {"alice@example.com": {"url": "https://example.com", "username": "alice"}}
+    expected = {"alice@example.com": {"url": "https://example.com", "username": "alice"}}
+    assert accounts.get_all() == expected
+    assert json.loads(accounts_file.read_text(encoding="utf-8")) == expected
+    backups = list(tmp_path.glob("web_accounts.json.corrupt.*"))
+    assert len(backups) == 1
+    backup_data = json.loads(backups[0].read_text(encoding="utf-8"))
+    assert "numeric-url" in backup_data
+    assert "numeric-username" in backup_data
 
 
 def test_web_account_data_keeps_memory_unchanged_when_save_fails(tmp_path, monkeypatch):

@@ -30,7 +30,7 @@ def _is_valid_account_record(data) -> bool:
     )
 
 
-def _backup_invalid_accounts_file(filepath: Path):
+def _backup_invalid_accounts_file(filepath: Path) -> bool:
     timestamp = datetime.now(timezone.utc).strftime("%Y%m%d%H%M%S")
     backup_path = filepath.with_name(f"{filepath.name}.corrupt.{timestamp}")
     counter = 1
@@ -40,8 +40,10 @@ def _backup_invalid_accounts_file(filepath: Path):
     try:
         filepath.replace(backup_path)
         logger.warning(f"Backed up invalid web accounts file to {backup_path.name}.")
+        return True
     except OSError as e:
         logger.warning(f"Failed to back up invalid web accounts file: {e}")
+        return False
 
 
 class WebAccountData:
@@ -61,7 +63,15 @@ class WebAccountData:
                     data = json.load(f)
                 if not isinstance(data, dict):
                     raise ValueError("web accounts data must be an object")
-                self._data = {k: v for k, v in data.items() if _is_valid_account_record(v)}
+                valid_data = {k: v for k, v in data.items() if _is_valid_account_record(v)}
+                if len(valid_data) != len(data):
+                    logger.warning("Web accounts file contains invalid account records; backing up original.")
+                    if _backup_invalid_accounts_file(filepath):
+                        try:
+                            self._save(valid_data)
+                        except OSError as e:
+                            logger.warning(f"Failed to write sanitized web accounts file: {e}")
+                self._data = valid_data
             except json.JSONDecodeError:
                 logger.warning("Web accounts file corrupted, starting fresh.")
                 _backup_invalid_accounts_file(filepath)

@@ -54,6 +54,17 @@ def test_server_form_trims_text_payload_before_save():
     assert "data.password = normalized.password" in html
 
 
+def test_config_form_trims_text_payload_before_save():
+    html = STATIC_INDEX.read_text(encoding="utf-8")
+
+    assert "emby_time_range: optionalText(editConfig.emby_time_range)" in html
+    assert "emby_interval_days: optionalText(editConfig.emby_interval_days)" in html
+    assert "hostname: optionalText(editConfig.proxy_hostname)" in html
+    assert "emby_time_range: editConfig.emby_time_range || null" not in html
+    assert "emby_interval_days: editConfig.emby_interval_days || null" not in html
+    assert "hostname: editConfig.proxy_hostname || null" not in html
+
+
 def test_frontend_fallback_checks_actual_naive_ui_global():
     html = STATIC_INDEX.read_text(encoding="utf-8")
 

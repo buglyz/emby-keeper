@@ -827,15 +827,20 @@
           finally { loading.value = false; }
         }
 
+        function optionalText(value) {
+          const trimmed = typeof value === 'string' ? value.trim() : value;
+          return trimmed || null;
+        }
+
         async function handleSave() {
           saving.value = true;
           try {
             await API.updateConfig({
-              emby_time_range: editConfig.emby_time_range || null,
-              emby_interval_days: editConfig.emby_interval_days || null,
+              emby_time_range: optionalText(editConfig.emby_time_range),
+              emby_interval_days: optionalText(editConfig.emby_interval_days),
               emby_concurrency: editConfig.emby_concurrency || null,
               proxy: {
-                hostname: editConfig.proxy_hostname || null,
+                hostname: optionalText(editConfig.proxy_hostname),
                 port: editConfig.proxy_port || null,
                 scheme: editConfig.proxy_scheme || null,
               },
