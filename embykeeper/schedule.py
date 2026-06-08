@@ -139,7 +139,7 @@ class Scheduler:
         # Try to get cached next execution time
         if self._cache_key:
             cached = cache.get(self._cache_key)
-            if cached:
+            if isinstance(cached, dict):
                 cached_config_hash = cached.get("config_hash")
                 cached_time = cached.get("next_time")
                 try:
