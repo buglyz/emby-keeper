@@ -65,7 +65,9 @@ def _extract_emby_item_id(parsed_url) -> Optional[str]:
         for key in ("id", "itemId", "ItemId"):
             values = params.get(key)
             if values and values[0]:
-                return values[0]
+                item_id = values[0].strip()
+                if item_id:
+                    return item_id
     return None
 
 

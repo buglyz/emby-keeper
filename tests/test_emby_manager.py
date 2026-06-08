@@ -193,6 +193,11 @@ def test_extract_emby_item_id_returns_none_for_invalid_url():
     assert _extract_emby_item_id(urlparse("https://example.com/web/#/home")) is None
 
 
+def test_extract_emby_item_id_trims_blank_values():
+    assert _extract_emby_item_id(urlparse("https://example.com/web/index.html?id=%20item-1%20")) == "item-1"
+    assert _extract_emby_item_id(urlparse("https://example.com/web/index.html?id=%20%20")) is None
+
+
 def test_same_emby_origin_requires_matching_scheme():
     account = EmbyAccount(url="http://example.com:443", username="alice")
 
