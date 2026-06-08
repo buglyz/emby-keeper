@@ -1,3 +1,6 @@
+import pytest
+from pydantic import ValidationError
+
 from embykeeper.schema import Config
 
 
@@ -51,3 +54,14 @@ def test_legacy_global_alias_replaces_none_emby_section():
     cfg = Config(emby=None, interval="7")
 
     assert cfg.emby.interval_days == "7"
+
+
+def test_use_str_fields_accept_integer_values():
+    cfg = Config(emby={"interval_days": 7})
+
+    assert cfg.emby.interval_days == "7"
+
+
+def test_use_str_fields_reject_boolean_values():
+    with pytest.raises(ValidationError):
+        Config(emby={"interval_days": True})
