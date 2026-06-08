@@ -266,3 +266,29 @@ def test_proxy_fix_middleware_uses_first_forwarded_proto_value():
         assert seen["scheme"] == "https"
 
     asyncio.run(run_test())
+
+
+def test_proxy_fix_middleware_skips_invalid_forwarded_proto_values():
+    async def run_test():
+        middleware = ProxyFixMiddleware(app=lambda *_args: None)
+        scope = {
+            "type": "http",
+            "method": "GET",
+            "path": "/scheme",
+            "headers": [(b"x-forwarded-proto", b"unknown, ftp, https")],
+            "client": ("original", 12345),
+            "server": ("example.com", 80),
+            "scheme": "http",
+        }
+        request = Request(scope)
+        seen = {}
+
+        async def call_next(next_request):
+            seen["scheme"] = next_request.url.scheme
+            return Response("ok")
+
+        await middleware.dispatch(request, call_next)
+
+        assert seen["scheme"] == "https"
+
+    asyncio.run(run_test())
