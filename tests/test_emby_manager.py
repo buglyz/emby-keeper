@@ -87,6 +87,47 @@ def test_watch_main_ignores_disabled_accounts(monkeypatch):
     asyncio.run(run_test())
 
 
+def test_watch_main_handles_missing_play_id_item_without_exception_log(monkeypatch):
+    async def run_test():
+        manager = EmbyManager()
+        account = EmbyAccount(url="https://example.com", username="alice", play_id="missing-item")
+
+        class DummyLog:
+            def info(self, *_args, **_kwargs):
+                return None
+
+            def warning(self, *_args, **_kwargs):
+                return None
+
+        class DummyEmby:
+            log = DummyLog()
+
+            def __init__(self, _account):
+                return None
+
+            async def ensure_authenticated(self):
+                return True
+
+            async def get_item(self, _item_id):
+                return None
+
+            async def watch(self):
+                raise AssertionError("watch should not run without an item")
+
+        def fail_show_exception(*_args, **_kwargs):
+            raise AssertionError("missing item should not be treated as an unexpected exception")
+
+        monkeypatch.setattr("embykeeper.emby.main.Emby", DummyEmby)
+        monkeypatch.setattr("embykeeper.emby.main.show_exception", fail_show_exception)
+
+        ctx = await manager._watch_main([account], instant=True)
+
+        assert ctx.status == RunStatus.FAIL
+        assert ctx.status_info == "保活失败"
+
+    asyncio.run(run_test())
+
+
 def test_schedule_all_handles_missing_emby_config():
     async def run_test():
         config.set(Config(emby=None))

@@ -405,7 +405,7 @@ class EmbyManager:
                             emby.log.warning(f"保活失败: 无法登陆.")
                             return account, False
                         item = await emby.get_item(account.play_id)
-                        if not "Id" in item:
+                        if not item or "Id" not in item:
                             emby.log.warning("保活失败: 无法获取视频项目")
                             return account, False
                         else:
