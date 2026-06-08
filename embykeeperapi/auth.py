@@ -1,5 +1,6 @@
 import hashlib
 import hmac
+import ipaddress
 import os
 import secrets
 import time
@@ -22,6 +23,7 @@ security = HTTPBearer(auto_error=False)
 # Simple rate limiter: track failed login attempts
 _failed_attempts: Dict[str, List[float]] = {}
 MAX_FAILED_PER_HOUR = 5
+TRUTHY_ENV_VALUES = {"1", "true", "yes", "on"}
 
 
 def _get_env_secret(name: str):
@@ -30,6 +32,41 @@ def _get_env_secret(name: str):
         return None
     value = value.strip()
     return value or None
+
+
+def _get_env_bool(name: str) -> bool:
+    value = _get_env_secret(name)
+    return bool(value and value.casefold() in TRUTHY_ENV_VALUES)
+
+
+def _valid_ip(value: str):
+    if not isinstance(value, str):
+        return None
+    value = value.strip()
+    if not value:
+        return None
+    try:
+        return str(ipaddress.ip_address(value))
+    except ValueError:
+        return None
+
+
+def get_client_ip(request) -> str:
+    """Resolve the client IP used for auth rate limiting."""
+    direct_ip = request.client.host if getattr(request, "client", None) else "unknown"
+    if not _get_env_bool("EK_TRUST_PROXY_HEADERS"):
+        return direct_ip
+
+    headers = getattr(request, "headers", {}) or {}
+    forwarded_for = headers.get("x-forwarded-for")
+    if forwarded_for:
+        for candidate in forwarded_for.split(","):
+            client_ip = _valid_ip(candidate)
+            if client_ip:
+                return client_ip
+
+    real_ip = _valid_ip(headers.get("x-real-ip"))
+    return real_ip or direct_ip
 
 
 def _get_jwt_secret() -> str:

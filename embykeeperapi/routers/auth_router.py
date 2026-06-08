@@ -8,6 +8,7 @@ from ..auth import (
     clear_failed_attempts,
     record_failed_attempt,
     get_current_user,
+    get_client_ip,
     DEFAULT_EXPIRE_DAYS,
     _get_env_secret,
 )
@@ -19,7 +20,7 @@ router = APIRouter(prefix="/api/auth", tags=["auth"])
 @router.post("/token-exchange", response_model=LoginResponse)
 async def exchange_token(req: TokenExchangeRequest, request: Request):
     """Exchange a pre-shared token (EK_TOKEN) for a JWT."""
-    client_ip = request.client.host if request.client else "unknown"
+    client_ip = get_client_ip(request)
 
     if not check_rate_limit(client_ip):
         raise HTTPException(
@@ -44,7 +45,7 @@ async def exchange_token(req: TokenExchangeRequest, request: Request):
 @router.post("/login", response_model=LoginResponse)
 async def login_with_password(req: PasswordLoginRequest, request: Request):
     """Exchange a password (EK_WEBPASS) for a JWT. Rate-limited."""
-    client_ip = request.client.host if request.client else "unknown"
+    client_ip = get_client_ip(request)
 
     if not check_rate_limit(client_ip):
         raise HTTPException(

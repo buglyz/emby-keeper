@@ -1,6 +1,7 @@
 import time
 import asyncio
 from datetime import datetime, timedelta
+from types import SimpleNamespace
 
 import pytest
 from fastapi import HTTPException
@@ -55,6 +56,36 @@ def test_auth_methods_ignore_blank_env_values(monkeypatch):
     monkeypatch.setenv("EK_WEBPASS", "")
 
     assert asyncio.run(get_auth_methods()) == {"token": False, "password": False}
+
+
+def test_client_ip_ignores_proxy_headers_by_default(monkeypatch):
+    monkeypatch.delenv("EK_TRUST_PROXY_HEADERS", raising=False)
+    request = SimpleNamespace(
+        client=SimpleNamespace(host="10.0.0.10"),
+        headers={"x-forwarded-for": "203.0.113.9"},
+    )
+
+    assert auth.get_client_ip(request) == "10.0.0.10"
+
+
+def test_client_ip_uses_forwarded_for_when_proxy_headers_are_trusted(monkeypatch):
+    monkeypatch.setenv("EK_TRUST_PROXY_HEADERS", "true")
+    request = SimpleNamespace(
+        client=SimpleNamespace(host="10.0.0.10"),
+        headers={"x-forwarded-for": "203.0.113.9, 10.0.0.10"},
+    )
+
+    assert auth.get_client_ip(request) == "203.0.113.9"
+
+
+def test_client_ip_falls_back_when_trusted_proxy_header_is_invalid(monkeypatch):
+    monkeypatch.setenv("EK_TRUST_PROXY_HEADERS", "true")
+    request = SimpleNamespace(
+        client=SimpleNamespace(host="10.0.0.10"),
+        headers={"x-forwarded-for": "not-an-ip", "x-real-ip": "198.51.100.7"},
+    )
+
+    assert auth.get_client_ip(request) == "198.51.100.7"
 
 
 def test_create_jwt_rejects_invalid_subjects():
