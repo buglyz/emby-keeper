@@ -73,6 +73,14 @@ def _validate_server_fields(url: Optional[str] = None, time=None):
 def _validate_required_text(field: str, value: Optional[str]):
     if value is None or not value.strip():
         raise HTTPException(status_code=400, detail=f"{field} cannot be empty")
+    return value.strip()
+
+
+def _normalize_optional_text(value: Optional[str]):
+    if value is None:
+        return None
+    value = value.strip()
+    return value or None
 
 
 def _validate_account_schedule(interval_days=None, time_range=None):
@@ -176,10 +184,12 @@ async def get_server(account_id: str, user: str = Depends(get_current_user)):
 async def create_server(req: EmbyServerCreate, user: str = Depends(get_current_user)):
     """Create a new Emby server account."""
     _require_bridge()
-    _validate_server_fields(url=req.url, time=req.time)
-    _validate_required_text("username", req.username)
+    url = _validate_required_text("url", req.url)
+    username = _validate_required_text("username", req.username)
+    name = _normalize_optional_text(req.name)
+    _validate_server_fields(url=url, time=req.time)
     _validate_account_schedule(req.interval_days, req.time_range)
-    account_id = _make_account_id(req.username, req.name, req.url)
+    account_id = _make_account_id(username, name, url)
 
     # Check for duplicate
     if bridge.web_accounts.get(account_id):
@@ -197,10 +207,10 @@ async def create_server(req: EmbyServerCreate, user: str = Depends(get_current_u
         from embykeeper.schema import EmbyAccount
 
         temp_kwargs = _make_temp_account_kwargs(
-            url=req.url,
-            username=req.username,
+            url=url,
+            username=username,
             password=req.password,
-            name=req.name,
+            name=name,
             source=req,
         )
         temp_account = EmbyAccount(**temp_kwargs)
@@ -226,9 +236,9 @@ async def create_server(req: EmbyServerCreate, user: str = Depends(get_current_u
 
     # Store account data
     account_data = {
-        "url": req.url,
-        "username": req.username,
-        "name": req.name,
+        "url": url,
+        "username": username,
+        "name": name,
         "auth_method": req.auth_method,
         "encrypted_token": encrypted_token,
         "user_id": user_id,
@@ -267,7 +277,7 @@ async def update_server(
     if not existing:
         raise HTTPException(status_code=404, detail="Server not found")
 
-    _validate_server_fields(url=req.url, time=req.time)
+    _validate_server_fields(time=req.time)
 
     update_data = {}
     fields_set = _model_fields_set(req)
@@ -293,8 +303,13 @@ async def update_server(
     for field in simple_fields:
         if field in fields_set:
             value = getattr(req, field)
-            if field in {"url", "username"}:
-                _validate_required_text(field, value)
+            if field == "url":
+                value = _validate_required_text(field, value)
+                _validate_server_fields(url=value)
+            elif field == "username":
+                value = _validate_required_text(field, value)
+            elif field == "name":
+                value = _normalize_optional_text(value)
             update_data[field] = value
 
     if "interval_days" in fields_set or "time_range" in fields_set:

@@ -287,6 +287,35 @@ def test_create_server_rejects_blank_password_without_login(tmp_path, monkeypatc
     asyncio.run(run_test())
 
 
+def test_create_server_trims_url_username_and_name(tmp_path):
+    async def run_test():
+        config.basedir = tmp_path
+        config.set(Config())
+        await bridge.initialize(tmp_path)
+
+        try:
+            response = await create_server(
+                EmbyServerCreate(
+                    url=" https://example.com ",
+                    username=" alice ",
+                    name=" primary ",
+                    auth_method="token",
+                    access_token=" token-1 ",
+                ),
+                user="tester",
+            )
+
+            assert response.id == "alice@primary"
+            stored = bridge.web_accounts.get("alice@primary")
+            assert stored["url"] == "https://example.com"
+            assert stored["username"] == "alice"
+            assert stored["name"] == "primary"
+        finally:
+            await reset_bridge()
+
+    asyncio.run(run_test())
+
+
 def test_update_server_rejects_invalid_schedule_settings_without_mutating_account(tmp_path):
     async def run_test():
         config.basedir = tmp_path
@@ -315,6 +344,41 @@ def test_update_server_rejects_invalid_schedule_settings_without_mutating_accoun
             assert exc.value.status_code == 400
             assert bridge.web_accounts.get(account_id)["interval_days"] == "7"
             assert "time_range" not in bridge.web_accounts.get(account_id)
+        finally:
+            await reset_bridge()
+
+    asyncio.run(run_test())
+
+
+def test_update_server_trims_text_identity_fields(tmp_path):
+    async def run_test():
+        config.basedir = tmp_path
+        config.set(Config())
+        await bridge.initialize(tmp_path)
+
+        account_id = "alice@example.com"
+        bridge.add_account(
+            account_id,
+            {
+                "url": "https://example.com",
+                "username": "alice",
+                "name": "old",
+                "encrypted_token": encrypt_token("token-old", tmp_path),
+            },
+        )
+
+        try:
+            response = await update_server(
+                account_id,
+                EmbyServerUpdate(url=" https://new.example ", username=" bob ", name=" "),
+                user="tester",
+            )
+
+            assert response.id == "bob@new.example"
+            stored = bridge.web_accounts.get("bob@new.example")
+            assert stored["url"] == "https://new.example"
+            assert stored["username"] == "bob"
+            assert "name" not in stored
         finally:
             await reset_bridge()
 
