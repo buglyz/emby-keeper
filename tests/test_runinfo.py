@@ -48,6 +48,24 @@ def test_run_context_prepare_avoids_existing_ids(tmp_path, monkeypatch):
         config.reset()
 
 
+def test_run_context_prepare_survives_cache_lookup_failure(monkeypatch):
+    _running_runs.clear()
+    monkeypatch.setattr("embykeeper.runinfo.random.choices", lambda *_args, **_kwargs: list("LOOKUP"))
+
+    def fail_get(key, default=None):
+        if key == "runinfo.LOOKUP":
+            raise OSError("read failed")
+        return default
+
+    monkeypatch.setattr("embykeeper.runinfo.cache.get", fail_get)
+
+    try:
+        run = RunContext.prepare("test")
+        assert run.id == "LOOKUP"
+    finally:
+        _running_runs.clear()
+
+
 def test_run_context_prepare_replaces_invalid_children_cache(tmp_path, monkeypatch):
     config.set(Config())
     config.basedir = tmp_path

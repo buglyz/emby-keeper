@@ -134,7 +134,12 @@ class RunContext(BaseModel):
         chars = string.ascii_uppercase + string.digits
         for _ in range(20):
             run_id = "".join(random.choices(chars, k=6))
-            if run_id not in _running_runs and not cache.get(f"runinfo.{run_id}"):
+            try:
+                cached_run_exists = bool(cache.get(f"runinfo.{run_id}"))
+            except Exception as e:
+                logger.warning(f"运行记录 {run_id} 缓存检查失败, 已忽略: {type(e).__name__}")
+                cached_run_exists = False
+            if run_id not in _running_runs and not cached_run_exists:
                 break
         else:
             run_id = "".join(random.choices(chars, k=12))
