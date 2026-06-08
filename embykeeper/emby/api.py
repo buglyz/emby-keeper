@@ -523,7 +523,8 @@ class Emby:
                         stream_response_closed = True
                     if self.cf_clearance:
                         raise EmbyStatusError("访问失败: Cloudflare 验证码解析后依然有验证")
-                    await self.use_cfsolver()
+                    if not await self.use_cfsolver():
+                        raise EmbyStatusError("访问失败: Cloudflare 验证未通过")
                     continue
                 elif not resp.ok and not _login:
                     if is_stream:

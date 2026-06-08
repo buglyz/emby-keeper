@@ -605,6 +605,43 @@ def test_stream_request_keeps_session_open_until_response_is_closed(monkeypatch)
     asyncio.run(run_test())
 
 
+def test_request_raises_status_error_when_cloudflare_solver_fails(monkeypatch):
+    async def run_test():
+        account = EmbyAccount(url="https://example.com", username="alice")
+        emby = Emby(account)
+        requests = 0
+
+        class CloudflareResponse(DummyResponse):
+            status_code = 403
+            ok = False
+            text = "Just a moment"
+
+        class DummySession:
+            async def __aenter__(self):
+                return self
+
+            async def __aexit__(self, *_args):
+                return None
+
+            async def request(self, method, url, **kwargs):
+                nonlocal requests
+                requests += 1
+                return CloudflareResponse({})
+
+        async def fail_solver():
+            return False
+
+        monkeypatch.setattr(emby, "_get_session", lambda headers=None: DummySession())
+        monkeypatch.setattr(emby, "use_cfsolver", fail_solver)
+
+        with pytest.raises(EmbyStatusError, match="Cloudflare"):
+            await emby._request("GET", "/Users/Me")
+
+        assert requests == 1
+
+    asyncio.run(run_test())
+
+
 def test_stream_headers_keep_authentication_with_vlc_user_agent():
     account = EmbyAccount(
         url="https://example.com",
