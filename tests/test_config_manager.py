@@ -31,3 +31,28 @@ interval_days = "7"
         assert manager.emby.interval_days == "7"
 
     asyncio.run(run_test())
+
+
+def test_start_observer_waits_for_previous_observer_cancel(tmp_path, monkeypatch):
+    async def run_test():
+        manager = ConfigManager(tmp_path / "config.toml")
+
+        async def never_yield_awatch(_path):
+            await asyncio.Event().wait()
+            yield []
+
+        monkeypatch.setattr("embykeeper.config.awatch", never_yield_awatch)
+
+        old_task = asyncio.create_task(asyncio.Event().wait())
+        manager._observer = old_task
+
+        await manager.start_observer()
+
+        try:
+            assert old_task.done()
+            assert old_task.cancelled()
+        finally:
+            manager._observer.cancel()
+            await asyncio.gather(manager._observer, return_exceptions=True)
+
+    asyncio.run(run_test())

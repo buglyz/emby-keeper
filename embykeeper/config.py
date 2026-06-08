@@ -285,7 +285,7 @@ class ConfigManager(ProxyBase):
 
         if self._observer:
             self._observer.cancel()
-            asyncio.gather(self._observer, return_exceptions=True)
+            await asyncio.gather(self._observer, return_exceptions=True)
         self._observer = asyncio.create_task(observer())
 
     @staticmethod
