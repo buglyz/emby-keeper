@@ -127,11 +127,12 @@ class AsyncTaskPool:
 
     def add(self, coro: Coroutine, name: str = None):
         async def wrapper():
-            task = asyncio.ensure_future(coro)
-            await asyncio.wait([task])
-            async with self.waiter:
-                self.waiter.notify()
+            try:
+                task = asyncio.ensure_future(coro)
                 return await task
+            finally:
+                async with self.waiter:
+                    self.waiter.notify()
 
         task_name = (
             name or getattr(coro, "__name__", None) or getattr(coro, "__qualname__", None) or "async-task"

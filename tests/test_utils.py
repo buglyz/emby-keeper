@@ -129,6 +129,33 @@ def test_async_task_pool_accepts_future_without_name():
     asyncio.run(asyncio.wait_for(run_test(), timeout=1))
 
 
+def test_async_task_pool_cancellation_reaches_inner_task():
+    async def run_test():
+        pool = AsyncTaskPool()
+        started = asyncio.Event()
+        cancelled = asyncio.Event()
+        blocker = asyncio.Event()
+
+        async def worker():
+            started.set()
+            try:
+                await blocker.wait()
+            except asyncio.CancelledError:
+                cancelled.set()
+                raise
+
+        task = pool.add(worker())
+        await started.wait()
+
+        task.cancel()
+        with pytest.raises(asyncio.CancelledError):
+            await task
+
+        assert cancelled.is_set()
+
+    asyncio.run(asyncio.wait_for(run_test(), timeout=1))
+
+
 def test_nonblocking_lock_acquires_available_lock():
     async def run_test():
         lock = asyncio.Lock()
