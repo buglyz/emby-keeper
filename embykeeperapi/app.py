@@ -32,6 +32,10 @@ class ProxyFixMiddleware(BaseHTTPMiddleware):
             forwarded_hosts = [host.strip() for host in forwarded_for.split(",") if host.strip()]
             if forwarded_hosts:
                 request.scope["client"] = (forwarded_hosts[0], 0)
+        else:
+            real_ip = (request.headers.get("X-Real-Ip") or "").strip()
+            if real_ip:
+                request.scope["client"] = (real_ip, 0)
 
         response = await call_next(request)
         return response
