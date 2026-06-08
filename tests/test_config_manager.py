@@ -16,6 +16,17 @@ def test_reload_conf_rejects_invalid_env_config(monkeypatch):
     asyncio.run(run_test())
 
 
+def test_reload_conf_rejects_non_base64_env_config(monkeypatch):
+    async def run_test():
+        manager = ConfigManager()
+        monkeypatch.setenv("EK_CONFIG", "$$$")
+
+        assert await manager.reload_conf() is False
+        assert manager._cache is None
+
+    asyncio.run(run_test())
+
+
 def test_reload_conf_loads_valid_env_config(monkeypatch):
     async def run_test():
         manager = ConfigManager()
