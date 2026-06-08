@@ -29,7 +29,9 @@ class ProxyFixMiddleware(BaseHTTPMiddleware):
         # Handle X-Forwarded-For / X-Real-Ip for client IP
         forwarded_for = request.headers.get("X-Forwarded-For")
         if forwarded_for:
-            request.scope["client"] = (forwarded_for.split(",")[0].strip(), 0)
+            forwarded_hosts = [host.strip() for host in forwarded_for.split(",") if host.strip()]
+            if forwarded_hosts:
+                request.scope["client"] = (forwarded_hosts[0], 0)
 
         response = await call_next(request)
         return response
