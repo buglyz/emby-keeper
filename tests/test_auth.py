@@ -63,6 +63,12 @@ def test_create_jwt_rejects_invalid_subjects():
         auth.create_jwt(subject=123)
 
 
+@pytest.mark.parametrize("expire_days", [0, -1, True, "7"])
+def test_create_jwt_rejects_invalid_expiration_days(expire_days):
+    with pytest.raises(ValueError):
+        auth.create_jwt(expire_days=expire_days)
+
+
 @pytest.mark.parametrize("token", [None, "", 123])
 def test_verify_jwt_rejects_non_string_tokens(token):
     with pytest.raises(HTTPException) as exc:

@@ -100,6 +100,8 @@ def create_jwt(subject: str = "admin", expire_days: int = DEFAULT_EXPIRE_DAYS) -
     """Create a JWT token."""
     if not isinstance(subject, str) or not subject:
         raise ValueError("JWT subject must be a non-empty string")
+    if not isinstance(expire_days, int) or isinstance(expire_days, bool) or expire_days <= 0:
+        raise ValueError("JWT expiration must be a positive integer day count")
     expire = datetime.utcnow() + timedelta(days=expire_days)
     payload = {"sub": subject, "exp": expire, "iat": datetime.utcnow()}
     return jwt.encode(payload, JWT_SECRET, algorithm=ALGORITHM)
