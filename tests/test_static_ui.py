@@ -76,10 +76,13 @@ def test_server_form_rejects_invalid_watch_time_before_save():
 def test_config_form_trims_text_payload_before_save():
     html = STATIC_INDEX.read_text(encoding="utf-8")
 
-    assert "function addOptionalText(data, key, value)" in html
+    assert "function addScheduleText(data, key, value, label)" in html
+    assert "throw new Error(`${label}不能为空`)" in html
     assert "if (normalized !== null) data[key] = normalized" in html
-    assert "addOptionalText(data, 'emby_time_range', editConfig.emby_time_range)" in html
-    assert "addOptionalText(data, 'emby_interval_days', editConfig.emby_interval_days)" in html
+    assert "addScheduleText(data, 'emby_time_range', editConfig.emby_time_range, 'Emby 时间范围')" in html
+    assert (
+        "addScheduleText(data, 'emby_interval_days', editConfig.emby_interval_days, 'Emby 间隔天数')" in html
+    )
     assert "hostname: optionalText(editConfig.proxy_hostname)" in html
     assert "emby_time_range: optionalText(editConfig.emby_time_range)" not in html
     assert "emby_interval_days: optionalText(editConfig.emby_interval_days)" not in html

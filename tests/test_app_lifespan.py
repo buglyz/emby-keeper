@@ -117,7 +117,9 @@ def test_healthz_route_is_not_spa_fallback():
     assert asyncio.run(routes[0].endpoint()) == {"status": "ok"}
 
 
-def test_proxy_fix_middleware_uses_first_non_empty_forwarded_for():
+def test_proxy_fix_middleware_uses_first_non_empty_forwarded_for(monkeypatch):
+    monkeypatch.setenv("EK_TRUST_PROXY", "1")
+
     async def run_test():
         middleware = ProxyFixMiddleware(app=lambda *_args: None)
         scope = {
@@ -142,7 +144,9 @@ def test_proxy_fix_middleware_uses_first_non_empty_forwarded_for():
     asyncio.run(run_test())
 
 
-def test_proxy_fix_middleware_uses_real_ip_when_forwarded_for_missing():
+def test_proxy_fix_middleware_uses_real_ip_when_forwarded_for_missing(monkeypatch):
+    monkeypatch.setenv("EK_TRUST_PROXY", "1")
+
     async def run_test():
         middleware = ProxyFixMiddleware(app=lambda *_args: None)
         scope = {
@@ -167,7 +171,9 @@ def test_proxy_fix_middleware_uses_real_ip_when_forwarded_for_missing():
     asyncio.run(run_test())
 
 
-def test_proxy_fix_middleware_ignores_unknown_forwarded_clients():
+def test_proxy_fix_middleware_ignores_unknown_forwarded_clients(monkeypatch):
+    monkeypatch.setenv("EK_TRUST_PROXY", "1")
+
     async def run_test():
         middleware = ProxyFixMiddleware(app=lambda *_args: None)
         scope = {
@@ -192,7 +198,9 @@ def test_proxy_fix_middleware_ignores_unknown_forwarded_clients():
     asyncio.run(run_test())
 
 
-def test_proxy_fix_middleware_keeps_client_when_forwarded_for_is_unknown():
+def test_proxy_fix_middleware_keeps_client_when_forwarded_for_is_unknown(monkeypatch):
+    monkeypatch.setenv("EK_TRUST_PROXY", "1")
+
     async def run_test():
         middleware = ProxyFixMiddleware(app=lambda *_args: None)
         scope = {
@@ -217,7 +225,9 @@ def test_proxy_fix_middleware_keeps_client_when_forwarded_for_is_unknown():
     asyncio.run(run_test())
 
 
-def test_proxy_fix_middleware_keeps_client_when_real_ip_is_unknown():
+def test_proxy_fix_middleware_keeps_client_when_real_ip_is_unknown(monkeypatch):
+    monkeypatch.setenv("EK_TRUST_PROXY", "1")
+
     async def run_test():
         middleware = ProxyFixMiddleware(app=lambda *_args: None)
         scope = {
@@ -242,7 +252,9 @@ def test_proxy_fix_middleware_keeps_client_when_real_ip_is_unknown():
     asyncio.run(run_test())
 
 
-def test_proxy_fix_middleware_uses_first_forwarded_proto_value():
+def test_proxy_fix_middleware_uses_first_forwarded_proto_value(monkeypatch):
+    monkeypatch.setenv("EK_TRUST_PROXY", "1")
+
     async def run_test():
         middleware = ProxyFixMiddleware(app=lambda *_args: None)
         scope = {
@@ -268,7 +280,9 @@ def test_proxy_fix_middleware_uses_first_forwarded_proto_value():
     asyncio.run(run_test())
 
 
-def test_proxy_fix_middleware_skips_invalid_forwarded_proto_values():
+def test_proxy_fix_middleware_skips_invalid_forwarded_proto_values(monkeypatch):
+    monkeypatch.setenv("EK_TRUST_PROXY", "1")
+
     async def run_test():
         middleware = ProxyFixMiddleware(app=lambda *_args: None)
         scope = {
@@ -290,5 +304,66 @@ def test_proxy_fix_middleware_skips_invalid_forwarded_proto_values():
         await middleware.dispatch(request, call_next)
 
         assert seen["scheme"] == "https"
+
+    asyncio.run(run_test())
+
+
+def test_proxy_fix_middleware_ignores_untrusted_forwarded_headers(monkeypatch):
+    monkeypatch.delenv("EK_TRUST_PROXY", raising=False)
+    monkeypatch.delenv("EK_TRUSTED_PROXIES", raising=False)
+
+    async def run_test():
+        middleware = ProxyFixMiddleware(app=lambda *_args: None)
+        scope = {
+            "type": "http",
+            "method": "GET",
+            "path": "/client",
+            "headers": [
+                (b"x-forwarded-for", b"203.0.113.10"),
+                (b"x-forwarded-proto", b"https"),
+            ],
+            "client": ("198.51.100.20", 12345),
+            "server": ("example.com", 80),
+            "scheme": "http",
+        }
+        request = Request(scope)
+        seen = {}
+
+        async def call_next(next_request):
+            seen["client"] = next_request.client.host
+            seen["scheme"] = next_request.url.scheme
+            return Response("ok")
+
+        await middleware.dispatch(request, call_next)
+
+        assert seen == {"client": "198.51.100.20", "scheme": "http"}
+
+    asyncio.run(run_test())
+
+
+def test_proxy_fix_middleware_trusts_configured_proxy_network(monkeypatch):
+    monkeypatch.delenv("EK_TRUST_PROXY", raising=False)
+    monkeypatch.setenv("EK_TRUSTED_PROXIES", "198.51.100.0/24")
+
+    async def run_test():
+        middleware = ProxyFixMiddleware(app=lambda *_args: None)
+        scope = {
+            "type": "http",
+            "method": "GET",
+            "path": "/client",
+            "headers": [(b"x-forwarded-for", b"203.0.113.10")],
+            "client": ("198.51.100.20", 12345),
+            "scheme": "http",
+        }
+        request = Request(scope)
+        seen = {}
+
+        async def call_next(next_request):
+            seen["client"] = next_request.client.host
+            return Response("ok")
+
+        await middleware.dispatch(request, call_next)
+
+        assert seen["client"] == "203.0.113.10"
 
     asyncio.run(run_test())

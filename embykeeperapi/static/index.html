@@ -842,8 +842,11 @@
           return trimmed || null;
         }
 
-        function addOptionalText(data, key, value) {
+        function addScheduleText(data, key, value, label) {
           const normalized = optionalText(value);
+          if (normalized === null && configData.value && configData.value[key] != null) {
+            throw new Error(`${label}不能为空`);
+          }
           if (normalized !== null) data[key] = normalized;
         }
 
@@ -866,8 +869,8 @@
                 scheme: editConfig.proxy_scheme || null,
               },
             };
-            addOptionalText(data, 'emby_time_range', editConfig.emby_time_range);
-            addOptionalText(data, 'emby_interval_days', editConfig.emby_interval_days);
+            addScheduleText(data, 'emby_time_range', editConfig.emby_time_range, 'Emby 时间范围');
+            addScheduleText(data, 'emby_interval_days', editConfig.emby_interval_days, 'Emby 间隔天数');
             await API.updateConfig(data);
             message.success('配置已保存');
           } catch (e) { message.error(e.message); }

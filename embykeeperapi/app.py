@@ -1,4 +1,5 @@
 import os
+from ipaddress import ip_address, ip_network
 from contextlib import asynccontextmanager
 from pathlib import Path
 
@@ -10,15 +11,53 @@ from fastapi.staticfiles import StaticFiles
 from loguru import logger
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.requests import Request
-from starlette.responses import Response
 
 from .scheduler_bridge import bridge
 
 logger = logger.bind(scheme="embykeeperapi")
+TRUST_PROXY_HEADERS_ENV = "EK_TRUST_PROXY"
+TRUSTED_PROXIES_ENV = "EK_TRUSTED_PROXIES"
+DEFAULT_TRUSTED_PROXY_NETWORKS = (
+    ip_network("127.0.0.0/8"),
+    ip_network("::1/128"),
+)
 
 
 class ProxyFixMiddleware(BaseHTTPMiddleware):
     """Fix proxy headers for reverse proxy deployments."""
+
+    @staticmethod
+    def _env_flag_enabled(name: str) -> bool:
+        value = os.environ.get(name)
+        if not isinstance(value, str):
+            return False
+        return value.strip().casefold() in {"1", "true", "yes", "on", "all", "*"}
+
+    @staticmethod
+    def _trusted_proxy_networks():
+        raw = os.environ.get(TRUSTED_PROXIES_ENV)
+        networks = list(DEFAULT_TRUSTED_PROXY_NETWORKS)
+        if not isinstance(raw, str) or not raw.strip():
+            return networks
+        for item in raw.split(","):
+            item = item.strip()
+            if not item:
+                continue
+            try:
+                networks.append(ip_network(item, strict=False))
+            except ValueError:
+                logger.warning(f"Ignoring invalid trusted proxy network: {item}")
+        return networks
+
+    @classmethod
+    def _is_trusted_proxy(cls, host: str) -> bool:
+        if cls._env_flag_enabled(TRUST_PROXY_HEADERS_ENV):
+            return True
+        try:
+            client_ip = ip_address(host)
+        except ValueError:
+            return False
+        return any(client_ip in network for network in cls._trusted_proxy_networks())
 
     @staticmethod
     def _first_forwarded_value(value: str):
@@ -29,6 +68,10 @@ class ProxyFixMiddleware(BaseHTTPMiddleware):
         return None
 
     async def dispatch(self, request: Request, call_next):
+        client_host = request.client.host if request.client else ""
+        if not self._is_trusted_proxy(client_host):
+            return await call_next(request)
+
         # Handle X-Forwarded-Proto for scheme
         forwarded_proto = request.headers.get("X-Forwarded-Proto")
         if forwarded_proto:

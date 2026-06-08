@@ -1,6 +1,7 @@
 import os
 import platform
 import sys
+from pathlib import Path
 from subprocess import Popen
 
 try:
@@ -22,6 +23,11 @@ from .cli import app as cli
 from .config import config
 
 NO_INSTANT_FLAGS = {"-I", "--no-instant"}
+
+
+def _notepad_path():
+    system_root = os.environ.get("SystemRoot") or r"C:\Windows"
+    return str(Path(system_root) / "System32" / "notepad.exe")
 
 
 def generate_config():
@@ -62,14 +68,14 @@ def generate_config():
 
     _ = getch()
 
-    p = Popen(["notepad.exe", str(config_file)], shell=True)
+    p = Popen([_notepad_path(), str(config_file)])
 
     if not p:
-        var.console.print(f"配置文件打开失败, 请按任意键退出", justify="center")
+        var.console.print("配置文件打开失败, 请按任意键退出", justify="center")
         _ = getch()
         sys.exit(1)
 
-    var.console.print(f"等待您编辑配置文件, 请保存关闭编辑器窗口以继续 ...", justify="center")
+    var.console.print("等待您编辑配置文件, 请保存关闭编辑器窗口以继续 ...", justify="center")
     p.wait()
     var.console.print(
         f"请确认您配置完成, 并按任意键以继续启动 {__product__.capitalize()}...", justify="center"
@@ -79,7 +85,7 @@ def generate_config():
 
 def main():
     generate_config()
-    os.system("cls")
+    var.console.clear()
     var.console.rule("Embykeeper")
     args = sys.argv[1:]
     if any(arg in NO_INSTANT_FLAGS for arg in args):
