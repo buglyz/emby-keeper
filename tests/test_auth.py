@@ -77,6 +77,13 @@ def test_verify_jwt_rejects_non_string_tokens(token):
     assert exc.value.status_code == 401
 
 
+def test_get_current_user_rejects_missing_credentials():
+    with pytest.raises(HTTPException) as exc:
+        asyncio.run(auth.get_current_user(None))
+
+    assert exc.value.status_code == 401
+
+
 def test_verify_jwt_rejects_non_string_subject():
     token = auth.jwt.encode(
         {

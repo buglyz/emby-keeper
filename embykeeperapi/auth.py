@@ -17,7 +17,7 @@ ALGORITHM = "HS256"
 DEFAULT_EXPIRE_DAYS = 7
 JWT_SECRET_FILE = "jwt_secret.key"
 
-security = HTTPBearer()
+security = HTTPBearer(auto_error=False)
 
 # Simple rate limiter: track failed login attempts
 _failed_attempts: Dict[str, List[float]] = {}
@@ -140,6 +140,11 @@ def verify_jwt(token: str) -> dict:
 
 async def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(security)) -> str:
     """FastAPI dependency that validates JWT and returns the subject."""
+    if credentials is None:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid or expired token",
+        )
     payload = verify_jwt(credentials.credentials)
     return payload["sub"]
 
