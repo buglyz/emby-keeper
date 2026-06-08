@@ -52,6 +52,14 @@ def _normalize_root_path(prefix: str) -> str:
     return "/" + prefix.strip("/")
 
 
+def _get_env_text(name: str):
+    value = os.environ.get(name)
+    if not isinstance(value, str):
+        return None
+    value = value.strip()
+    return value or None
+
+
 def _is_reserved_spa_path(path: str) -> bool:
     return path == "api" or path.startswith("api/") or path == "healthz"
 
@@ -60,7 +68,7 @@ def _is_reserved_spa_path(path: str) -> bool:
 async def lifespan(app: FastAPI):
     """Initialize scheduler bridge on startup, cleanup on shutdown."""
     # Determine base directory
-    basedir_env = os.environ.get("EK_BASEDIR")
+    basedir_env = _get_env_text("EK_BASEDIR")
     if basedir_env:
         basedir = Path(basedir_env)
     else:
@@ -156,6 +164,7 @@ def run(
     debug: bool = typer.Option(False, "--debug", "-d", help="Enable debug mode"),
 ):
     """Start the EmbyKeeper API server."""
+    basedir = basedir.strip() if isinstance(basedir, str) else basedir
     if basedir:
         os.environ["EK_BASEDIR"] = basedir
 

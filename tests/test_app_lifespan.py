@@ -24,6 +24,27 @@ def test_lifespan_resets_bridge_when_initialize_fails(tmp_path, monkeypatch):
     asyncio.run(run_test())
 
 
+def test_lifespan_ignores_blank_basedir_env(tmp_path, monkeypatch):
+    async def run_test():
+        seen = {}
+
+        async def fake_initialize(basedir):
+            seen["basedir"] = basedir
+
+        async def fake_shutdown():
+            return None
+
+        monkeypatch.setenv("EK_BASEDIR", "   ")
+        monkeypatch.setattr("appdirs.user_data_dir", lambda _product: str(tmp_path))
+        monkeypatch.setattr(bridge, "initialize", fake_initialize)
+        monkeypatch.setattr(bridge, "shutdown", fake_shutdown)
+
+        async with lifespan(None):
+            assert seen["basedir"] == tmp_path
+
+    asyncio.run(run_test())
+
+
 @pytest.mark.parametrize(
     ("value", "expected"),
     [
