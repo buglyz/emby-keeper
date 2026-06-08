@@ -68,6 +68,10 @@ def _validate_server_fields(url: Optional[str] = None, time=None):
             raise HTTPException(status_code=400, detail="URL must start with http:// or https://")
         if not parsed.hostname:
             raise HTTPException(status_code=400, detail="URL must contain a valid hostname")
+        try:
+            parsed.port
+        except ValueError:
+            raise HTTPException(status_code=400, detail="URL must contain a valid port")
         if parsed.username or parsed.password:
             raise HTTPException(status_code=400, detail="URL must not contain username or password")
         if parsed.query or parsed.fragment:
