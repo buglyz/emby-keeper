@@ -68,6 +68,23 @@ def test_token_only_account_authenticates_without_password(monkeypatch):
     assert login_called is False
 
 
+def test_user_id_cache_without_token_does_not_authenticate(monkeypatch):
+    key = "emby.credential.example.com.alice"
+    cache.set(key, {"userid": "user-1"})
+    account = EmbyAccount(url="https://example.com", username="alice", password="secret")
+    emby = Emby(account)
+
+    async def fake_login():
+        emby.set_credentials("token-1", "user-1")
+        return "token-1"
+
+    monkeypatch.setattr(emby, "login", fake_login)
+
+    assert asyncio.run(emby.ensure_authenticated()) is True
+    assert emby.token == "token-1"
+    assert emby.user_id == "user-1"
+
+
 def test_token_authentication_uses_stored_user_id(monkeypatch):
     account = EmbyAccount(url="https://example.com", username="alice")
     emby = Emby(account)

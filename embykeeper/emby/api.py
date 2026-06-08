@@ -299,7 +299,7 @@ class Emby:
 
     async def ensure_authenticated(self) -> bool:
         """Ensure token and user id are available before account requests."""
-        if self.user_id:
+        if self.token and self.user_id:
             return True
         if self.token and await self.authenticate_with_token():
             return True
