@@ -295,8 +295,12 @@ class ConfigManager(ProxyBase):
     def load_config_str(data: str):
         """从环境变量数据读入配置."""
 
+        payload = re.sub(r"\s+", "", data)
+        if not payload:
+            logger.error("环境变量 EK_CONFIG 定义的配置格式错误, 请调整并重试.")
+            return None
         try:
-            data = base64.b64decode(re.sub(r"\s+", "", data).encode(), validate=True)
+            data = base64.b64decode(payload.encode(), validate=True)
         except binascii.Error:
             logger.error("环境变量 EK_CONFIG 定义的配置格式错误, 请调整并重试.")
             return None
