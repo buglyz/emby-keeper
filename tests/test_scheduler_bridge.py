@@ -545,6 +545,53 @@ def test_deleting_account_cancels_running_manual_task_and_status(tmp_path):
     asyncio.run(run_test())
 
 
+def test_deleting_account_marks_running_watch_context_cancelled(tmp_path, monkeypatch):
+    async def run_test():
+        from embykeeper.runinfo import RunContext, RunStatus
+
+        bridge = SchedulerBridge()
+        await bridge.initialize(tmp_path)
+
+        account_id = "alice@example.com"
+        bridge.add_account(
+            account_id,
+            {
+                "url": "https://example.com",
+                "username": "alice",
+                "encrypted_token": encrypt_token("token-1", tmp_path),
+                "enabled": True,
+            },
+        )
+
+        started = asyncio.Event()
+        blocker = asyncio.Event()
+
+        async def block_authenticate(_emby):
+            started.set()
+            await blocker.wait()
+            return True
+
+        monkeypatch.setattr(bridge, "_authenticate_emby", block_authenticate)
+
+        try:
+            result = await bridge.trigger_watch(account_id)
+            task = bridge._running_tasks[account_id]
+            await started.wait()
+
+            bridge.delete_account(account_id)
+
+            with pytest.raises(asyncio.CancelledError):
+                await task
+
+            run = RunContext.get(result["run_id"])
+            assert run.status == RunStatus.CANCELLED
+            assert run.status_info == "Watch task cancelled"
+        finally:
+            await bridge.shutdown()
+
+    asyncio.run(run_test())
+
+
 def test_update_account_replaces_old_credential_cache(tmp_path):
     async def run_test():
         bridge = SchedulerBridge()

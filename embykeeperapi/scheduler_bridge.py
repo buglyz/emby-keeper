@@ -415,6 +415,9 @@ class SchedulerBridge:
                 else:
                     ctx.finish(RunStatus.FAIL, "Watch failed")
                     self._record_status(account_id, last_watch_time=now, last_watch_status="failed")
+            except asyncio.CancelledError:
+                ctx.finish(RunStatus.CANCELLED, "Watch task cancelled")
+                raise
             except EmbyError as e:
                 ctx.finish(RunStatus.FAIL, str(e))
                 self._record_status(account_id, last_watch_time=now, last_watch_status="failed")

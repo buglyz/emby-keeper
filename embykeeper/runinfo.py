@@ -4,7 +4,7 @@ from asyncio import Event
 import asyncio
 from datetime import datetime
 from enum import IntEnum, auto
-from typing import TYPE_CHECKING, Callable, Dict, List
+from typing import TYPE_CHECKING, Callable, Dict, List, Optional
 import random
 import string
 from loguru import logger
@@ -50,15 +50,15 @@ class RunContext(BaseModel):
 
     id: str
     parent_ids: List[str] = []
-    description: str = None
+    description: Optional[str] = None
     status: RunStatus = RunStatus.PENDING
-    status_info: str = None
+    status_info: Optional[str] = None
     log: List[LogRecord] = []
-    duration: float = None
-    start_time: datetime = None
-    end_time: datetime = None
-    next_time: datetime = None
-    reschedule: int = None
+    duration: Optional[float] = None
+    start_time: Optional[datetime] = None
+    end_time: Optional[datetime] = None
+    next_time: Optional[datetime] = None
+    reschedule: Optional[int] = None
 
     def start(self, status: RunStatus = RunStatus.RUNNING):
         """开始任务, 设置开始时间和状态"""
