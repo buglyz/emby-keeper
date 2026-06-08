@@ -143,6 +143,16 @@ def test_write_text_atomic_creates_missing_parent(tmp_path):
     assert stat.S_IMODE(config_file.stat().st_mode) == 0o600
 
 
+def test_write_text_atomic_cleans_temp_file_on_type_error(tmp_path):
+    config_file = tmp_path / "config.toml"
+
+    with pytest.raises(TypeError):
+        config_router._write_text_atomic(config_file, object())
+
+    assert not config_file.exists()
+    assert not list(tmp_path.glob(".config.toml.*.tmp"))
+
+
 def test_update_config_rejects_invalid_runtime_values(tmp_path):
     async def run_test():
         config.basedir = tmp_path

@@ -70,7 +70,7 @@ def _write_secret_file_atomic(path, key_bytes: bytes):
             tmp.write(key_bytes)
         _chmod_secret_file(tmp_path)
         tmp_path.replace(path)
-    except OSError:
+    except Exception:
         if tmp_path is not None:
             try:
                 tmp_path.unlink(missing_ok=True)

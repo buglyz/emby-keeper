@@ -47,7 +47,7 @@ def _write_key(key_file: Path, key: bytes):
             tmp.write(key)
         os.chmod(tmp_path, 0o600)
         tmp_path.replace(key_file)
-    except OSError:
+    except Exception:
         if tmp_path is not None:
             try:
                 tmp_path.unlink(missing_ok=True)

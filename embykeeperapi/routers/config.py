@@ -41,7 +41,7 @@ def _write_text_atomic(path: Path, content: str):
         except OSError:
             pass
         tmp_path.replace(path)
-    except OSError:
+    except Exception:
         if tmp_path is not None:
             try:
                 tmp_path.unlink(missing_ok=True)

@@ -6,6 +6,7 @@ from cryptography.fernet import Fernet
 
 import embykeeperapi.auth as auth
 from embykeeperapi.auth import init_jwt_secret_from_basedir
+from embykeeperapi import crypto
 from embykeeperapi.crypto import decrypt_token, encrypt_token, reset_fernet
 
 
@@ -128,6 +129,16 @@ def test_new_jwt_secret_write_failure_keeps_runtime_secret(tmp_path, monkeypatch
         auth.JWT_SECRET = old_secret
 
 
+def test_jwt_secret_write_cleans_temp_file_on_type_error(tmp_path):
+    key_file = tmp_path / "jwt_secret.key"
+
+    with pytest.raises(TypeError):
+        auth._write_secret_file_atomic(key_file, "not-bytes")
+
+    assert not key_file.exists()
+    assert not list(tmp_path.glob(".jwt_secret.key.*.tmp"))
+
+
 def test_empty_legacy_secret_key_does_not_create_fixed_jwt_secret(tmp_path, monkeypatch):
     for key in ("EK_SECRET", "EK_WEBPASS", "EK_TOKEN"):
         monkeypatch.delenv(key, raising=False)
@@ -183,6 +194,16 @@ def test_existing_valid_fernet_secret_key_is_used_as_is(tmp_path, monkeypatch):
 
     assert stat.S_IMODE(key_file.stat().st_mode) == 0o600
     assert Fernet(key).decrypt(encrypted.encode()).decode() == "emby-token"
+
+
+def test_fernet_key_write_cleans_temp_file_on_type_error(tmp_path):
+    key_file = tmp_path / "secret.key"
+
+    with pytest.raises(TypeError):
+        crypto._write_key(key_file, "not-bytes")
+
+    assert not key_file.exists()
+    assert not list(tmp_path.glob(".secret.key.*.tmp"))
 
 
 @pytest.mark.parametrize("plain_token", ["", None, 123, True])
