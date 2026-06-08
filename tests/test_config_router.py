@@ -204,6 +204,30 @@ def test_update_config_rejects_invalid_proxy_runtime_values(tmp_path):
     config.reset()
 
 
+def test_update_config_rejects_non_string_proxy_hostname(tmp_path):
+    async def run_test():
+        config.basedir = tmp_path
+        config.set(Config())
+
+        invalid_proxy = ProxyConfigUpdate.model_construct(
+            hostname=123,
+            _fields_set={"hostname"},
+        )
+        invalid_req = GlobalConfigUpdate.model_construct(
+            proxy=invalid_proxy,
+            _fields_set={"proxy"},
+        )
+
+        with pytest.raises(HTTPException) as exc:
+            await update_config(invalid_req, user="tester")
+
+        assert exc.value.status_code == 400
+        assert config._cache.proxy is None
+
+    asyncio.run(run_test())
+    config.reset()
+
+
 def test_update_config_removes_proxy_when_all_proxy_fields_are_empty(tmp_path):
     async def run_test():
         config_file = tmp_path / "config.toml"

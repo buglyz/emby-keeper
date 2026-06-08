@@ -135,7 +135,12 @@ async def update_config(req: GlobalConfigUpdate, user: str = Depends(get_current
             existing_proxy = new_config.proxy or ProxyConfig()
             proxy_fields_set = _model_fields_set(req.proxy)
             if "hostname" in proxy_fields_set:
-                hostname = req.proxy.hostname.strip() if req.proxy.hostname else None
+                if req.proxy.hostname is None:
+                    hostname = None
+                elif not isinstance(req.proxy.hostname, str):
+                    raise HTTPException(status_code=400, detail="proxy.hostname must be a string")
+                else:
+                    hostname = req.proxy.hostname.strip()
                 existing_proxy.hostname = hostname or None
             if "port" in proxy_fields_set:
                 existing_proxy.port = req.proxy.port
