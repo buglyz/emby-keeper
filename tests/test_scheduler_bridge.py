@@ -1,6 +1,7 @@
 import asyncio
 import json
 import stat
+from types import SimpleNamespace
 
 import pytest
 
@@ -1024,6 +1025,29 @@ def test_trigger_watch_returns_running_for_duplicate_account_task(tmp_path):
         await bridge.shutdown()
 
     asyncio.run(run_test())
+
+
+def test_schedule_status_ignores_broken_scheduler_next_time(tmp_path):
+    account_id = "alice@example.com"
+    bridge = SchedulerBridge()
+    bridge.web_accounts = WebAccountData(tmp_path)
+    bridge.web_accounts.add(account_id, {"url": "https://example.com", "username": "alice"})
+
+    class BrokenScheduler:
+        sid = "emby.watch.alice@example.com"
+        days = 7
+        start_time = None
+        _next_time = None
+
+        @property
+        def next_time(self):
+            raise RuntimeError("broken next time")
+
+    bridge.emby_manager = SimpleNamespace(_schedulers={account_id: BrokenScheduler()}, _running=set())
+
+    assert bridge.get_account_status(account_id)["next_schedule_time"] is None
+    schedules = bridge.get_schedule_info()
+    assert schedules[0]["next_time"] is None
 
 
 def test_trigger_watch_cleanup_preserves_newer_task_for_same_account(tmp_path, monkeypatch):

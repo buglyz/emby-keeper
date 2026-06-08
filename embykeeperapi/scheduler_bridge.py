@@ -516,7 +516,10 @@ class SchedulerBridge:
             if not scheduler and not (account_data.get("time_range") or account_data.get("interval_days")):
                 scheduler = getattr(self.emby_manager, "_schedulers", {}).get("unified")
             if scheduler:
-                next_schedule_time = getattr(scheduler, "_next_time", None) or scheduler.next_time
+                try:
+                    next_schedule_time = getattr(scheduler, "_next_time", None) or scheduler.next_time
+                except Exception as e:
+                    logger.warning(f"Failed to read next schedule time for {account_id}: {type(e).__name__}")
 
         return {
             "has_token": has_token,
@@ -558,7 +561,11 @@ class SchedulerBridge:
                 )
                 time_range = f"<{start},{end}>" if start != end else start
 
-            next_time = getattr(scheduler, "_next_time", None) or scheduler.next_time
+            try:
+                next_time = getattr(scheduler, "_next_time", None) or scheduler.next_time
+            except Exception as e:
+                logger.warning(f"Failed to read next schedule time for {account_spec}: {type(e).__name__}")
+                next_time = None
 
             account_data = self.web_accounts.get(account_spec) if self.web_accounts else None
             enabled = account_data.get("enabled", True) if account_data else True
