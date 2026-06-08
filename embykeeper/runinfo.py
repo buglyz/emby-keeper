@@ -164,8 +164,8 @@ class RunContext(BaseModel):
         _running_runs[run_id] = run
 
         # 如果有父任务, 记录父子关系
-        if parent_ids:
-            for parent_id in parent_ids:
+        if run.parent_ids:
+            for parent_id in run.parent_ids:
                 try:
                     children = cache.get(f"runinfo.children.{parent_id}", [])
                     if not isinstance(children, list):

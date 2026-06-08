@@ -110,6 +110,26 @@ def test_run_context_prepare_replaces_invalid_children_cache(tmp_path, monkeypat
         config.reset()
 
 
+def test_run_context_prepare_treats_string_parent_id_as_single_parent(tmp_path, monkeypatch):
+    config.set(Config())
+    config.basedir = tmp_path
+    cache._cache_file = tmp_path / "cache.json"
+    cache._data = {}
+    _running_runs.clear()
+    monkeypatch.setattr("embykeeper.runinfo.random.choices", lambda *_args, **_kwargs: list("CHILD3"))
+
+    run = RunContext.prepare("child", parent_ids="PARENT")
+
+    try:
+        assert run.parent_ids == ["PARENT"]
+        assert cache.get("runinfo.children.PARENT") == ["CHILD3"]
+        assert cache.get("runinfo.children.P") is None
+    finally:
+        run.finish(RunStatus.CANCELLED)
+        _running_runs.clear()
+        config.reset()
+
+
 def test_run_context_prepare_survives_children_cache_save_failure(monkeypatch):
     _running_runs.clear()
     monkeypatch.setattr("embykeeper.runinfo.random.choices", lambda *_args, **_kwargs: list("CHILD2"))
