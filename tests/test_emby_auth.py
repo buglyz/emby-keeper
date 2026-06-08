@@ -1539,3 +1539,29 @@ def test_watch_returns_false_when_items_have_invalid_shapes():
     }
 
     assert asyncio.run(emby.watch()) is False
+
+
+@pytest.mark.parametrize("runtime_ticks", ["bad", -100, True])
+def test_watch_treats_invalid_runtime_ticks_as_missing(runtime_ticks, monkeypatch):
+    account = EmbyAccount(
+        url="https://example.com",
+        username="alice",
+        time=30,
+        allow_multiple=False,
+    )
+    emby = Emby(account)
+    emby.items = {
+        "item-1": {
+            "Id": "item-1",
+            "Name": "Invalid Runtime Movie",
+            "MediaType": "Video",
+            "RunTimeTicks": runtime_ticks,
+        },
+    }
+
+    def fail_show_exception(*_args, **_kwargs):
+        raise AssertionError("invalid runtime ticks should be handled as a normal item failure")
+
+    monkeypatch.setattr("embykeeper.emby.api.show_exception", fail_show_exception)
+
+    assert asyncio.run(emby.watch()) is False

@@ -1342,7 +1342,11 @@ class Emby:
                     failed_items.add(iid)
                     continue
                 total_ticks = item.get("RunTimeTicks", None)
-                if not total_ticks:
+                if (
+                    not isinstance(total_ticks, (int, float))
+                    or isinstance(total_ticks, bool)
+                    or total_ticks <= 0
+                ):
                     if self.a.allow_stream:
                         total_ticks = min(req_time, random.randint(480, 720)) * 10000000
                     else:
