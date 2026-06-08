@@ -129,7 +129,12 @@ class RunContext(BaseModel):
 
         # 生成随机6位ID (大写字母和数字) 的运行时
         chars = string.ascii_uppercase + string.digits
-        run_id = "".join(random.choices(chars, k=6))
+        for _ in range(20):
+            run_id = "".join(random.choices(chars, k=6))
+            if run_id not in _running_runs and not cache.get(f"runinfo.{run_id}"):
+                break
+        else:
+            run_id = "".join(random.choices(chars, k=12))
         run = cls(id=run_id, parent_ids=to_iterable(parent_ids))
         run.description = description
 
