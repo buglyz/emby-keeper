@@ -96,3 +96,29 @@ def test_cache_self_check_failure_exits_nonzero(tmp_path, monkeypatch, mongodb):
         config.reset()
 
     assert exc_info.value.exit_code == 1
+
+
+def test_run_exit_handlers_continues_after_handler_call_error():
+    calls = []
+
+    def fail_before_await():
+        calls.append("fail")
+        raise RuntimeError("boom")
+
+    async def succeed():
+        calls.append("succeed")
+
+    asyncio.run(cli_module._run_exit_handlers([fail_before_await, succeed]))
+
+    assert calls == ["fail", "succeed"]
+
+
+def test_run_exit_handlers_ignores_non_awaitable_return_values():
+    calls = []
+
+    def sync_handler():
+        calls.append("sync")
+
+    asyncio.run(cli_module._run_exit_handlers([sync_handler]))
+
+    assert calls == ["sync"]

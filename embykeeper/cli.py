@@ -3,6 +3,7 @@ import os
 from pathlib import Path
 import sys
 from functools import wraps
+import inspect
 
 import typer
 import asyncio
@@ -12,6 +13,28 @@ from appdirs import user_data_dir
 from . import var, __author__, __name__ as __product__, __url__, __version__
 from .utils import AsyncTaskPool, show_exception
 from .config import config
+
+
+async def _run_exit_handler(handler):
+    try:
+        result = handler()
+    except Exception as e:
+        logger.warning(f"退出处理程序执行失败: {type(e).__name__}.")
+        return
+
+    if inspect.isawaitable(result):
+        try:
+            await result
+        except Exception as e:
+            logger.warning(f"退出处理程序执行失败: {type(e).__name__}.")
+    elif result is not None:
+        logger.warning("退出处理程序返回了不可等待对象, 已忽略.")
+
+
+async def _run_exit_handlers(handlers):
+    tasks = [_run_exit_handler(handler) for handler in list(handlers)]
+    if tasks:
+        await asyncio.wait_for(asyncio.gather(*tasks), timeout=3)
 
 
 class AsyncTyper(typer.Typer):
@@ -44,12 +67,7 @@ class AsyncTyper(typer.Typer):
                         logger.debug("开始执行退出处理程序.")
                         try:
                             # Wait for exit handlers with timeout
-                            loop.run_until_complete(
-                                asyncio.wait_for(
-                                    asyncio.gather(*[h() for h in var.exit_handlers], return_exceptions=True),
-                                    timeout=3,
-                                )
-                            )
+                            loop.run_until_complete(_run_exit_handlers(var.exit_handlers))
                         except asyncio.TimeoutError:
                             logger.warning("部分退出处理程序超时未完成.")
                         else:
