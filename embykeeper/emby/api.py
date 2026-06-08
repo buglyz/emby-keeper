@@ -613,7 +613,16 @@ class Emby:
 
     @staticmethod
     def _media_source_id(media_source: dict) -> str:
-        return media_source.get("Id") or "".join(
+        media_source_id = media_source.get("Id")
+        if isinstance(media_source_id, bool) or media_source_id is None:
+            media_source_id = None
+        elif isinstance(media_source_id, int):
+            media_source_id = str(media_source_id)
+        elif isinstance(media_source_id, str):
+            media_source_id = media_source_id.strip()
+        else:
+            media_source_id = None
+        return media_source_id or "".join(
             random.choice(string.ascii_lowercase + string.digits) for _ in range(32)
         )
 

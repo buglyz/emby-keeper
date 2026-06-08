@@ -1199,6 +1199,15 @@ def test_first_media_source_ignores_non_object_media_sources():
     ) == {"Id": "media-source-1", "DirectStreamUrl": "/Videos/item-1/stream"}
 
 
+def test_media_source_id_normalizes_values(monkeypatch):
+    assert Emby._media_source_id({"Id": " media-source-1 "}) == "media-source-1"
+    assert Emby._media_source_id({"Id": 123}) == "123"
+
+    monkeypatch.setattr("embykeeper.emby.api.random.choice", lambda _choices: "a")
+
+    assert Emby._media_source_id({"Id": True}) == "a" * 32
+
+
 def test_audio_stream_index_rejects_non_list_media_streams():
     assert Emby._audio_stream_index({"MediaStreams": {"Type": "Audio", "Index": 2}}) is None
 
