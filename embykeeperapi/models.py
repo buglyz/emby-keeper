@@ -39,7 +39,9 @@ class EmbyServerCreate(BaseModel):
         default=None, description="Password (for password auth method, one-time use)"
     )
     name: Optional[str] = Field(default=None, description="Display name for this server")
-    time: Optional[WatchTime] = Field(default=[300, 600], description="Watch duration range (seconds)")
+    time: Optional[WatchTime] = Field(
+        default_factory=lambda: [300, 600], description="Watch duration range (seconds)"
+    )
     allow_multiple: Optional[bool] = Field(default=True, description="Allow playing multiple videos")
     allow_stream: Optional[bool] = Field(default=False, description="Allow streaming when no length info")
     use_proxy: Optional[bool] = Field(default=True, description="Use configured proxy")
