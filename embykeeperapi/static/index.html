@@ -251,7 +251,7 @@
         async function handleTokenLogin() {
           loading.value = true; errorMsg.value = '';
           try {
-            const res = await API.tokenExchange(tokenInput.value);
+            const res = await API.tokenExchange(tokenInput.value.trim());
             sessionStorage.setItem('ek_jwt', res.access_token);
             message.success('登录成功');
             router.replace('/');
@@ -262,7 +262,7 @@
         async function handlePasswordLogin() {
           loading.value = true; errorMsg.value = '';
           try {
-            const res = await API.passwordLogin(passwordInput.value);
+            const res = await API.passwordLogin(passwordInput.value.trim());
             sessionStorage.setItem('ek_jwt', res.access_token);
             message.success('登录成功');
             router.replace('/');

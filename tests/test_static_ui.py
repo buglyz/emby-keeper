@@ -65,6 +65,15 @@ def test_config_form_trims_text_payload_before_save():
     assert "hostname: editConfig.proxy_hostname || null" not in html
 
 
+def test_login_form_trims_credentials_before_exchange():
+    html = STATIC_INDEX.read_text(encoding="utf-8")
+
+    assert "API.tokenExchange(tokenInput.value.trim())" in html
+    assert "API.passwordLogin(passwordInput.value.trim())" in html
+    assert "API.tokenExchange(tokenInput.value)" not in html
+    assert "API.passwordLogin(passwordInput.value)" not in html
+
+
 def test_frontend_fallback_checks_actual_naive_ui_global():
     html = STATIC_INDEX.read_text(encoding="utf-8")
 

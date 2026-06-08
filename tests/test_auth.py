@@ -45,7 +45,9 @@ def test_auth_secret_env_values_are_trimmed(monkeypatch):
     monkeypatch.setenv("EK_WEBPASS", " secret ")
 
     assert auth.validate_pre_shared_token("token-1") is True
+    assert auth.validate_pre_shared_token(" token-1 ") is True
     assert auth.validate_password("secret") is True
+    assert auth.validate_password(" secret ") is True
 
 
 def test_auth_methods_ignore_blank_env_values(monkeypatch):

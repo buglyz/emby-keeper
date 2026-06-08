@@ -158,6 +158,9 @@ def validate_pre_shared_token(token: str) -> bool:
     expected = _get_env_secret("EK_TOKEN")
     if not expected or not isinstance(token, str):
         return False
+    token = token.strip()
+    if not token:
+        return False
     return _constant_time_equal(token, expected)
 
 
@@ -165,6 +168,9 @@ def validate_password(password: str) -> bool:
     """Validate a password against EK_WEBPASS env var."""
     expected = _get_env_secret("EK_WEBPASS")
     if not expected or not isinstance(password, str):
+        return False
+    password = password.strip()
+    if not password:
         return False
     return _constant_time_equal(password, expected)
 
