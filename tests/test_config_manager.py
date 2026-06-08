@@ -97,6 +97,16 @@ def test_reset_cancels_observer_task():
     asyncio.run(run_test())
 
 
+def test_reset_clears_registered_callbacks():
+    manager = ConfigManager()
+    manager.on_change("emby.interval_days", lambda *_args: None)
+    manager.on_list_change("emby.account", lambda *_args: None)
+
+    manager.reset()
+
+    assert manager._callbacks == {"change": {}, "list_change": {}}
+
+
 def test_reload_conf_does_not_restart_same_file_observer(tmp_path, monkeypatch):
     async def run_test():
         config_file = tmp_path / "config.toml"

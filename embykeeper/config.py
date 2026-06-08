@@ -268,6 +268,10 @@ class ConfigManager(ProxyBase):
             self._observer.cancel()
             self._observer = None
         self._cache = None
+        self._callbacks = {
+            "change": {},
+            "list_change": {},
+        }
 
     @staticmethod
     def validate_config(config: Optional[dict] = None):
