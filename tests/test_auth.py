@@ -91,3 +91,20 @@ def test_verify_jwt_rejects_non_string_subject():
         auth.verify_jwt(token)
 
     assert exc.value.status_code == 401
+
+
+@pytest.mark.parametrize(
+    "payload",
+    [
+        {"exp": datetime.utcnow() + timedelta(days=1)},
+        {"sub": ""},
+        {"sub": None},
+    ],
+)
+def test_verify_jwt_rejects_missing_or_blank_subject(payload):
+    token = auth.jwt.encode(payload, auth.JWT_SECRET, algorithm=auth.ALGORITHM)
+
+    with pytest.raises(HTTPException) as exc:
+        auth.verify_jwt(token)
+
+    assert exc.value.status_code == 401

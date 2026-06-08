@@ -117,7 +117,7 @@ def verify_jwt(token: str) -> dict:
     try:
         payload = jwt.decode(token, JWT_SECRET, algorithms=[ALGORITHM])
         subject = payload.get("sub")
-        if subject is not None and not isinstance(subject, str):
+        if not isinstance(subject, str) or not subject:
             raise JWTError("Invalid subject")
         return payload
     except JWTError:
@@ -130,7 +130,7 @@ def verify_jwt(token: str) -> dict:
 async def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(security)) -> str:
     """FastAPI dependency that validates JWT and returns the subject."""
     payload = verify_jwt(credentials.credentials)
-    return payload.get("sub", "admin")
+    return payload["sub"]
 
 
 def _constant_time_equal(value: str, expected: str) -> bool:
