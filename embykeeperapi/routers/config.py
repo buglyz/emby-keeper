@@ -33,6 +33,23 @@ def _normalize_schedule_text(field: str, value):
     return value
 
 
+def _normalize_optional_positive_int(field: str, value):
+    if value is None:
+        return None
+    if not isinstance(value, int) or isinstance(value, bool):
+        raise HTTPException(status_code=400, detail=f"{field} must be an integer")
+    if value <= 0:
+        raise HTTPException(status_code=400, detail=f"{field} must be greater than 0")
+    return value
+
+
+def _set_toml_value(table, key: str, value):
+    if value is None:
+        table.pop(key, None)
+    else:
+        table[key] = value
+
+
 def _write_text_atomic(path: Path, content: str):
     path.parent.mkdir(parents=True, exist_ok=True)
     tmp_path = None
@@ -76,26 +93,17 @@ def _persist_global_config(next_config=None):
     if "emby" not in doc or not isinstance(doc["emby"], MutableMapping):
         doc["emby"] = {}
     emby = target_config.emby or EmbyConfig()
-    doc["emby"]["time_range"] = emby.time_range
-    doc["emby"]["interval_days"] = emby.interval_days
-    doc["emby"]["concurrency"] = emby.concurrency
+    _set_toml_value(doc["emby"], "time_range", emby.time_range)
+    _set_toml_value(doc["emby"], "interval_days", emby.interval_days)
+    _set_toml_value(doc["emby"], "concurrency", emby.concurrency)
 
     if target_config.proxy:
         if "proxy" not in doc or not isinstance(doc["proxy"], MutableMapping):
             doc["proxy"] = {}
         proxy = target_config.proxy
-        if proxy.hostname is None:
-            doc["proxy"].pop("hostname", None)
-        else:
-            doc["proxy"]["hostname"] = proxy.hostname
-        if proxy.port is None:
-            doc["proxy"].pop("port", None)
-        else:
-            doc["proxy"]["port"] = proxy.port
-        if proxy.scheme is None:
-            doc["proxy"].pop("scheme", None)
-        else:
-            doc["proxy"]["scheme"] = proxy.scheme
+        _set_toml_value(doc["proxy"], "hostname", proxy.hostname)
+        _set_toml_value(doc["proxy"], "port", proxy.port)
+        _set_toml_value(doc["proxy"], "scheme", proxy.scheme)
     else:
         doc.pop("proxy", None)
 
@@ -141,7 +149,9 @@ async def update_config(req: GlobalConfigUpdate, user: str = Depends(get_current
     if "emby_interval_days" in fields_set:
         new_config.emby.interval_days = _normalize_schedule_text("emby_interval_days", req.emby_interval_days)
     if "emby_concurrency" in fields_set:
-        new_config.emby.concurrency = req.emby_concurrency
+        new_config.emby.concurrency = _normalize_optional_positive_int(
+            "emby_concurrency", req.emby_concurrency
+        )
 
     if "proxy" in fields_set:
         if req.proxy is None:

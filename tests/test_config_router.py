@@ -173,6 +173,64 @@ def test_update_config_rejects_invalid_runtime_values(tmp_path):
     config.reset()
 
 
+@pytest.mark.parametrize("concurrency", ["2", True])
+def test_update_config_rejects_non_integer_concurrency_when_validation_is_bypassed(tmp_path, concurrency):
+    async def run_test():
+        config.basedir = tmp_path
+        config.set(Config(emby={"concurrency": 1}))
+
+        invalid_req = GlobalConfigUpdate.model_construct(
+            emby_concurrency=concurrency,
+            _fields_set={"emby_concurrency"},
+        )
+
+        with pytest.raises(HTTPException) as exc:
+            await update_config(invalid_req, user="tester")
+
+        assert exc.value.status_code == 400
+        assert config._cache.emby.concurrency == 1
+
+    asyncio.run(run_test())
+    config.reset()
+
+
+def test_update_config_removes_concurrency_when_set_to_null(tmp_path):
+    async def run_test():
+        config_file = tmp_path / "config.toml"
+        config_file.write_text(
+            """
+[emby]
+time_range = "<8:00AM,9:00AM>"
+interval_days = "7"
+concurrency = 1
+""".strip(),
+            encoding="utf-8",
+        )
+        config.basedir = tmp_path
+        config.set(
+            Config(
+                emby={
+                    "time_range": "<8:00AM,9:00AM>",
+                    "interval_days": "7",
+                    "concurrency": 1,
+                }
+            )
+        )
+
+        req = GlobalConfigUpdate.model_construct(
+            emby_concurrency=None,
+            _fields_set={"emby_concurrency"},
+        )
+        await update_config(req, user="tester")
+
+        assert config._cache.emby.concurrency is None
+        data = tomllib.loads(config_file.read_text(encoding="utf-8"))
+        assert "concurrency" not in data["emby"]
+
+    asyncio.run(run_test())
+    config.reset()
+
+
 def test_update_config_rejects_invalid_schedule_values(tmp_path):
     async def run_test():
         config.basedir = tmp_path
