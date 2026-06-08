@@ -342,6 +342,9 @@ def distribute_numbers(min_value, max_value, num_elements=1, min_distance=0, max
     if max_value < min_value:
         raise ValueError("invalid value range.")
 
+    if min_distance < 0:
+        raise ValueError("invalid distance range.")
+
     if max_distance and max_distance < min_distance:
         raise ValueError("invalid distance range.")
 
@@ -365,9 +368,13 @@ def distribute_numbers(min_value, max_value, num_elements=1, min_distance=0, max
             break
 
         # Calculate estimated elements for each range
-        estimated_num_elements = [
-            max(1, min(int((r[1] - r[0]) // min_distance), num_elements)) for r in allowed_range
-        ]
+        if min_distance:
+            estimated_num_elements = [
+                max(1, min(int((r[1] - r[0]) // min_distance), num_elements))
+                for r in allowed_range
+            ]
+        else:
+            estimated_num_elements = [1 for _ in allowed_range]
 
         # Select a range using the estimated numbers as weights
         r = random.choices(allowed_range, k=1, weights=estimated_num_elements)[0]

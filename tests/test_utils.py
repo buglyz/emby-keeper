@@ -3,7 +3,14 @@ import asyncio
 import pytest
 
 from embykeeper.schema import ProxyConfig
-from embykeeper.utils import AsyncTaskPool, batch, format_byte_human, get_proxy_str, truncate_str
+from embykeeper.utils import (
+    AsyncTaskPool,
+    batch,
+    distribute_numbers,
+    format_byte_human,
+    get_proxy_str,
+    truncate_str,
+)
 
 
 def test_truncate_str_uses_requested_prefix_length():
@@ -38,6 +45,18 @@ def test_get_proxy_str_quotes_credentials():
     )
 
     assert get_proxy_str(proxy) == "http://user%40example.com:p%40ss%3Aword@127.0.0.1:1080"
+
+
+def test_distribute_numbers_accepts_default_min_distance():
+    values = distribute_numbers(0, 10, num_elements=3)
+
+    assert len(values) == 3
+    assert all(0 <= value <= 10 for value in values)
+
+
+def test_distribute_numbers_rejects_negative_min_distance():
+    with pytest.raises(ValueError):
+        distribute_numbers(0, 10, min_distance=-1)
 
 
 def test_async_task_pool_yields_all_precompleted_tasks():
