@@ -55,6 +55,14 @@ async def start_notifier():
     """消息通知初始化函数."""
     global stream_log, stream_msg, handler_log_id, handler_msg_id, change_handle_notifier
 
+    if (
+        stream_log is not None
+        or stream_msg is not None
+        or handler_log_id is not None
+        or handler_msg_id is not None
+    ):
+        await _stop_notifier()
+
     def _filter_log(record):
         notify = record.get("extra", {}).get("log", None)
         nonotify = record.get("extra", {}).get("nonotify", None)
