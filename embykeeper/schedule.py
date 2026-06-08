@@ -132,6 +132,8 @@ class Scheduler:
             if not looks_like_time_text(t):
                 raise ValueError(f"无法解析时间: {t}")
             return parser.parse(t).time()
+        if t is not None and not isinstance(t, time):
+            raise ValueError("执行时间必须为字符串或 datetime.time")
         return t
 
     def _get_scheduler_config(self):

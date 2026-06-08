@@ -104,6 +104,12 @@ def test_scheduler_constructor_rejects_invalid_days(days):
         Scheduler(noop, days=days, start_time=None, end_time=None)
 
 
+@pytest.mark.parametrize("start_time", [8, True, object()])
+def test_scheduler_constructor_rejects_invalid_time_values(start_time):
+    with pytest.raises(ValueError):
+        Scheduler(noop, days=1, start_time=start_time, end_time=None)
+
+
 def test_scheduler_constructor_accepts_zero_day_range():
     scheduler = Scheduler(noop, days=[0, 0], start_time=None, end_time=None)
 
