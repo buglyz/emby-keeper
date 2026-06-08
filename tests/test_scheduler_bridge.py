@@ -841,7 +841,8 @@ def test_trigger_login_remembers_user_id(tmp_path, monkeypatch):
     asyncio.run(run_test())
 
 
-def test_trigger_login_succeeds_when_remembering_user_id_fails(tmp_path, monkeypatch):
+@pytest.mark.parametrize("exc_type", [OSError, RuntimeError])
+def test_trigger_login_succeeds_when_remembering_user_id_fails(tmp_path, monkeypatch, exc_type):
     async def run_test():
         bridge = SchedulerBridge()
         await bridge.initialize(tmp_path)
@@ -862,7 +863,7 @@ def test_trigger_login_succeeds_when_remembering_user_id_fails(tmp_path, monkeyp
             return True
 
         def fail_update(*_args, **_kwargs):
-            raise OSError("disk full")
+            raise exc_type("storage failed")
 
         monkeypatch.setattr(bridge, "_authenticate_emby", fake_authenticate)
         monkeypatch.setattr(bridge.web_accounts, "update", fail_update)

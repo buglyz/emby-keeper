@@ -273,8 +273,8 @@ class SchedulerBridge:
 
         try:
             updated_id = self.web_accounts.update(account_id, {"user_id": user_id})
-        except OSError as e:
-            logger.warning(f"Failed to remember Emby user id for {account_id}: {e}")
+        except Exception as e:
+            logger.warning(f"Failed to remember Emby user id for {account_id}: {type(e).__name__}")
             return
         if updated_id:
             account_data["user_id"] = user_id
