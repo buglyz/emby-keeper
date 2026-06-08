@@ -169,6 +169,36 @@ def test_api_bridge_skips_malformed_web_account_credentials(tmp_path):
     asyncio.run(run_test())
 
 
+def test_api_bridge_skips_invalid_encrypted_token_cache_on_initialize(tmp_path):
+    async def run_test():
+        cache.delete("emby.credential.example.com.alice")
+        accounts_file = tmp_path / "web_accounts.json"
+        accounts_file.write_text(
+            json.dumps(
+                {
+                    "alice@example.com": {
+                        "url": "https://example.com",
+                        "username": "alice",
+                        "encrypted_token": "not-a-fernet-token",
+                    }
+                }
+            ),
+            encoding="utf-8",
+        )
+
+        bridge = SchedulerBridge()
+        await bridge.initialize(tmp_path)
+
+        try:
+            assert bridge.web_accounts.get("alice@example.com")["encrypted_token"] == "not-a-fernet-token"
+            assert cache.get("emby.credential.example.com.alice") is None
+        finally:
+            cache.delete("emby.credential.example.com.alice")
+            await bridge.shutdown()
+
+    asyncio.run(run_test())
+
+
 def test_web_account_data_backs_up_invalid_json_shapes(tmp_path):
     accounts_file = tmp_path / "web_accounts.json"
     accounts_file.write_text(

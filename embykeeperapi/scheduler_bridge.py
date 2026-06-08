@@ -212,7 +212,11 @@ class SchedulerBridge:
             task.cancel()
 
     def _cache_account_credentials(self, data: dict):
-        token = self.web_accounts._get_account_token(data)
+        try:
+            token = self.web_accounts._get_account_token(data)
+        except Exception as e:
+            logger.warning(f"Skipping invalid cached Emby credentials: {type(e).__name__}")
+            return
         if not token:
             return
 
