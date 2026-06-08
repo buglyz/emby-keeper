@@ -4,7 +4,7 @@ from urllib.parse import urlparse
 import pytest
 
 from embykeeper.config import config
-from embykeeper.emby.main import EmbyManager, _extract_emby_item_id
+from embykeeper.emby.main import EmbyManager, _extract_emby_item_id, _same_emby_origin
 from embykeeper.schema import Config, EmbyAccount
 
 
@@ -86,6 +86,12 @@ def test_extract_emby_item_id_from_supported_play_urls(url, item_id):
 
 def test_extract_emby_item_id_returns_none_for_invalid_url():
     assert _extract_emby_item_id(urlparse("https://example.com/web/#/home")) is None
+
+
+def test_same_emby_origin_requires_matching_scheme():
+    account = EmbyAccount(url="http://example.com:443", username="alice")
+
+    assert _same_emby_origin(account, urlparse("https://example.com")) is False
 
 
 def test_shutdown_unregisters_config_callback(monkeypatch):

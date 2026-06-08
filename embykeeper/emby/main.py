@@ -27,6 +27,8 @@ def _default_url_port(scheme: str) -> Optional[int]:
 
 
 def _same_emby_origin(account: EmbyAccount, parsed_url) -> bool:
+    if account.url.scheme != parsed_url.scheme:
+        return False
     if account.url.host != parsed_url.hostname:
         return False
     account_port = account.url.port or _default_url_port(account.url.scheme)
