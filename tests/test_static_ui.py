@@ -191,6 +191,22 @@ def test_schedule_page_refreshes_after_manual_run():
     assert "await loadData();" in html
 
 
+def test_server_actions_refresh_after_runtime_operations():
+    html = STATIC_INDEX.read_text(encoding="utf-8")
+
+    assert "message.success(res && res.message ? res.message : '保活任务已启动')" in html
+    assert "message.success(res && res.message ? res.message : '全部保活任务已启动')" in html
+    assert "message.success(res && res.message ? res.message : '保活已启动')" in html
+    assert "message.success(res.message || '登录测试已完成')" in html
+    assert "message.success(res.message || '登录测试已触发')" in html
+    assert ':loading="watchAllLoading"' in html
+    assert "const watchAllLoading = ref(false)" in html
+    assert "watchAllLoading.value = true" in html
+    assert "finally { watchAllLoading.value = false; }" in html
+    assert "await API.toggleServer(route.params.id, enabled)" in html
+    assert "await loadData();" in html
+
+
 def test_frontend_exposes_schedule_preview_and_health_status():
     html = STATIC_INDEX.read_text(encoding="utf-8")
 

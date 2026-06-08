@@ -307,7 +307,7 @@
             <n-space>
               <n-button type="primary" @click="$router.push('/servers/new')">添加服务器</n-button>
               <n-popconfirm @positive-click="handleWatchAll">
-                <template #trigger><n-button>全部保活</n-button></template>
+                <template #trigger><n-button :loading="watchAllLoading">全部保活</n-button></template>
                 确定要对所有已启用服务器执行保活吗？
               </n-popconfirm>
             </n-space>
@@ -355,6 +355,7 @@
         const servers = ref([]);
         const status = reactive({ total_servers: 0, enabled_servers: 0, online_servers: 0, running_servers: 0 });
         const loading = ref(true);
+        const watchAllLoading = ref(false);
         const actionLoading = reactive({});
         let pollTimer = null;
 
@@ -372,6 +373,7 @@
           try {
             const res = await API.triggerLogin(id);
             message.success(res.message || '登录测试已触发');
+            await loadData();
           } catch (e) { message.error(e.message); }
           finally { actionLoading[id] = false; }
         }
@@ -380,7 +382,8 @@
           actionLoading[id + '-w'] = true;
           try {
             const res = await API.triggerWatch(id);
-            message.success('保活任务已启动');
+            message.success(res && res.message ? res.message : '保活任务已启动');
+            await loadData();
           } catch (e) { message.error(e.message); }
           finally { actionLoading[id + '-w'] = false; }
         }
@@ -396,10 +399,13 @@
         }
 
         async function handleWatchAll() {
+          watchAllLoading.value = true;
           try {
             const res = await API.watchAll();
-            message.success('全部保活任务已启动');
+            message.success(res && res.message ? res.message : '全部保活任务已启动');
+            await loadData();
           } catch (e) { message.error(e.message); }
+          finally { watchAllLoading.value = false; }
         }
 
         onMounted(() => {
@@ -408,7 +414,7 @@
         });
         onUnmounted(() => { if (pollTimer) clearInterval(pollTimer); });
 
-        return { API, servers, status, loading, actionLoading, handleLogin, handleWatch, handleCancel, handleWatchAll };
+        return { API, servers, status, loading, watchAllLoading, actionLoading, handleLogin, handleWatch, handleCancel, handleWatchAll };
       }
     };
 
@@ -722,14 +728,22 @@
 
         async function handleWatch() {
           actionLoading.watch = true;
-          try { const res = await API.triggerWatch(route.params.id); message.success('保活已启动'); }
+          try {
+            const res = await API.triggerWatch(route.params.id);
+            message.success(res && res.message ? res.message : '保活已启动');
+            await loadData();
+          }
           catch (e) { message.error(e.message); }
           finally { actionLoading.watch = false; }
         }
 
         async function handleLogin() {
           actionLoading.login = true;
-          try { const res = await API.triggerLogin(route.params.id); message.success(res.message); }
+          try {
+            const res = await API.triggerLogin(route.params.id);
+            message.success(res.message || '登录测试已完成');
+            await loadData();
+          }
           catch (e) { message.error(e.message); }
           finally { actionLoading.login = false; }
         }
@@ -748,7 +762,7 @@
           try {
             await API.toggleServer(route.params.id, enabled);
             message.success(enabled ? '已启用' : '已禁用');
-            loadData();
+            await loadData();
           } catch (e) { message.error(e.message); }
         }
 
