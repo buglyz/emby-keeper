@@ -64,6 +64,11 @@ def test_distribute_numbers_rejects_negative_min_distance():
         distribute_numbers(0, 10, min_distance=-1)
 
 
+def test_distribute_numbers_rejects_negative_num_elements():
+    with pytest.raises(ValueError):
+        distribute_numbers(0, 10, num_elements=-1)
+
+
 def test_distribute_numbers_rejects_max_distance_below_min_distance():
     with pytest.raises(ValueError):
         distribute_numbers(0, 10, min_distance=1, max_distance=0)

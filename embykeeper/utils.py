@@ -335,6 +335,9 @@ def distribute_numbers(min_value, max_value, num_elements=1, min_distance=0, max
     if max_value < min_value:
         raise ValueError("invalid value range.")
 
+    if num_elements < 0:
+        raise ValueError("num_elements must be greater than or equal to 0.")
+
     if min_distance < 0:
         raise ValueError("invalid distance range.")
 
