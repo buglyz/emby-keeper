@@ -202,7 +202,7 @@ def remove_prefix(text: str, prefix: str):
 
 def truncate_str(text: str, length: int):
     """将字符串截断到特定长度, 并增加"..."后缀."""
-    return f"{text[:length + 3]}..." if len(text) > length else text
+    return f"{text[:length]}..." if len(text) > length else text
 
 
 def time_in_range(start, end, x):
