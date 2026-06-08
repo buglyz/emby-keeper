@@ -1,7 +1,10 @@
 from datetime import datetime
 from typing import List, Optional, Union
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, StrictInt
+
+
+WatchTime = Union[StrictInt, List[StrictInt]]
 
 
 # ============ Auth Models ============
@@ -32,7 +35,7 @@ class EmbyServerCreate(BaseModel):
     # For password auth: will be exchanged for token
     password: Optional[str] = Field(default=None, description="Password (for password auth method, one-time use)")
     name: Optional[str] = Field(default=None, description="Display name for this server")
-    time: Optional[Union[int, List[int]]] = Field(default=[300, 600], description="Watch duration range (seconds)")
+    time: Optional[WatchTime] = Field(default=[300, 600], description="Watch duration range (seconds)")
     allow_multiple: Optional[bool] = Field(default=True, description="Allow playing multiple videos")
     allow_stream: Optional[bool] = Field(default=False, description="Allow streaming when no length info")
     use_proxy: Optional[bool] = Field(default=True, description="Use configured proxy")
@@ -56,7 +59,7 @@ class EmbyServerUpdate(BaseModel):
     access_token: Optional[str] = None
     password: Optional[str] = None
     name: Optional[str] = None
-    time: Optional[Union[int, List[int]]] = None
+    time: Optional[WatchTime] = None
     allow_multiple: Optional[bool] = None
     allow_stream: Optional[bool] = None
     use_proxy: Optional[bool] = None

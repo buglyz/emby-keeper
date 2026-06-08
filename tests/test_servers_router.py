@@ -2,6 +2,7 @@ import asyncio
 
 import pytest
 from fastapi import HTTPException
+from pydantic import ValidationError
 
 from embykeeper.config import config
 from embykeeper.emby.api import Emby
@@ -172,6 +173,47 @@ def test_create_server_rejects_invalid_interval_without_saving(tmp_path):
 
             assert exc.value.status_code == 400
             assert bridge.web_accounts.get("alice@example.com") is None
+        finally:
+            await reset_bridge()
+
+    asyncio.run(run_test())
+
+
+def test_server_models_reject_boolean_time_values():
+    with pytest.raises(ValidationError):
+        EmbyServerCreate(
+            url="https://example.com",
+            username="alice",
+            auth_method="token",
+            access_token="token-1",
+            time=True,
+        )
+
+    with pytest.raises(ValidationError):
+        EmbyServerUpdate(time=[True, 600])
+
+
+def test_create_server_rejects_boolean_time_when_model_validation_is_bypassed(tmp_path):
+    async def run_test():
+        config.basedir = tmp_path
+        config.set(Config())
+        await bridge.initialize(tmp_path)
+
+        req = EmbyServerCreate.model_construct(
+            url="https://example.com",
+            username="alice",
+            auth_method="token",
+            access_token="token-1",
+            time=True,
+            _fields_set={"url", "username", "auth_method", "access_token", "time"},
+        )
+
+        try:
+            with pytest.raises(HTTPException) as exc:
+                await create_server(req, user="tester")
+
+            assert exc.value.status_code == 400
+            assert bridge.web_accounts.get_all() == {}
         finally:
             await reset_bridge()
 
