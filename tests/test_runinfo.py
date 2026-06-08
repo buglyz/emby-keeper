@@ -16,6 +16,18 @@ def test_run_context_get_ignores_corrupt_cached_record(tmp_path):
     config.reset()
 
 
+def test_run_context_get_ignores_non_json_cached_record(tmp_path):
+    config.set(Config())
+    config.basedir = tmp_path
+    cache._cache_file = tmp_path / "cache.json"
+    cache._data = {}
+    cache.set("runinfo.BADTYPE", {"id": "BADTYPE"})
+
+    assert RunContext.get("BADTYPE") is None
+
+    config.reset()
+
+
 def test_run_context_prepare_avoids_existing_ids(tmp_path, monkeypatch):
     config.set(Config())
     config.basedir = tmp_path

@@ -174,6 +174,9 @@ class RunContext(BaseModel):
         # 从缓存加载
         run_json = cache.get(f"runinfo.{run_id}")
         if run_json:
+            if not isinstance(run_json, (str, bytes, bytearray)):
+                logger.warning(f"运行记录 {run_id} 格式无效, 已忽略.")
+                return None
             try:
                 return cls.model_validate_json(run_json)
             except (ValidationError, ValueError) as e:
