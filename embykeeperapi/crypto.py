@@ -9,6 +9,14 @@ _fernet_instance = None
 FERNET_KEY_FILE = "secret.key"
 
 
+def _get_env_secret(name: str):
+    value = os.environ.get(name)
+    if not isinstance(value, str):
+        return None
+    value = value.strip()
+    return value or None
+
+
 def _derive_fernet_key(secret: bytes) -> bytes:
     """Derive a valid Fernet key from arbitrary secret bytes."""
     from cryptography.hazmat.primitives import hashes
@@ -48,7 +56,7 @@ def _chmod_key_file(key_file: Path):
 
 def _get_key(basedir: Path) -> bytes:
     """Get or generate the Fernet encryption key."""
-    env_secret = os.environ.get("EK_SECRET")
+    env_secret = _get_env_secret("EK_SECRET")
     if env_secret:
         key = env_secret.encode()
         try:
@@ -80,7 +88,7 @@ def get_fernet(basedir: Path) -> Fernet:
     """Get the Fernet instance for encryption/decryption."""
     global _fernet_instance
     basedir = Path(basedir).resolve()
-    env_secret = os.environ.get("EK_SECRET")
+    env_secret = _get_env_secret("EK_SECRET")
     cache_key = ("env", env_secret) if env_secret else ("file", str(basedir))
     if _fernet_instance is None or _fernet_instance[0] != cache_key:
         key = _get_key(basedir)

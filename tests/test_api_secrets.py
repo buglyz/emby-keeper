@@ -38,6 +38,28 @@ def test_fernet_key_generation_creates_missing_basedir(tmp_path, monkeypatch):
     assert decrypt_token(encrypted, basedir) == "emby-token"
 
 
+def test_blank_env_secret_does_not_override_fernet_key_file(tmp_path, monkeypatch):
+    monkeypatch.setenv("EK_SECRET", "   ")
+
+    reset_fernet()
+    encrypted = encrypt_token("emby-token", tmp_path)
+
+    assert (tmp_path / "secret.key").is_file()
+    assert decrypt_token(encrypted, tmp_path) == "emby-token"
+
+
+def test_env_secret_is_trimmed_for_fernet_key(tmp_path, monkeypatch):
+    monkeypatch.setenv("EK_SECRET", " shared-secret ")
+
+    reset_fernet()
+    encrypted = encrypt_token("emby-token", tmp_path)
+
+    monkeypatch.setenv("EK_SECRET", "shared-secret")
+    reset_fernet()
+
+    assert decrypt_token(encrypted, tmp_path) == "emby-token"
+
+
 def test_existing_jwt_secret_file_is_owner_only(tmp_path, monkeypatch):
     for key in ("EK_SECRET", "EK_WEBPASS", "EK_TOKEN"):
         monkeypatch.delenv(key, raising=False)
