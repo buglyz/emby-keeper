@@ -236,6 +236,56 @@ scheme = "socks5"
     config.reset()
 
 
+def test_update_config_trims_proxy_hostname(tmp_path):
+    async def run_test():
+        config_file = tmp_path / "config.toml"
+        config_file.write_text("", encoding="utf-8")
+        config.basedir = tmp_path
+        config.set(Config())
+
+        await update_config(
+            GlobalConfigUpdate(
+                proxy=ProxyConfigUpdate(hostname=" 127.0.0.1 ", port=1080, scheme="socks5"),
+            ),
+            user="tester",
+        )
+
+        assert config._cache.proxy.hostname == "127.0.0.1"
+        data = tomllib.loads(config_file.read_text(encoding="utf-8"))
+        assert data["proxy"]["hostname"] == "127.0.0.1"
+
+    asyncio.run(run_test())
+    config.reset()
+
+
+def test_update_config_blank_proxy_hostname_clears_field(tmp_path):
+    async def run_test():
+        config_file = tmp_path / "config.toml"
+        config_file.write_text(
+            """
+[proxy]
+hostname = "127.0.0.1"
+port = 1080
+scheme = "socks5"
+""".strip(),
+            encoding="utf-8",
+        )
+        config.basedir = tmp_path
+        config.set(Config(proxy={"hostname": "127.0.0.1", "port": 1080, "scheme": "socks5"}))
+
+        await update_config(
+            GlobalConfigUpdate(proxy=ProxyConfigUpdate(hostname=" ")),
+            user="tester",
+        )
+
+        assert config._cache.proxy.hostname is None
+        data = tomllib.loads(config_file.read_text(encoding="utf-8"))
+        assert "hostname" not in data["proxy"]
+
+    asyncio.run(run_test())
+    config.reset()
+
+
 def test_update_config_removes_proxy_when_proxy_is_null(tmp_path):
     async def run_test():
         config_file = tmp_path / "config.toml"
