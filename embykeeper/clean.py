@@ -71,7 +71,7 @@ async def cleaner():
 
     for key, option in options.items():
         if "prefix" in option:
-            keys = list(cache.find_by_prefix(option["prefix"]))
+            keys = sorted(cache.find_by_prefix(option["prefix"]))
             count = len(keys)
             if option.get("show_keys", False):
                 # 显示凭据类型, 需要显示具体的 key
@@ -85,7 +85,7 @@ async def cleaner():
             # 显示父选项（如"其他缓存"）
             console.print(f"{key}. {option['name']}")
             for child_key, child in option["children"].items():
-                keys = list(cache.find_by_prefix(child["prefix"]))
+                keys = sorted(cache.find_by_prefix(child["prefix"]))
                 count = len(keys)
                 # 显示子选项, 对于特定前缀只显示数量
                 console.print(f"  {child_key}. {child['name']} (共 {count} 条)")
@@ -113,7 +113,7 @@ async def cleaner():
         elif "prefix" in target:
             if target.get("show_keys", False) and len(parts) > 1:
                 # 用户选择了具体的凭据
-                keys = list(cache.find_by_prefix(target["prefix"]))
+                keys = sorted(cache.find_by_prefix(target["prefix"]))
                 try:
                     index = int(parts[1]) - 1
                     if 0 <= index < len(keys):
