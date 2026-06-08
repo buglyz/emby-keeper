@@ -141,7 +141,7 @@ class Cache:
                     keys = []
                 for k, v in d.items():
                     path = f"{current_path}.{k}" if current_path else k
-                    if isinstance(v, dict):
+                    if isinstance(v, dict) and v:
                         get_keys_with_prefix(v, path, keys)
                     else:
                         if path.startswith(prefix):

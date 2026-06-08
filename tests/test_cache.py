@@ -185,3 +185,21 @@ def test_json_cache_delete_by_prefix_uses_batch_delete(tmp_path):
     assert cache.get("credential.one.token") == "token"
 
     config.reset()
+
+
+def test_json_cache_delete_by_prefix_removes_empty_object_values(tmp_path):
+    config.set(Config())
+    config.basedir = tmp_path
+
+    cache = Cache()
+    cache.set("example.empty", {})
+    cache.set("other.value", "kept")
+
+    assert cache.find_by_prefix("example.") == ["example.empty"]
+
+    cache.delete_by_prefix("example.")
+
+    assert cache.get("example.empty") is None
+    assert cache.get("other.value") == "kept"
+
+    config.reset()
