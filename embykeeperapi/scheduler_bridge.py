@@ -531,6 +531,37 @@ class SchedulerBridge:
             "next_schedule_time": next_schedule_time,
         }
 
+    @staticmethod
+    def _format_interval_days(scheduler) -> Optional[str]:
+        try:
+            days = getattr(scheduler, "days", None)
+            if days is None:
+                return None
+            if isinstance(days, (list, tuple)):
+                if len(days) >= 2:
+                    return f"<{days[0]},{days[1]}>"
+                if len(days) == 1:
+                    return str(days[0])
+                return None
+            return str(days)
+        except Exception as e:
+            logger.warning(f"Failed to format schedule interval: {type(e).__name__}")
+            return None
+
+    @staticmethod
+    def _format_time_range(scheduler) -> Optional[str]:
+        try:
+            start_time = getattr(scheduler, "start_time", None)
+            if not start_time:
+                return None
+            end_time = getattr(scheduler, "end_time", None) or start_time
+            start = start_time.strftime("%H:%M") if hasattr(start_time, "strftime") else str(start_time)
+            end = end_time.strftime("%H:%M") if hasattr(end_time, "strftime") else str(end_time)
+            return f"<{start},{end}>" if start != end else start
+        except Exception as e:
+            logger.warning(f"Failed to format schedule time range: {type(e).__name__}")
+            return None
+
     def get_schedule_info(self) -> List[dict]:
         """Get schedule info for all scheduled tasks."""
         schedules = []
@@ -539,27 +570,8 @@ class SchedulerBridge:
 
         for account_spec, scheduler in self.emby_manager._schedulers.items():
             schedule_id = getattr(scheduler, "sid", None) or account_spec
-
-            interval_days = None
-            if hasattr(scheduler, "days"):
-                if isinstance(scheduler.days, (list, tuple)):
-                    interval_days = f"<{scheduler.days[0]},{scheduler.days[1]}>"
-                else:
-                    interval_days = str(scheduler.days)
-
-            time_range = None
-            if hasattr(scheduler, "start_time") and scheduler.start_time:
-                start = (
-                    scheduler.start_time.strftime("%H:%M")
-                    if hasattr(scheduler.start_time, "strftime")
-                    else str(scheduler.start_time)
-                )
-                end = (
-                    scheduler.end_time.strftime("%H:%M")
-                    if hasattr(scheduler.end_time, "strftime")
-                    else str(scheduler.end_time)
-                )
-                time_range = f"<{start},{end}>" if start != end else start
+            interval_days = self._format_interval_days(scheduler)
+            time_range = self._format_time_range(scheduler)
 
             try:
                 next_time = getattr(scheduler, "_next_time", None) or scheduler.next_time

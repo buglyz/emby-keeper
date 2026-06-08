@@ -1,6 +1,7 @@
 import asyncio
 import json
 import stat
+from datetime import time
 from types import SimpleNamespace
 
 import pytest
@@ -1049,6 +1050,27 @@ def test_schedule_status_ignores_broken_scheduler_next_time(tmp_path):
     assert bridge.get_account_status(account_id)["next_schedule_time"] is None
     schedules = bridge.get_schedule_info()
     assert schedules[0]["next_time"] is None
+
+
+def test_schedule_status_tolerates_malformed_display_fields(tmp_path):
+    account_id = "alice@example.com"
+    bridge = SchedulerBridge()
+    bridge.web_accounts = WebAccountData(tmp_path)
+    bridge.web_accounts.add(account_id, {"url": "https://example.com", "username": "alice"})
+
+    class PartialScheduler:
+        sid = "emby.watch.alice@example.com"
+        days = [7]
+        start_time = time(8, 30)
+        _next_time = None
+        next_time = None
+
+    bridge.emby_manager = SimpleNamespace(_schedulers={account_id: PartialScheduler()}, _running=set())
+
+    schedules = bridge.get_schedule_info()
+
+    assert schedules[0]["interval_days"] == "7"
+    assert schedules[0]["time_range"] == "08:30"
 
 
 def test_trigger_watch_cleanup_preserves_newer_task_for_same_account(tmp_path, monkeypatch):
