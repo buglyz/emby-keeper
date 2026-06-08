@@ -206,6 +206,21 @@ def test_fernet_key_write_cleans_temp_file_on_type_error(tmp_path):
     assert not list(tmp_path.glob(".secret.key.*.tmp"))
 
 
+def test_fernet_key_write_ignores_chmod_failure(tmp_path, monkeypatch):
+    key_file = tmp_path / "secret.key"
+    key = Fernet.generate_key()
+
+    def fail_chmod(*_args, **_kwargs):
+        raise OSError("chmod unsupported")
+
+    monkeypatch.setattr(crypto.os, "chmod", fail_chmod)
+
+    crypto._write_key(key_file, key)
+
+    assert key_file.read_bytes() == key
+    assert not list(tmp_path.glob(".secret.key.*.tmp"))
+
+
 @pytest.mark.parametrize("plain_token", ["", None, 123, True])
 def test_encrypt_token_rejects_invalid_plain_tokens(tmp_path, plain_token):
     with pytest.raises(ValueError):

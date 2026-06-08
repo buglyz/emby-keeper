@@ -45,7 +45,10 @@ def _write_key(key_file: Path, key: bytes):
         ) as tmp:
             tmp_path = Path(tmp.name)
             tmp.write(key)
-        os.chmod(tmp_path, 0o600)
+        try:
+            os.chmod(tmp_path, 0o600)
+        except OSError:
+            pass
         tmp_path.replace(key_file)
     except Exception:
         if tmp_path is not None:
