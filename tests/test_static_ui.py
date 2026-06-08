@@ -60,3 +60,13 @@ def test_frontend_api_base_respects_reverse_proxy_prefix():
     assert "const API_BASE_PATH = getApiBasePath()" in html
     assert "baseUrl: `${window.location.origin}${API_BASE_PATH}`" in html
     assert "baseUrl: window.location.origin" not in html
+
+
+def test_frontend_formats_structured_api_errors():
+    html = STATIC_INDEX.read_text(encoding="utf-8")
+
+    assert "_formatErrorDetail(detail)" in html
+    assert "Array.isArray(detail)" in html
+    assert "item.loc.join('.')" in html
+    assert "detail.msg || detail.message || JSON.stringify(detail)" in html
+    assert "this._formatErrorDetail(data && data.detail) || 'Request failed'" in html
