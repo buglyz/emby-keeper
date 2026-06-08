@@ -192,6 +192,31 @@ def test_proxy_fix_middleware_ignores_unknown_forwarded_clients():
     asyncio.run(run_test())
 
 
+def test_proxy_fix_middleware_keeps_client_when_forwarded_for_is_unknown():
+    async def run_test():
+        middleware = ProxyFixMiddleware(app=lambda *_args: None)
+        scope = {
+            "type": "http",
+            "method": "GET",
+            "path": "/client",
+            "headers": [(b"x-forwarded-for", b"unknown, UNKNOWN")],
+            "client": ("original", 12345),
+            "scheme": "http",
+        }
+        request = Request(scope)
+        seen = {}
+
+        async def call_next(next_request):
+            seen["client"] = next_request.client.host
+            return Response("ok")
+
+        await middleware.dispatch(request, call_next)
+
+        assert seen["client"] == "original"
+
+    asyncio.run(run_test())
+
+
 def test_proxy_fix_middleware_keeps_client_when_real_ip_is_unknown():
     async def run_test():
         middleware = ProxyFixMiddleware(app=lambda *_args: None)
