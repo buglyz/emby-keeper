@@ -535,7 +535,11 @@ scheme = "socks5"
 
 def test_update_notifier_config_saves_telegram_as_apprise_uri(tmp_path, monkeypatch):
     async def run_test():
+        refresh_calls = 0
+
         async def noop_refresh():
+            nonlocal refresh_calls
+            refresh_calls += 1
             return None
 
         monkeypatch.setattr(config_router, "_refresh_notifier", noop_refresh)
@@ -564,6 +568,7 @@ def test_update_notifier_config_saves_telegram_as_apprise_uri(tmp_path, monkeypa
         assert data["notifier"]["enabled"] is True
         assert data["notifier"]["method"] == "apprise"
         assert data["notifier"]["apprise_uri"] == "tgram://123456:ABCDEF/-1001234567890"
+        assert refresh_calls == 1
 
     asyncio.run(run_test())
     config.reset()
@@ -630,8 +635,12 @@ def test_update_notifier_config_rejects_switching_method_without_new_target(tmp_
     config.reset()
 
 
-def test_update_notifier_config_preserves_existing_telegram_target(tmp_path):
+def test_update_notifier_config_preserves_existing_telegram_target(tmp_path, monkeypatch):
     async def run_test():
+        async def noop_refresh():
+            return None
+
+        monkeypatch.setattr(config_router, "_refresh_notifier", noop_refresh)
         config_file = tmp_path / "config.toml"
         config_file.write_text("", encoding="utf-8")
         config.basedir = tmp_path

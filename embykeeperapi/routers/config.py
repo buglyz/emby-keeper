@@ -3,7 +3,7 @@ from collections.abc import MutableMapping
 from datetime import datetime, timezone
 import shutil
 from tempfile import NamedTemporaryFile
-from urllib.parse import quote, unquote, urlparse
+from urllib.parse import parse_qsl, quote, unquote, urlparse
 
 from fastapi import APIRouter, Depends, HTTPException
 from loguru import logger
@@ -166,16 +166,38 @@ def _is_secret_key(key) -> bool:
     return normalized in SECRET_CONFIG_KEYS or any(part in normalized for part in SECRET_CONFIG_KEY_PARTS)
 
 
+def _is_sensitive_url(value: str) -> bool:
+    parsed = urlparse(value)
+    if not parsed.scheme:
+        return False
+    if parsed.username or parsed.password:
+        return True
+    return any(_is_secret_key(key) for key, _value in parse_qsl(parsed.query, keep_blank_values=True))
+
+
+def _redact_scalar_value(value):
+    if isinstance(value, str) and _is_sensitive_url(value):
+        return REDACTED_VALUE
+    return value
+
+
 def _redact_toml_value(value):
     if isinstance(value, MutableMapping):
         for key in list(value.keys()):
             if _is_secret_key(key):
                 value[key] = REDACTED_VALUE
             else:
-                _redact_toml_value(value[key])
+                child = value[key]
+                if isinstance(child, (MutableMapping, list)):
+                    _redact_toml_value(child)
+                else:
+                    value[key] = _redact_scalar_value(child)
     elif isinstance(value, list):
-        for item in value:
-            _redact_toml_value(item)
+        for index, item in enumerate(value):
+            if isinstance(item, (MutableMapping, list)):
+                _redact_toml_value(item)
+            else:
+                value[index] = _redact_scalar_value(item)
 
 
 def _redact_config_toml(content: str) -> str:
@@ -192,11 +214,15 @@ def _redact_plain_mapping(value):
     if isinstance(value, dict):
         redacted = {}
         for key, item in value.items():
-            redacted[key] = REDACTED_VALUE if _is_secret_key(key) else _redact_plain_mapping(item)
+            redacted[key] = (
+                REDACTED_VALUE
+                if _is_secret_key(key)
+                else _redact_plain_mapping(_redact_scalar_value(item))
+            )
         return redacted
     if isinstance(value, list):
         return [_redact_plain_mapping(item) for item in value]
-    return value
+    return _redact_scalar_value(value)
 
 
 def _persist_global_config(next_config=None):
@@ -475,6 +501,7 @@ async def update_notifier_config(req: NotifierConfigUpdate, user: str = Depends(
     _persist_global_config(new_config)
     if not config.set(new_config, preserve_conf_file=True):
         raise HTTPException(status_code=400, detail="Invalid config")
+    await _refresh_notifier()
     return _notifier_response()
 
 

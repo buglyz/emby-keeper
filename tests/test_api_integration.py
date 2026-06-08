@@ -172,6 +172,7 @@ def test_config_export_and_backup_api_uses_encrypted_account_data(tmp_path, api_
         '\n'.join(
             [
                 'mongodb = "mongodb://user:password@example.com/db"',
+                'diagnostic_url = "https://user:url-secret@example.com/hook?token=query-secret"',
                 "",
                 "[emby]",
                 'interval_days = "7"',
@@ -201,7 +202,11 @@ def test_config_export_and_backup_api_uses_encrypted_account_data(tmp_path, api_
             "username": "alice",
             "encrypted_token": encrypt_token("token-1", tmp_path),
             "access_token": "plain-access-token",
-            "metadata": {"api_key": "nested-api-key", "label": "safe-label"},
+            "metadata": {
+                "api_key": "nested-api-key",
+                "callback_url": "https://callback:callback-secret@example.com/hook",
+                "label": "safe-label",
+            },
         },
     )
 
@@ -215,10 +220,13 @@ def test_config_export_and_backup_api_uses_encrypted_account_data(tmp_path, api_
     assert "telegram-bot-token" not in exported["config_toml"]
     assert "emby-api-key" not in exported["config_toml"]
     assert "mongodb://user:password@example.com/db" not in exported["config_toml"]
+    assert "url-secret" not in exported["config_toml"]
+    assert "query-secret" not in exported["config_toml"]
     assert exported["config_toml"].count("***REDACTED***") >= 5
     assert exported["web_accounts"]["alice@example.com"]["encrypted_token"] == "***REDACTED***"
     assert exported["web_accounts"]["alice@example.com"]["access_token"] == "***REDACTED***"
     assert exported["web_accounts"]["alice@example.com"]["metadata"]["api_key"] == "***REDACTED***"
+    assert exported["web_accounts"]["alice@example.com"]["metadata"]["callback_url"] == "***REDACTED***"
     assert exported["web_accounts"]["alice@example.com"]["metadata"]["label"] == "safe-label"
 
     backup_response = asyncio.run(_asgi_request(api_app, "POST", "/api/config/backup"))
