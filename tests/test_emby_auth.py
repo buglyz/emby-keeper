@@ -934,6 +934,22 @@ def test_play_fails_when_playback_info_json_is_invalid(monkeypatch):
     asyncio.run(run_test())
 
 
+def test_first_media_source_rejects_non_list_media_sources():
+    with pytest.raises(EmbyPlayError, match="媒体源"):
+        Emby._first_media_source({"MediaSources": {"Id": "media-source-1"}})
+
+
+def test_first_media_source_ignores_non_object_media_sources():
+    assert Emby._first_media_source(
+        {
+            "MediaSources": [
+                "invalid",
+                {"Id": "media-source-1", "DirectStreamUrl": "/Videos/item-1/stream"},
+            ]
+        }
+    ) == {"Id": "media-source-1", "DirectStreamUrl": "/Videos/item-1/stream"}
+
+
 def test_watch_returns_false_when_no_items():
     account = EmbyAccount(url="https://example.com", username="alice", time=30)
     emby = Emby(account)

@@ -514,7 +514,10 @@ class Emby:
 
     @staticmethod
     def _first_media_source(playback_info: dict) -> dict:
-        media_sources = playback_info.get("MediaSources") or []
+        raw_media_sources = playback_info.get("MediaSources") or []
+        if not isinstance(raw_media_sources, list):
+            raw_media_sources = []
+        media_sources = [source for source in raw_media_sources if isinstance(source, dict)]
         if not media_sources:
             raise EmbyPlayError("服务器未返回可播放媒体源")
         for media_source in media_sources:
