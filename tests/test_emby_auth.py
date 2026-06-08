@@ -1090,6 +1090,44 @@ def test_item_and_user_methods_return_empty_dicts_for_non_object_json(monkeypatc
     asyncio.run(run_test())
 
 
+def test_mark_played_accepts_any_success_status(monkeypatch):
+    async def run_test():
+        account = EmbyAccount(url="https://example.com", username="alice")
+        emby = Emby(account)
+        emby.set_credentials("token-1", "user-1")
+
+        async def fake_request(method, path, **kwargs):
+            response = DummyResponse({})
+            response.status_code = 204
+            response.ok = True
+            return response
+
+        monkeypatch.setattr(emby, "_request", fake_request)
+
+        assert await emby.mark_played("item-1") is True
+
+    asyncio.run(run_test())
+
+
+def test_mark_played_rejects_failed_status(monkeypatch):
+    async def run_test():
+        account = EmbyAccount(url="https://example.com", username="alice")
+        emby = Emby(account)
+        emby.set_credentials("token-1", "user-1")
+
+        async def fake_request(method, path, **kwargs):
+            response = DummyResponse({})
+            response.status_code = 500
+            response.ok = False
+            return response
+
+        monkeypatch.setattr(emby, "_request", fake_request)
+
+        assert await emby.mark_played("item-1") is False
+
+    asyncio.run(run_test())
+
+
 @pytest.mark.parametrize(
     ("item", "expected"),
     [

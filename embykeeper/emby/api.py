@@ -1232,7 +1232,7 @@ class Emby:
     async def mark_played(self, item_id: str) -> bool:
         """Mark an item as played."""
         response = await self._request("POST", f"/Users/{self.user_id}/PlayedItems/{item_id}")
-        return response.status_code == 200
+        return bool(response.ok)
 
     async def watch(self):
         """Play one or more videos until account time requirement played."""
