@@ -34,17 +34,23 @@ class Scheduler:
             Scheduler: 调度器实例
         """
         # Parse interval days
-        interval_range_match = re.match(r"<\s*(\d+)\s*,\s*(\d+)\s*>", interval_days)
+        interval_range_match = re.fullmatch(r"<\s*(\d+)\s*,\s*(\d+)\s*>", interval_days)
         if interval_range_match:
             days = [int(interval_range_match.group(1)), int(interval_range_match.group(2))]
+            if days[0] <= 0 or days[1] <= 0:
+                raise ValueError(f"间隔天数必须大于 0: {interval_days}")
+            if days[0] > days[1]:
+                raise ValueError(f"间隔天数范围无效: {interval_days}")
         else:
             try:
-                days = abs(int(interval_days))
+                days = int(interval_days)
             except ValueError:
                 raise ValueError(f"无法解析间隔天数: {interval_days}")
+            if days <= 0:
+                raise ValueError(f"间隔天数必须大于 0: {interval_days}")
 
         # Parse time range
-        time_range_match = re.match(r"<\s*(.*?)\s*,\s*(.*?)\s*>", time_range)
+        time_range_match = re.fullmatch(r"<\s*(.*?)\s*,\s*(.*?)\s*>", time_range)
         if time_range_match:
             start_time, end_time = time_range_match.group(1), time_range_match.group(2)
         else:
