@@ -421,7 +421,10 @@ def get_proxy_str(proxy: Optional[ProxyConfig] = None, curl: bool = False):
             username = quote(str(proxy.username), safe="")
             password = quote(str(proxy.password or ""), safe="")
             proxy_str += f"{username}:{password}@"
-        proxy_str += f"{proxy.hostname}:{proxy.port}"
+        hostname = str(proxy.hostname)
+        if ":" in hostname and not (hostname.startswith("[") and hostname.endswith("]")):
+            hostname = f"[{hostname}]"
+        proxy_str += f"{hostname}:{proxy.port}"
     else:
         proxy_str = None
     return proxy_str
