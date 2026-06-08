@@ -276,6 +276,38 @@ def test_scheduler_ignores_cache_delete_failure(monkeypatch):
     asyncio.run(run_test())
 
 
+def test_scheduler_cancels_running_function_when_schedule_is_cancelled(monkeypatch):
+    async def run_test():
+        started = asyncio.Event()
+        blocker = asyncio.Event()
+        worker_cancelled = asyncio.Event()
+
+        async def func(_ctx):
+            started.set()
+            try:
+                await blocker.wait()
+            except asyncio.CancelledError:
+                worker_cancelled.set()
+                raise
+
+        scheduler = Scheduler(func, days=0, start_time=None, end_time=None)
+        monkeypatch.setattr(scheduler, "_get_next_time", lambda: datetime.now())
+
+        task = asyncio.create_task(scheduler.schedule())
+        await asyncio.wait_for(started.wait(), timeout=1)
+        task.cancel()
+
+        try:
+            with pytest.raises(asyncio.CancelledError):
+                await task
+            await asyncio.wait_for(worker_cancelled.wait(), timeout=1)
+        finally:
+            blocker.set()
+            await asyncio.sleep(0)
+
+    asyncio.run(run_test())
+
+
 def test_scheduler_ignores_next_time_callback_failure(monkeypatch):
     async def run_test():
         calls = 0

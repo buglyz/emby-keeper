@@ -245,17 +245,27 @@ class Scheduler:
 
             # Execute the function
             try:
+                task = asyncio.create_task(self.func(self._ctx))
                 try:
-                    # Shield the function execution to distinguish cancellation source
-                    await asyncio.shield(self.func(self._ctx))
+                    await asyncio.shield(task)
                 except asyncio.CancelledError:
-                    # This is a cancellation from within self.func
-                    if self._ctx:
-                        self._ctx.finish(RunStatus.ERROR, "任务在运行时被取消")
-                    raise  # Re-raise to be caught by outer try block
+                    if task.done():
+                        if self._ctx:
+                            self._ctx.finish(RunStatus.ERROR, "任务在运行时被取消")
+                    else:
+                        task.cancel()
+                        try:
+                            await task
+                        except asyncio.CancelledError:
+                            pass
+                        except Exception as e:
+                            logger.warning(f"计划任务取消时子任务退出异常, 已忽略: {type(e).__name__}")
+                        if self._ctx:
+                            self._ctx.finish(RunStatus.CANCELLED, "任务被取消")
+                    raise
             except asyncio.CancelledError:
                 # This is a cancellation from outside schedule()
-                if self._ctx:
+                if self._ctx and self._ctx.status != RunStatus.CANCELLED:
                     self._ctx.finish(RunStatus.CANCELLED, "任务被取消")
                 raise  # Re-raise to propagate cancellation
             except Exception:
