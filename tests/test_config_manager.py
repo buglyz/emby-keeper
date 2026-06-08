@@ -173,3 +173,45 @@ def test_list_change_callback_can_unregister_without_skipping_next_callback():
     )
 
     assert calls == ["first", "second"]
+
+
+def test_change_callback_can_register_new_key_without_runtime_error():
+    manager = ConfigManager()
+    manager.set(Config(emby={"interval_days": "7"}))
+    calls = []
+
+    def callback(_old, _new):
+        calls.append("changed")
+        manager.on_change("emby.time_range", lambda *_args: None)
+
+    manager.on_change("emby.interval_days", callback)
+
+    manager.set(Config(emby={"interval_days": "8"}))
+
+    assert calls == ["changed"]
+
+
+def test_list_change_callback_can_register_new_key_without_runtime_error():
+    manager = ConfigManager()
+    manager.set(Config(emby={"account": []}))
+    calls = []
+
+    def callback(_added, _deleted):
+        calls.append("changed")
+        manager.on_list_change("telegram.account", lambda *_args: None)
+
+    manager.on_list_change("emby.account", callback)
+    manager.set(
+        Config(
+            emby={
+                "account": [
+                    {
+                        "url": "https://example.com",
+                        "username": "alice",
+                    }
+                ]
+            }
+        )
+    )
+
+    assert calls == ["changed"]
