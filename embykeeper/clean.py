@@ -8,6 +8,10 @@ def _matches_cache_prefix(key: str, prefix: str) -> bool:
     return key == prefix or key.startswith(f"{prefix}.")
 
 
+def _find_cache_keys_by_prefix(prefix: str):
+    return [key for key in cache.find_by_prefix(prefix) if _matches_cache_prefix(key, prefix)]
+
+
 def get_cache_options():
     """获取缓存清理选项"""
     return {
@@ -56,7 +60,7 @@ def clean_cache(cache_key: str = None, cache_prefix: str = None):
             return f"已清理所有缓存, 共 {count} 条"
         else:
             # 常规前缀清理
-            keys = cache.find_by_prefix(cache_prefix)
+            keys = _find_cache_keys_by_prefix(cache_prefix)
             count = len(keys)
             cache.delete_many(keys)
             return f"已清理前缀为 {cache_prefix} 的缓存, 共 {count} 条"
@@ -71,7 +75,7 @@ async def cleaner():
 
     for key, option in options.items():
         if "prefix" in option:
-            keys = sorted(cache.find_by_prefix(option["prefix"]))
+            keys = sorted(_find_cache_keys_by_prefix(option["prefix"]))
             count = len(keys)
             if option.get("show_keys", False):
                 # 显示凭据类型, 需要显示具体的 key
@@ -85,7 +89,7 @@ async def cleaner():
             # 显示父选项（如"其他缓存"）
             console.print(f"{key}. {option['name']}")
             for child_key, child in option["children"].items():
-                keys = sorted(cache.find_by_prefix(child["prefix"]))
+                keys = sorted(_find_cache_keys_by_prefix(child["prefix"]))
                 count = len(keys)
                 # 显示子选项, 对于特定前缀只显示数量
                 console.print(f"  {child_key}. {child['name']} (共 {count} 条)")
@@ -113,7 +117,7 @@ async def cleaner():
         elif "prefix" in target:
             if target.get("show_keys", False) and len(parts) > 1:
                 # 用户选择了具体的凭据
-                keys = sorted(cache.find_by_prefix(target["prefix"]))
+                keys = sorted(_find_cache_keys_by_prefix(target["prefix"]))
                 try:
                     index = int(parts[1]) - 1
                     if 0 <= index < len(keys):

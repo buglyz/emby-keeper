@@ -26,6 +26,24 @@ def test_clean_all_except_credentials_uses_exact_prefixes(tmp_path):
     config.reset()
 
 
+def test_clean_credentials_uses_exact_prefix(tmp_path):
+    config.set(Config())
+    config.basedir = tmp_path
+    cache._cache_file = tmp_path / "cache.json"
+    cache._data = {}
+
+    cache.set("emby.credential.example.token", "deleted")
+    cache.set("emby.credentialed.example.token", "kept")
+
+    result = clean_cache(cache_prefix="emby.credential")
+
+    assert "共 1 条" in result
+    assert cache.get("emby.credential.example.token") is None
+    assert cache.get("emby.credentialed.example.token") == "kept"
+
+    config.reset()
+
+
 def test_cleaner_sorts_specific_cache_key_options(tmp_path, monkeypatch):
     config.set(Config())
     config.basedir = tmp_path
