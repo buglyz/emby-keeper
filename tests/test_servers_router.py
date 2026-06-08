@@ -465,6 +465,42 @@ def test_create_server_trims_url_username_and_name(tmp_path):
     asyncio.run(run_test())
 
 
+def test_create_server_trims_optional_text_fields(tmp_path):
+    async def run_test():
+        config.basedir = tmp_path
+        config.set(Config())
+        await bridge.initialize(tmp_path)
+
+        try:
+            await create_server(
+                EmbyServerCreate(
+                    url="https://example.com",
+                    username="alice",
+                    auth_method="token",
+                    access_token="token-1",
+                    play_id=" item-1 ",
+                    useragent=" Agent ",
+                    client=" ",
+                    client_version=" 1.0 ",
+                    device=" Phone ",
+                    device_id=" ",
+                ),
+                user="tester",
+            )
+
+            stored = bridge.web_accounts.get("alice@example.com")
+            assert stored["play_id"] == "item-1"
+            assert stored["useragent"] == "Agent"
+            assert stored["client_version"] == "1.0"
+            assert stored["device"] == "Phone"
+            assert "client" not in stored
+            assert "device_id" not in stored
+        finally:
+            await reset_bridge()
+
+    asyncio.run(run_test())
+
+
 def test_update_server_rejects_invalid_schedule_settings_without_mutating_account(tmp_path):
     async def run_test():
         config.basedir = tmp_path
@@ -528,6 +564,40 @@ def test_update_server_trims_text_identity_fields(tmp_path):
             assert stored["url"] == "https://new.example"
             assert stored["username"] == "bob"
             assert "name" not in stored
+        finally:
+            await reset_bridge()
+
+    asyncio.run(run_test())
+
+
+def test_update_server_blank_optional_text_fields_remove_existing_values(tmp_path):
+    async def run_test():
+        config.basedir = tmp_path
+        config.set(Config())
+        await bridge.initialize(tmp_path)
+
+        account_id = "alice@example.com"
+        bridge.add_account(
+            account_id,
+            {
+                "url": "https://example.com",
+                "username": "alice",
+                "encrypted_token": encrypt_token("token-old", tmp_path),
+                "play_id": "item-1",
+                "useragent": "Agent",
+            },
+        )
+
+        try:
+            await update_server(
+                account_id,
+                EmbyServerUpdate(play_id=" ", useragent=" New Agent "),
+                user="tester",
+            )
+
+            stored = bridge.web_accounts.get(account_id)
+            assert "play_id" not in stored
+            assert stored["useragent"] == "New Agent"
         finally:
             await reset_bridge()
 

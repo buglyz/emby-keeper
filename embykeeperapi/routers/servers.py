@@ -28,6 +28,15 @@ EMBY_ACCOUNT_ENV_FIELDS = [
     "device",
     "device_id",
 ]
+OPTIONAL_TEXT_FIELDS = {
+    "name",
+    "play_id",
+    "useragent",
+    "client",
+    "client_version",
+    "device",
+    "device_id",
+}
 
 
 def _make_account_id(username: str, name: Optional[str], url: str) -> str:
@@ -93,6 +102,14 @@ def _normalize_optional_text(value: Optional[str]):
         return None
     value = value.strip()
     return value or None
+
+
+def _normalized_optional_text_updates(source) -> dict:
+    return {
+        field: _normalize_optional_text(getattr(source, field))
+        for field in OPTIONAL_TEXT_FIELDS
+        if hasattr(source, field)
+    }
 
 
 def _validate_account_schedule(interval_days=None, time_range=None):
@@ -198,7 +215,8 @@ async def create_server(req: EmbyServerCreate, user: str = Depends(get_current_u
     _require_bridge()
     url = _validate_required_text("url", req.url)
     username = _validate_required_text("username", req.username)
-    name = _normalize_optional_text(req.name)
+    optional_text = _normalized_optional_text_updates(req)
+    name = optional_text["name"]
     _validate_server_fields(url=url, time=req.time)
     _validate_account_schedule(req.interval_days, req.time_range)
     account_id = _make_account_id(username, name, url)
@@ -224,6 +242,7 @@ async def create_server(req: EmbyServerCreate, user: str = Depends(get_current_u
             password=req.password,
             name=name,
             source=req,
+            updates=optional_text,
         )
         temp_account = EmbyAccount(**temp_kwargs)
         emby = Emby(temp_account)
@@ -258,15 +277,15 @@ async def create_server(req: EmbyServerCreate, user: str = Depends(get_current_u
         "allow_multiple": req.allow_multiple,
         "allow_stream": req.allow_stream,
         "use_proxy": req.use_proxy,
-        "play_id": req.play_id,
+        "play_id": optional_text["play_id"],
         "enabled": req.enabled,
         "interval_days": req.interval_days,
         "time_range": req.time_range,
-        "useragent": req.useragent,
-        "client": req.client,
-        "client_version": req.client_version,
-        "device": req.device,
-        "device_id": req.device_id,
+        "useragent": optional_text["useragent"],
+        "client": optional_text["client"],
+        "client_version": optional_text["client_version"],
+        "device": optional_text["device"],
+        "device_id": optional_text["device_id"],
     }
 
     # Remove None values
@@ -320,7 +339,7 @@ async def update_server(
                 _validate_server_fields(url=value)
             elif field == "username":
                 value = _validate_required_text(field, value)
-            elif field == "name":
+            elif field in OPTIONAL_TEXT_FIELDS:
                 value = _normalize_optional_text(value)
             update_data[field] = value
 
