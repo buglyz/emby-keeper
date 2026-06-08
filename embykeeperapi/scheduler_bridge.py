@@ -238,7 +238,9 @@ class SchedulerBridge:
         username = data.get("username")
         if not url or not username:
             return None
-        hostname = urlparse(url).hostname or ""
+        hostname = urlparse(url).hostname
+        if not hostname:
+            return None
         return f"emby.credential.{hostname}.{username}"
 
     def _clear_account_credentials(self, data: dict):

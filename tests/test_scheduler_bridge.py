@@ -199,6 +199,25 @@ def test_api_bridge_skips_invalid_encrypted_token_cache_on_initialize(tmp_path):
     asyncio.run(run_test())
 
 
+def test_api_bridge_skips_credential_cache_for_urls_without_hostname(tmp_path):
+    async def run_test():
+        cache.delete("emby.credential..alice")
+        bridge = SchedulerBridge()
+        bridge.web_accounts = WebAccountData(tmp_path)
+
+        bridge._cache_account_credentials(
+            {
+                "url": "not-a-url",
+                "username": "alice",
+                "encrypted_token": encrypt_token("token-1", tmp_path),
+            }
+        )
+
+        assert cache.get("emby.credential..alice") is None
+
+    asyncio.run(run_test())
+
+
 def test_web_account_data_backs_up_invalid_json_shapes(tmp_path):
     accounts_file = tmp_path / "web_accounts.json"
     accounts_file.write_text(
