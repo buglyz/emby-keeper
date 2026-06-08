@@ -428,9 +428,9 @@
             <div class="form-section-title">保活设置</div>
             <n-space vertical :size="12">
               <n-space :size="12" align="center">
-                <n-input-number v-model:value="form.time_min" :min="60" :step="60" placeholder="最小秒数" style="width:120px" />
+                <n-input-number v-model:value="form.time_min" :min="60" :step="60" :precision="0" placeholder="最小秒数" style="width:120px" />
                 <n-text>至</n-text>
-                <n-input-number v-model:value="form.time_max" :min="60" :step="60" placeholder="最大秒数" style="width:120px" />
+                <n-input-number v-model:value="form.time_max" :min="60" :step="60" :precision="0" placeholder="最大秒数" style="width:120px" />
                 <n-text>秒</n-text>
               </n-space>
               <n-switch v-model:value="form.allow_multiple"><template #checked>允许多视频播放</template><template #unchecked>仅单视频</template></n-switch>
@@ -527,6 +527,10 @@
           return trimmed || null;
         }
 
+        function isValidWatchTime(value) {
+          return Number.isInteger(value) && value >= 60;
+        }
+
         async function handleSave() {
           saving.value = true; errorMsg.value = '';
           const normalized = {
@@ -549,6 +553,11 @@
             saving.value = false;
             return;
           }
+          if (!isValidWatchTime(form.time_min) || !isValidWatchTime(form.time_max)) {
+            errorMsg.value = '播放时长必须是至少 60 秒的整数';
+            saving.value = false;
+            return;
+          }
           if (form.time_min > form.time_max) {
             errorMsg.value = '最小播放时长不能大于最大播放时长';
             saving.value = false;
@@ -565,12 +574,13 @@
             saving.value = false;
             return;
           }
+          const watchTime = form.time_min === form.time_max ? form.time_min : [form.time_min, form.time_max];
           const data = {
             url: normalized.url,
             username: normalized.username,
             name: normalized.name,
             auth_method: form.auth_method,
-            time: form.time_min === form.time_max ? form.time_min : [form.time_min, form.time_max],
+            time: watchTime,
             allow_multiple: form.allow_multiple,
             allow_stream: form.allow_stream,
             use_proxy: form.use_proxy,

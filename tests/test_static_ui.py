@@ -54,6 +54,25 @@ def test_server_form_trims_text_payload_before_save():
     assert "data.password = normalized.password" in html
 
 
+def test_server_form_rejects_invalid_watch_time_before_save():
+    html = STATIC_INDEX.read_text(encoding="utf-8")
+
+    assert ':precision="0" placeholder="最小秒数"' in html
+    assert ':precision="0" placeholder="最大秒数"' in html
+    assert "function isValidWatchTime(value)" in html
+    assert "return Number.isInteger(value) && value >= 60" in html
+    assert "if (!isValidWatchTime(form.time_min) || !isValidWatchTime(form.time_max))" in html
+    assert "播放时长必须是至少 60 秒的整数" in html
+    assert (
+        "const watchTime = form.time_min === form.time_max ? form.time_min : [form.time_min, form.time_max]"
+        in html
+    )
+    assert "time: watchTime" in html
+    assert (
+        "time: form.time_min === form.time_max ? form.time_min : [form.time_min, form.time_max]" not in html
+    )
+
+
 def test_config_form_trims_text_payload_before_save():
     html = STATIC_INDEX.read_text(encoding="utf-8")
 
