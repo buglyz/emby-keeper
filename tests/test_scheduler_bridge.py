@@ -548,6 +548,48 @@ def test_web_account_data_normalizes_legacy_time_fields(tmp_path):
     assert backup_data["bool@example.org"]["time"] is True
 
 
+def test_web_account_data_normalizes_legacy_text_fields(tmp_path):
+    accounts_file = tmp_path / "web_accounts.json"
+    accounts_file.write_text(
+        json.dumps(
+            {
+                "alice@example.com": {
+                    "url": "https://example.com",
+                    "username": "alice",
+                    "name": " Alice ",
+                    "play_id": " item-1 ",
+                    "device": "   ",
+                    "device_id": 123,
+                    "interval_days": " 7 ",
+                    "time_range": " <8:00AM,9:00AM> ",
+                }
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    accounts = WebAccountData(tmp_path)
+
+    expected = {
+        "alice@example.com": {
+            "url": "https://example.com",
+            "username": "alice",
+            "name": "Alice",
+            "play_id": "item-1",
+            "interval_days": "7",
+            "time_range": "<8:00AM,9:00AM>",
+        }
+    }
+    assert accounts.get_all() == expected
+    assert json.loads(accounts_file.read_text(encoding="utf-8")) == expected
+    assert len(accounts.to_emby_accounts()) == 1
+    backups = list(tmp_path.glob("web_accounts.json.corrupt.*"))
+    assert len(backups) == 1
+    backup_data = json.loads(backups[0].read_text(encoding="utf-8"))
+    assert backup_data["alice@example.com"]["device"] == "   "
+    assert backup_data["alice@example.com"]["device_id"] == 123
+
+
 def test_web_account_data_keeps_memory_unchanged_when_save_fails(tmp_path, monkeypatch):
     accounts = WebAccountData(tmp_path)
     accounts.add("alice@example.com", {"username": "alice"})

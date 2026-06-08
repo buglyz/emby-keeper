@@ -19,6 +19,17 @@ logger = logger.bind(scheme="embykeeperapi")
 # Web-managed account data store
 WEB_ACCOUNTS_FILE = "web_accounts.json"
 WEB_ACCOUNT_BOOL_FIELDS = {"allow_multiple", "allow_stream", "use_proxy", "enabled"}
+WEB_ACCOUNT_TEXT_FIELDS = {
+    "name",
+    "play_id",
+    "useragent",
+    "client",
+    "client_version",
+    "device",
+    "device_id",
+    "interval_days",
+    "time_range",
+}
 _DROP_FIELD = object()
 
 
@@ -71,6 +82,15 @@ def _sanitize_watch_time(value):
     return [min_time, max_time]
 
 
+def _sanitize_optional_text(value):
+    if value is None:
+        return _DROP_FIELD
+    if not isinstance(value, str):
+        return _DROP_FIELD
+    value = value.strip()
+    return value or _DROP_FIELD
+
+
 def _sanitize_account_record(data) -> Optional[dict]:
     if not isinstance(data, dict):
         return None
@@ -87,6 +107,14 @@ def _sanitize_account_record(data) -> Optional[dict]:
         if field not in sanitized:
             continue
         value = _sanitize_optional_bool(sanitized[field])
+        if value is _DROP_FIELD:
+            sanitized.pop(field, None)
+        else:
+            sanitized[field] = value
+    for field in WEB_ACCOUNT_TEXT_FIELDS:
+        if field not in sanitized:
+            continue
+        value = _sanitize_optional_text(sanitized[field])
         if value is _DROP_FIELD:
             sanitized.pop(field, None)
         else:
