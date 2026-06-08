@@ -85,7 +85,7 @@ class EmbyAccount(ConfigModel):
     url: UseHttpUrl
     username: str
     password: Optional[str] = None
-    name: str = None
+    name: Optional[str] = None
     time: Optional[Union[StrictInt, List[StrictInt]]] = Field(default_factory=lambda: [300, 600])
     useragent: Optional[str] = None
     client: Optional[str] = None

@@ -129,6 +129,12 @@ def test_emby_account_url_rejects_internal_whitespace():
         Config(emby={"account": [{"url": "exa mple.com", "username": "alice"}]})
 
 
+def test_emby_account_name_accepts_explicit_null():
+    cfg = Config(emby={"account": [{"url": "https://example.com", "username": "alice", "name": None}]})
+
+    assert cfg.emby.account[0].name is None
+
+
 def test_use_str_fields_reject_boolean_values():
     with pytest.raises(ValidationError):
         Config(emby={"interval_days": True})
