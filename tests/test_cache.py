@@ -140,3 +140,19 @@ def test_json_cache_delete_many_removes_empty_parent_dicts(tmp_path):
     assert json.loads((tmp_path / "cache.json").read_text(encoding="utf-8")) == {}
 
     config.reset()
+
+
+def test_json_cache_delete_by_prefix_uses_batch_delete(tmp_path):
+    config.set(Config())
+    config.basedir = tmp_path
+
+    cache = Cache()
+    cache.set("scheduler.one.next_time", "old")
+    cache.set("scheduler.two.next_time", "old")
+    cache.set("credential.one.token", "token")
+    cache.delete_by_prefix("scheduler.")
+
+    assert cache.get("scheduler") is None
+    assert cache.get("credential.one.token") == "token"
+
+    config.reset()

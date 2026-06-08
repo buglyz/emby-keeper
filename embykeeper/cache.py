@@ -145,8 +145,7 @@ class Cache:
 
     def delete_by_prefix(self, prefix: str) -> None:
         keys = self.find_by_prefix(prefix)
-        for key in keys:
-            self.delete(key)
+        self.delete_many(keys)
 
     def delete_many(self, keys: List[str]) -> None:
         """批量删除多个键的缓存
