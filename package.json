@@ -19,5 +19,10 @@
     "pagefind": "^1.1.1",
     "vitepress-plugin-pagefind": "^0.4.10",
     "vue-lazyload": "^3.0.0"
+  },
+  "overrides": {
+    "esbuild": "^0.25.0",
+    "nanoid": "^5.0.9",
+    "vite": "^6.4.2"
   }
 }
