@@ -16,7 +16,10 @@ class AppriseStream:
         if not message:
             return
         # The message is formatted as "LEVEL#MESSAGE"
-        level, _, body = message.partition("#")
+        level, separator, body = message.partition("#")
+        if not separator:
+            level = "info"
+            body = message
         level = level.lower()
         body = Text.from_markup(body).plain
 
