@@ -82,6 +82,12 @@ def test_legacy_global_alias_does_not_mutate_source_dict():
     assert raw == {"emby": {"account": []}, "interval": "7"}
 
 
+def test_legacy_global_alias_does_not_override_canonical_field():
+    cfg = Config(emby={"interval_days": "7"}, interval="12")
+
+    assert cfg.emby.interval_days == "7"
+
+
 def test_legacy_global_alias_replaces_none_emby_section():
     cfg = Config(emby=None, interval="7")
 

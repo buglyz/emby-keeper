@@ -208,6 +208,15 @@ class Config(ConfigModel):
         for new_field, old_field in cls.alias_map.items():
             if old_field in values and values[old_field] is not None:
                 parts = new_field.split(".")
+                existing = values
+                for part in parts:
+                    if not isinstance(existing, dict) or part not in existing:
+                        existing = None
+                        break
+                    existing = existing[part]
+                if existing is not None:
+                    values.pop(old_field, None)
+                    continue
                 target = values
                 for part in parts[:-1]:
                     next_target = target.get(part)
