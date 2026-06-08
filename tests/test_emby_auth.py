@@ -151,6 +151,39 @@ def test_token_authentication_uses_stored_user_id(monkeypatch):
     assert emby.user_id == "user-1"
 
 
+def test_watch_retry_uses_default_when_global_emby_config_missing(monkeypatch):
+    async def run_test():
+        config.set(Config(emby=None))
+        account = EmbyAccount(url="https://example.com", username="alice", time=10)
+        emby = Emby(account)
+        emby.items = {
+            "item-1": {
+                "Id": "item-1",
+                "Name": "Test",
+                "MediaType": "Video",
+                "RunTimeTicks": 20 * 10000000,
+            }
+        }
+        calls = 0
+
+        async def fail_play(_item, time=10):
+            nonlocal calls
+            calls += 1
+            raise EmbyPlayError("boom")
+
+        async def no_sleep(_seconds):
+            return None
+
+        monkeypatch.setattr(emby, "play", fail_play)
+        monkeypatch.setattr("embykeeper.emby.api.random.uniform", lambda *_args: 0)
+        monkeypatch.setattr("embykeeper.emby.api.asyncio.sleep", no_sleep)
+
+        assert await emby.watch() is False
+        assert calls == 6
+
+    asyncio.run(run_test())
+
+
 def test_token_authentication_discovers_user_id_from_sessions(monkeypatch):
     account = EmbyAccount(url="https://example.com", username="alice", device_id="device-1")
     emby = Emby(account)

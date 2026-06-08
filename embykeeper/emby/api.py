@@ -630,6 +630,12 @@ class Emby:
             return 0
         return play_count
 
+    @staticmethod
+    def _max_retries() -> int:
+        if config._cache and config._cache.emby and config._cache.emby.retries is not None:
+            return config._cache.emby.retries
+        return 5
+
     async def use_cfsolver(self):
         from embykeeper.cloudflare import get_cf_clearance
 
@@ -1328,7 +1334,7 @@ class Emby:
                             break
                     except EmbyError as e:
                         retry += 1
-                        if retry > config.emby.retries:
+                        if retry > self._max_retries():
                             self.log.warning(f"超过最大重试次数, 保活失败: {e}.")
                             return False
                         else:
