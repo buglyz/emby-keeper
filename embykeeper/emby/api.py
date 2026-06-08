@@ -627,8 +627,14 @@ class Emby:
         )
 
     @staticmethod
-    def _audio_stream_index(media_source: dict) -> Optional[int]:
-        audio_stream_index = media_source.get("DefaultAudioStreamIndex")
+    def _stream_index(value) -> Optional[int]:
+        if isinstance(value, bool) or not isinstance(value, int):
+            return None
+        return value
+
+    @classmethod
+    def _audio_stream_index(cls, media_source: dict) -> Optional[int]:
+        audio_stream_index = cls._stream_index(media_source.get("DefaultAudioStreamIndex"))
         if audio_stream_index is not None:
             return audio_stream_index
         media_streams = media_source.get("MediaStreams", [])
@@ -637,8 +643,9 @@ class Emby:
         for stream_info in media_streams:
             if not isinstance(stream_info, dict):
                 continue
-            if stream_info.get("Type") == "Audio" and stream_info.get("Index") is not None:
-                return stream_info["Index"]
+            stream_index = cls._stream_index(stream_info.get("Index"))
+            if stream_info.get("Type") == "Audio" and stream_index is not None:
+                return stream_index
         return None
 
     @staticmethod
@@ -894,7 +901,7 @@ class Emby:
             else "DirectStream"
         )
         audio_stream_index = self._audio_stream_index(media_source)
-        subtitle_stream_index = media_source.get("DefaultSubtitleStreamIndex")
+        subtitle_stream_index = self._stream_index(media_source.get("DefaultSubtitleStreamIndex"))
         live_stream_id = media_source.get("LiveStreamId")
         playback_start_ticks = int(datetime.now().timestamp() // 10 * 10 * 10000000)
 

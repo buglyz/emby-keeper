@@ -1212,8 +1212,29 @@ def test_audio_stream_index_rejects_non_list_media_streams():
     assert Emby._audio_stream_index({"MediaStreams": {"Type": "Audio", "Index": 2}}) is None
 
 
+def test_stream_index_rejects_bool_and_non_integer_values():
+    assert Emby._stream_index(True) is None
+    assert Emby._stream_index("2") is None
+    assert Emby._stream_index(2) == 2
+
+
 def test_audio_stream_index_ignores_non_object_media_streams():
     assert Emby._audio_stream_index({"MediaStreams": ["invalid", {"Type": "Audio", "Index": 2}]}) == 2
+
+
+def test_audio_stream_index_ignores_invalid_default_and_stream_indexes():
+    assert (
+        Emby._audio_stream_index(
+            {
+                "DefaultAudioStreamIndex": True,
+                "MediaStreams": [
+                    {"Type": "Audio", "Index": False},
+                    {"Type": "Audio", "Index": 2},
+                ],
+            }
+        )
+        == 2
+    )
 
 
 def test_item_list_methods_return_empty_lists_for_invalid_json(monkeypatch):
