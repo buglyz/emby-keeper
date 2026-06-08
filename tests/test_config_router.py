@@ -129,6 +129,29 @@ def test_update_config_preserves_loaded_config_file(tmp_path):
     config.reset()
 
 
+def test_update_config_persists_to_loaded_config_file(tmp_path):
+    async def run_test():
+        basedir = tmp_path / "data"
+        loaded_dir = tmp_path / "loaded"
+        basedir.mkdir()
+        loaded_dir.mkdir()
+        default_file = basedir / "config.toml"
+        loaded_file = loaded_dir / "custom.toml"
+        default_file.write_text("[emby]\nconcurrency = 1\n", encoding="utf-8")
+        loaded_file.write_text("[emby]\nconcurrency = 1\n", encoding="utf-8")
+        config.basedir = basedir
+        config.set(Config(emby={"concurrency": 1}))
+        config._conf_file = loaded_file
+
+        await update_config(GlobalConfigUpdate(emby_concurrency=2), user="tester")
+
+        assert tomllib.loads(loaded_file.read_text(encoding="utf-8"))["emby"]["concurrency"] == 2
+        assert tomllib.loads(default_file.read_text(encoding="utf-8"))["emby"]["concurrency"] == 1
+
+    asyncio.run(run_test())
+    config.reset()
+
+
 def test_write_text_atomic_preserves_existing_file_when_replace_fails(tmp_path, monkeypatch):
     config_file = tmp_path / "config.toml"
     config_file.write_text("old-content", encoding="utf-8")

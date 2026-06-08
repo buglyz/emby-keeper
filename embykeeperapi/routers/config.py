@@ -81,7 +81,7 @@ def _write_text_atomic(path: Path, content: str):
 def _persist_global_config(next_config=None):
     """Persist Web UI global settings without rewriting account secrets."""
     target_config = next_config or config._cache
-    config_file = Path(config.basedir) / "config.toml"
+    config_file = Path(config._conf_file) if config._conf_file else Path(config.basedir) / "config.toml"
     if config_file.is_file():
         try:
             doc = parse(config_file.read_text(encoding="utf-8"))
