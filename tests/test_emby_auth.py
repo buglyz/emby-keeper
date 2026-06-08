@@ -553,7 +553,10 @@ def test_stream_headers_can_omit_emby_authentication_for_external_urls():
 
     assert emby._is_same_origin_url("/Videos/item-1/stream") is True
     assert emby._is_same_origin_url("https://example.com/Videos/item-1/stream") is True
+    assert emby._is_same_origin_url("//example.com/Videos/item-1/stream") is True
     assert emby._is_same_origin_url("https://cdn.example.net/video.mp4") is False
+    assert emby._is_same_origin_url("//cdn.example.net/video.mp4") is False
+    assert emby._is_same_origin_url("https://example.com:bad/video.mp4") is False
 
     headers = emby._build_stream_headers("play-session-1", 0, include_auth=False)
 

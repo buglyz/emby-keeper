@@ -444,14 +444,23 @@ class Emby:
 
     def _is_same_origin_url(self, url: str) -> bool:
         parsed = urlsplit(str(url))
-        if not parsed.scheme or not parsed.netloc:
+        if not parsed.scheme and not parsed.netloc:
             return True
+        if parsed.scheme and parsed.scheme not in {"http", "https"}:
+            return False
+        if not parsed.netloc:
+            return False
 
         account = urlsplit(str(self.a.url))
-        parsed_port = parsed.port or self._default_url_port(parsed.scheme)
-        account_port = account.port or self._default_url_port(account.scheme)
+        try:
+            parsed_port = parsed.port or self._default_url_port(parsed.scheme or account.scheme)
+            account_port = account.port or self._default_url_port(account.scheme)
+        except ValueError:
+            return False
+        if not parsed.hostname:
+            return False
         return (
-            parsed.scheme == account.scheme
+            (parsed.scheme or account.scheme) == account.scheme
             and parsed.hostname == account.hostname
             and parsed_port == account_port
         )
