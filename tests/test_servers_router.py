@@ -248,6 +248,34 @@ def test_create_server_rejects_non_integer_time_when_model_validation_is_bypasse
     asyncio.run(run_test())
 
 
+@pytest.mark.parametrize("time_value", [0, [0, 600], [300, 0]])
+def test_create_server_rejects_zero_time_without_saving(tmp_path, time_value):
+    async def run_test():
+        config.basedir = tmp_path
+        config.set(Config())
+        await bridge.initialize(tmp_path)
+
+        try:
+            with pytest.raises(HTTPException) as exc:
+                await create_server(
+                    EmbyServerCreate(
+                        url="https://example.com",
+                        username="alice",
+                        auth_method="token",
+                        access_token="token-1",
+                        time=time_value,
+                    ),
+                    user="tester",
+                )
+
+            assert exc.value.status_code == 400
+            assert bridge.web_accounts.get_all() == {}
+        finally:
+            await reset_bridge()
+
+    asyncio.run(run_test())
+
+
 def test_create_server_rejects_non_string_required_text_when_model_validation_is_bypassed(tmp_path):
     async def run_test():
         config.basedir = tmp_path

@@ -78,15 +78,15 @@ def _validate_server_fields(url: Optional[str] = None, time=None):
                 raise HTTPException(status_code=400, detail="time must be an integer or a [min, max] pair")
             if any(not isinstance(value, int) or isinstance(value, bool) for value in time):
                 raise HTTPException(status_code=400, detail="time values must be integers")
-            if time[0] < 0 or time[1] < 0:
-                raise HTTPException(status_code=400, detail="time values must be non-negative")
+            if time[0] <= 0 or time[1] <= 0:
+                raise HTTPException(status_code=400, detail="time values must be positive")
             if time[0] > time[1]:
                 raise HTTPException(status_code=400, detail="time[0] (min) must be <= time[1] (max)")
         elif isinstance(time, int):
             if isinstance(time, bool):
                 raise HTTPException(status_code=400, detail="time must be an integer")
-            if time < 0:
-                raise HTTPException(status_code=400, detail="time must be non-negative")
+            if time <= 0:
+                raise HTTPException(status_code=400, detail="time must be positive")
         else:
             raise HTTPException(status_code=400, detail="time must be an integer or a [min, max] pair")
 
