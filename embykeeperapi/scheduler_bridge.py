@@ -239,7 +239,10 @@ class SchedulerBridge:
         cache_key = self._account_credential_cache_key(data)
         if not cache_key:
             return
-        credential_cache.set(cache_key, cache_data)
+        try:
+            credential_cache.set(cache_key, cache_data)
+        except Exception as e:
+            logger.warning(f"Failed to cache Emby credentials: {type(e).__name__}")
 
     def _account_credential_cache_key(self, data: dict) -> Optional[str]:
         from urllib.parse import urlparse

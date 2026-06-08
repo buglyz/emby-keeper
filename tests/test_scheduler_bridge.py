@@ -261,6 +261,24 @@ def test_cached_account_credentials_use_normalized_user_id(tmp_path):
         cache.delete(cache_key)
 
 
+def test_cached_account_credentials_ignore_cache_write_failure(tmp_path, monkeypatch):
+    bridge = SchedulerBridge()
+    bridge.web_accounts = WebAccountData(tmp_path)
+
+    def fail_set(_key, _value):
+        raise OSError("write failed")
+
+    monkeypatch.setattr("embykeeper.cache.cache.set", fail_set)
+
+    bridge._cache_account_credentials(
+        {
+            "url": "https://example.com",
+            "username": "alice",
+            "encrypted_token": encrypt_token("token-1", tmp_path),
+        }
+    )
+
+
 def test_web_account_data_backs_up_invalid_json_shapes(tmp_path):
     accounts_file = tmp_path / "web_accounts.json"
     accounts_file.write_text(
