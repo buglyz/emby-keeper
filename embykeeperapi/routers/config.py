@@ -1,19 +1,26 @@
 from pathlib import Path
 from collections.abc import MutableMapping
 from datetime import datetime, timezone
+import json
+import re
 import shutil
 from tempfile import NamedTemporaryFile
+from typing import List, Optional
 from urllib.parse import parse_qsl, quote, unquote, urlparse
 
 from fastapi import APIRouter, Depends, HTTPException
 from loguru import logger
 from pydantic import ValidationError
+import tomli as tomllib
 from tomlkit import document, dumps, parse
 
 from ..auth import get_current_user
 from ..models import (
     ConfigBackupResponse,
+    ConfigBackupItem,
     ConfigExportResponse,
+    ConfigRestoreRequest,
+    ConfigRestoreResponse,
     GlobalConfigResponse,
     GlobalConfigUpdate,
     NotifierConfigResponse,
@@ -30,6 +37,7 @@ logger = logger.bind(scheme="embykeeperapi")
 REDACTED_VALUE = "***REDACTED***"
 SECRET_CONFIG_KEYS = {"password", "apprise_uri", "mongodb", "token", "access_token", "encrypted_token", "secret"}
 SECRET_CONFIG_KEY_PARTS = ("token", "secret", "password", "credential", "apikey", "api_key")
+BACKUP_ID_PATTERN = re.compile(r"^\d{8}T\d{6}Z(?:-\d+)?$")
 
 
 def _model_fields_set(model) -> set:
@@ -159,6 +167,135 @@ def _web_accounts_file_path() -> Path:
     if basedir:
         return Path(basedir) / "web_accounts.json"
     return Path(config.basedir) / "web_accounts.json"
+
+
+def _backup_root() -> Path:
+    return Path(config.basedir) / "backups"
+
+
+def _prepare_backup_root() -> Path:
+    backup_root = _backup_root()
+    try:
+        backup_root.mkdir(parents=True, exist_ok=True)
+        backup_root.chmod(0o700)
+    except OSError as e:
+        raise HTTPException(status_code=500, detail=f"Failed to prepare backup directory: {e}")
+    return backup_root
+
+
+def _backup_created_at(backup_id: str):
+    timestamp = backup_id.split("-", 1)[0]
+    try:
+        return datetime.strptime(timestamp, "%Y%m%dT%H%M%SZ").replace(tzinfo=timezone.utc)
+    except ValueError:
+        return None
+
+
+def _backup_dir_from_id(backup_id: str) -> Path:
+    if not isinstance(backup_id, str) or not BACKUP_ID_PATTERN.fullmatch(backup_id):
+        raise HTTPException(status_code=404, detail="Backup not found")
+    backup_dir = _backup_root() / backup_id
+    try:
+        backup_dir.relative_to(_backup_root())
+    except ValueError:
+        raise HTTPException(status_code=404, detail="Backup not found")
+    if not backup_dir.is_dir():
+        raise HTTPException(status_code=404, detail="Backup not found")
+    return backup_dir
+
+
+def _backup_files(backup_dir: Path) -> List[str]:
+    try:
+        return sorted(path.name for path in backup_dir.iterdir() if path.is_file())
+    except OSError as e:
+        raise HTTPException(status_code=500, detail=f"Failed to read backup directory: {e}")
+
+
+def _create_backup_snapshot(*, raise_if_empty: bool = True) -> Optional[ConfigBackupResponse]:
+    backup_root = _prepare_backup_root()
+    timestamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+    backup_dir = backup_root / timestamp
+    for counter in range(100):
+        candidate = backup_dir if counter == 0 else backup_root / f"{timestamp}-{counter}"
+        try:
+            candidate.mkdir(parents=True, exist_ok=False)
+            try:
+                candidate.chmod(0o700)
+            except OSError:
+                pass
+            backup_dir = candidate
+            break
+        except FileExistsError:
+            continue
+        except OSError as e:
+            raise HTTPException(status_code=500, detail=f"Failed to create backup directory: {e}")
+    else:
+        raise HTTPException(status_code=500, detail="Failed to create unique backup directory")
+
+    copied = []
+    try:
+        for source in (_config_file_path(), _web_accounts_file_path()):
+            if not source.is_file():
+                continue
+            target = backup_dir / source.name
+            shutil.copy2(source, target)
+            try:
+                target.chmod(0o600)
+            except OSError:
+                pass
+            copied.append(source.name)
+    except OSError as e:
+        shutil.rmtree(backup_dir, ignore_errors=True)
+        raise HTTPException(status_code=500, detail=f"Failed to back up {source.name}: {e}")
+
+    if not copied:
+        try:
+            backup_dir.rmdir()
+        except OSError as e:
+            raise HTTPException(status_code=500, detail=f"Failed to remove empty backup directory: {e}")
+        if raise_if_empty:
+            raise HTTPException(status_code=404, detail="No config files found to back up")
+        return None
+
+    return ConfigBackupResponse(status="created", backup_dir=str(backup_dir), files=copied)
+
+
+async def _reload_restored_runtime(restored_files: List[str]):
+    config_file = _config_file_path()
+    should_merge_accounts = False
+    if config_file.name in restored_files and config_file.is_file():
+        if not await config.reload_conf(config_file):
+            raise HTTPException(status_code=500, detail="Restored config.toml is invalid")
+        if bridge.web_accounts and config._cache and config._cache.emby:
+            bridge._base_emby_accounts = list(config._cache.emby.account or [])
+            should_merge_accounts = True
+    if bridge.web_accounts and _web_accounts_file_path().name in restored_files:
+        from ..scheduler_bridge import WebAccountData
+
+        bridge.web_accounts = WebAccountData(_web_accounts_file_path().parent)
+        should_merge_accounts = True
+    if bridge.web_accounts and should_merge_accounts:
+        bridge._merge_accounts()
+
+
+def _validate_restore_sources(restored):
+    config_file = _config_file_path()
+    web_accounts_file = _web_accounts_file_path()
+    for source, target in restored:
+        if target.name == config_file.name:
+            try:
+                data = tomllib.loads(source.read_text(encoding="utf-8"))
+            except Exception as e:
+                raise HTTPException(status_code=400, detail=f"Backup config.toml is invalid: {e}")
+            if not config.validate_config(data):
+                raise HTTPException(status_code=400, detail="Backup config.toml failed validation")
+        elif target.name == web_accounts_file.name:
+            try:
+                data = json.loads(source.read_text(encoding="utf-8"))
+            except Exception as e:
+                raise HTTPException(status_code=400, detail=f"Backup web_accounts.json is invalid: {e}")
+            if not isinstance(data, dict):
+                raise HTTPException(status_code=400, detail="Backup web_accounts.json must be an object")
 
 
 def _is_secret_key(key) -> bool:
@@ -321,56 +458,76 @@ async def export_config_bundle(user: str = Depends(get_current_user)):
 @router.post("/backup", response_model=ConfigBackupResponse)
 async def create_config_backup(user: str = Depends(get_current_user)):
     """Create a local timestamped backup of config.toml and web_accounts.json."""
-    basedir = Path(config.basedir)
-    backup_root = basedir / "backups"
-    try:
-        backup_root.mkdir(parents=True, exist_ok=True)
-        backup_root.chmod(0o700)
-    except OSError as e:
-        raise HTTPException(status_code=500, detail=f"Failed to prepare backup directory: {e}")
-    timestamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
-    backup_dir = backup_root / timestamp
-    for counter in range(100):
-        candidate = backup_dir if counter == 0 else backup_root / f"{timestamp}-{counter}"
-        try:
-            candidate.mkdir(parents=True, exist_ok=False)
-            try:
-                candidate.chmod(0o700)
-            except OSError:
-                pass
-            backup_dir = candidate
-            break
-        except FileExistsError:
-            continue
-        except OSError as e:
-            raise HTTPException(status_code=500, detail=f"Failed to create backup directory: {e}")
-    else:
-        raise HTTPException(status_code=500, detail="Failed to create unique backup directory")
+    return _create_backup_snapshot()
 
-    copied = []
+
+@router.get("/backups", response_model=List[ConfigBackupItem])
+async def list_config_backups(user: str = Depends(get_current_user)):
+    """List local config backups available for restore."""
+    backup_root = _backup_root()
+    if not backup_root.is_dir():
+        return []
     try:
-        for source in (_config_file_path(), _web_accounts_file_path()):
-            if not source.is_file():
-                continue
-            target = backup_dir / source.name
+        backup_dirs = [
+            path
+            for path in backup_root.iterdir()
+            if path.is_dir() and BACKUP_ID_PATTERN.fullmatch(path.name)
+        ]
+    except OSError as e:
+        raise HTTPException(status_code=500, detail=f"Failed to list backups: {e}")
+    backup_dirs.sort(key=lambda path: _backup_created_at(path.name) or datetime.min.replace(tzinfo=timezone.utc), reverse=True)
+    return [
+        ConfigBackupItem(
+            id=backup_dir.name,
+            backup_dir=str(backup_dir),
+            created_at=_backup_created_at(backup_dir.name),
+            files=_backup_files(backup_dir),
+        )
+        for backup_dir in backup_dirs
+    ]
+
+
+@router.post("/backups/{backup_id}/restore", response_model=ConfigRestoreResponse)
+async def restore_config_backup(
+    backup_id: str,
+    req: ConfigRestoreRequest,
+    user: str = Depends(get_current_user),
+):
+    """Restore config files from a local backup."""
+    if not req.confirm:
+        raise HTTPException(status_code=400, detail="confirm must be true")
+    backup_dir = _backup_dir_from_id(backup_id)
+    targets = (_config_file_path(), _web_accounts_file_path())
+    restored = []
+    for target in targets:
+        source = backup_dir / target.name
+        if source.is_file():
+            restored.append((source, target))
+    if not restored:
+        raise HTTPException(status_code=404, detail="No restorable files found in backup")
+
+    _validate_restore_sources(restored)
+    safety_backup = _create_backup_snapshot(raise_if_empty=False)
+    restored_files = []
+    try:
+        for source, target in restored:
+            target.parent.mkdir(parents=True, exist_ok=True)
             shutil.copy2(source, target)
             try:
                 target.chmod(0o600)
             except OSError:
                 pass
-            copied.append(source.name)
+            restored_files.append(target.name)
     except OSError as e:
-        shutil.rmtree(backup_dir, ignore_errors=True)
-        raise HTTPException(status_code=500, detail=f"Failed to back up {source.name}: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to restore {target.name}: {e}")
 
-    if not copied:
-        try:
-            backup_dir.rmdir()
-        except OSError as e:
-            raise HTTPException(status_code=500, detail=f"Failed to remove empty backup directory: {e}")
-        raise HTTPException(status_code=404, detail="No config files found to back up")
-
-    return ConfigBackupResponse(status="created", backup_dir=str(backup_dir), files=copied)
+    await _reload_restored_runtime(restored_files)
+    return ConfigRestoreResponse(
+        status="restored",
+        backup_dir=str(backup_dir),
+        restored_files=restored_files,
+        safety_backup_dir=safety_backup.backup_dir if safety_backup else None,
+    )
 
 
 @router.put("")

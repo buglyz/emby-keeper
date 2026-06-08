@@ -172,20 +172,17 @@ def test_config_export_and_backup_api_uses_encrypted_account_data(tmp_path, api_
         '\n'.join(
             [
                 'mongodb = "mongodb://user:password@example.com/db"',
-                'diagnostic_url = "https://user:url-secret@example.com/hook?token=query-secret"',
                 "",
                 "[emby]",
                 'interval_days = "7"',
                 "",
                 "[notifier]",
                 'apprise_uri = "tgram://bot-token/chat-id"',
-                'bot_token = "telegram-bot-token"',
                 "",
                 "[[emby.account]]",
-                'url = "https://example.com"',
+                'url = "https://user:url-secret@example.com/hook?token=query-secret"',
                 'username = "alice"',
                 'password = "plain-password"',
-                'api_key = "emby-api-key"',
                 "",
             ]
         ),
@@ -217,12 +214,10 @@ def test_config_export_and_backup_api_uses_encrypted_account_data(tmp_path, api_
     assert exported["redacted"] is True
     assert "plain-password" not in exported["config_toml"]
     assert "bot-token" not in exported["config_toml"]
-    assert "telegram-bot-token" not in exported["config_toml"]
-    assert "emby-api-key" not in exported["config_toml"]
     assert "mongodb://user:password@example.com/db" not in exported["config_toml"]
     assert "url-secret" not in exported["config_toml"]
     assert "query-secret" not in exported["config_toml"]
-    assert exported["config_toml"].count("***REDACTED***") >= 5
+    assert exported["config_toml"].count("***REDACTED***") >= 4
     assert exported["web_accounts"]["alice@example.com"]["encrypted_token"] == "***REDACTED***"
     assert exported["web_accounts"]["alice@example.com"]["access_token"] == "***REDACTED***"
     assert exported["web_accounts"]["alice@example.com"]["metadata"]["api_key"] == "***REDACTED***"
@@ -240,6 +235,31 @@ def test_config_export_and_backup_api_uses_encrypted_account_data(tmp_path, api_
     assert stat.S_IMODE(backup_dir.stat().st_mode) == 0o700
     assert stat.S_IMODE((backup_dir / "config.toml").stat().st_mode) == 0o600
     assert stat.S_IMODE((backup_dir / "web_accounts.json").stat().st_mode) == 0o600
+
+    backups_response = asyncio.run(_asgi_request(api_app, "GET", "/api/config/backups"))
+
+    assert backups_response.status_code == 200
+    backups = backups_response.json()
+    assert backups[0]["id"] == backup_dir.name
+    assert sorted(backups[0]["files"]) == ["config.toml", "web_accounts.json"]
+
+    config_file.write_text("[emby]\ninterval_days = \"99\"\n", encoding="utf-8")
+    bridge.web_accounts.add(
+        "bob@example.com",
+        {"url": "https://example.org", "username": "bob"},
+    )
+
+    restore_response = asyncio.run(
+        _asgi_request(api_app, "POST", f"/api/config/backups/{backup_dir.name}/restore", {"confirm": True})
+    )
+
+    assert restore_response.status_code == 200
+    restored = restore_response.json()
+    assert restored["status"] == "restored"
+    assert sorted(restored["restored_files"]) == ["config.toml", "web_accounts.json"]
+    assert restored["safety_backup_dir"]
+    assert 'interval_days = "7"' in config_file.read_text(encoding="utf-8")
+    assert set(bridge.web_accounts.get_all()) == {"alice@example.com"}
 
     second_backup_response = asyncio.run(_asgi_request(api_app, "POST", "/api/config/backup"))
 

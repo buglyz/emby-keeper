@@ -11,6 +11,7 @@ from embykeeper.schema import Config
 from embykeeperapi.models import SchedulePreviewRequest
 from embykeeperapi.routers.scheduler import (
     cancel_schedule_run,
+    cleanup_runs,
     get_dashboard_status,
     get_health_status,
     healthz,
@@ -200,6 +201,48 @@ def test_run_history_lists_indexed_runs(tmp_path):
     asyncio.run(run_test())
 
 
+def test_run_history_supports_offset_and_status_filter(tmp_path):
+    async def run_test():
+        config.basedir = tmp_path
+        config.set(Config())
+        cache._setup_json_cache()
+        _running_runs.clear()
+
+        try:
+            first = RunContext(id="RUN001")
+            second = RunContext(id="RUN002")
+            third = RunContext(id="RUN003")
+
+            first.start()
+            first.finish(RunStatus.SUCCESS)
+            second.start()
+            second.finish(RunStatus.FAIL)
+            third.start()
+            third.finish(RunStatus.SUCCESS)
+
+            assert [item.run_id for item in await list_runs(limit=1, offset=1, user="tester")] == [
+                "RUN002"
+            ]
+            assert [
+                item.run_id for item in await list_runs(limit=10, status="success", user="tester")
+            ] == ["RUN003", "RUN001"]
+        finally:
+            _running_runs.clear()
+            config.reset()
+
+    asyncio.run(run_test())
+
+
+def test_cleanup_runs_rejects_invalid_days():
+    async def run_test():
+        with pytest.raises(HTTPException) as exc:
+            await cleanup_runs(days=0, user="tester")
+
+        assert exc.value.status_code == 400
+
+    asyncio.run(run_test())
+
+
 def test_schedule_preview_uses_global_defaults(tmp_path):
     async def run_test():
         config.basedir = tmp_path
@@ -276,6 +319,10 @@ def test_health_status_reports_runtime_state(tmp_path, monkeypatch):
         bridge.emby_manager = object()
         monkeypatch.setattr(bridge, "get_schedule_info", lambda: [{"id": "one"}])
         monkeypatch.setenv("EK_TOKEN", "secret")
+        monkeypatch.setattr(
+            "embykeeper.apprise.get_delivery_status",
+            lambda: {"status": "error", "time": datetime(2026, 1, 1, 8, 0), "error": "SendFailed"},
+        )
 
         response = await get_health_status(user="tester")
 
@@ -286,6 +333,8 @@ def test_health_status_reports_runtime_state(tmp_path, monkeypatch):
         assert response.schedule_count == 1
         assert response.auth_configured is True
         assert response.notifier_configured is True
+        assert response.notifier_last_status == "error"
+        assert response.notifier_last_error == "SendFailed"
 
     asyncio.run(run_test())
     config.reset()

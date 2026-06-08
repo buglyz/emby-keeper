@@ -1,4 +1,5 @@
 import asyncio
+from datetime import datetime, timedelta
 
 from embykeeper.cache import cache
 from embykeeper.config import config
@@ -191,6 +192,65 @@ def test_run_context_finish_indexes_recent_runs(tmp_path):
 
         assert [run.id for run in recent] == ["SECOND", "FIRST"]
         assert cache.get("runinfo.index") == ["SECOND", "FIRST"]
+    finally:
+        _running_runs.clear()
+        config.reset()
+
+
+def test_run_context_list_recent_filters_and_offsets(tmp_path):
+    config.set(Config())
+    config.basedir = tmp_path
+    cache._cache_file = tmp_path / "cache.json"
+    cache._data = {}
+    _running_runs.clear()
+
+    try:
+        first = RunContext(id="FIRST")
+        second = RunContext(id="SECOND")
+        third = RunContext(id="THIRD")
+
+        first.start()
+        first.finish(RunStatus.SUCCESS)
+        second.start()
+        second.finish(RunStatus.FAIL)
+        third.start()
+        third.finish(RunStatus.SUCCESS)
+
+        assert [run.id for run in RunContext.list_recent(limit=1, offset=1)] == ["SECOND"]
+        assert [run.id for run in RunContext.list_recent(limit=10, status="success")] == [
+            "THIRD",
+            "FIRST",
+        ]
+    finally:
+        _running_runs.clear()
+        config.reset()
+
+
+def test_run_context_cleanup_older_than_removes_cached_runs(tmp_path):
+    config.set(Config())
+    config.basedir = tmp_path
+    cache._cache_file = tmp_path / "cache.json"
+    cache._data = {}
+    _running_runs.clear()
+
+    try:
+        old_run = RunContext(
+            id="OLDRUN",
+            status=RunStatus.SUCCESS,
+            end_time=datetime.now() - timedelta(days=45),
+        )
+        fresh_run = RunContext(
+            id="FRESHRUN",
+            status=RunStatus.SUCCESS,
+            end_time=datetime.now(),
+        )
+        old_run.save()
+        fresh_run.save()
+
+        assert RunContext.cleanup_older_than(30) == 1
+        assert RunContext.get("OLDRUN") is None
+        assert RunContext.get("FRESHRUN").id == "FRESHRUN"
+        assert cache.get("runinfo.index") == ["FRESHRUN"]
     finally:
         _running_runs.clear()
         config.reset()

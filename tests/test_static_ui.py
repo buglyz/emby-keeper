@@ -186,12 +186,16 @@ def test_frontend_only_sends_authorization_header_with_token():
 def test_frontend_exposes_run_history_and_cancel_actions():
     html = STATIC_INDEX.read_text(encoding="utf-8")
 
-    assert "getRuns(limit = 50)" in html
+    assert "getRuns({ limit = 50, offset = 0, status = null } = {})" in html
     assert "getRunLogs(id)" in html
+    assert "cleanupRuns(days)" in html
     assert "const RunHistoryPage = {" in html
     assert "logModalVisible" in html
     assert "openRunLogs(row.run_id)" in html
     assert "API.getRunLogs(runId)" in html
+    assert "statusFilter" in html
+    assert "loadMore" in html
+    assert "handleCleanup" in html
     assert "{ path: 'runs', component: RunHistoryPage }" in html
     assert "cancelWatch(id)" in html
     assert "cancelSchedule(id)" in html

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from asyncio import Event
 import asyncio
-from datetime import datetime
+from datetime import datetime, timedelta
 from enum import IntEnum, auto
 from typing import TYPE_CHECKING, Callable, Dict, List, Optional
 import random
@@ -140,10 +140,13 @@ class RunContext(BaseModel):
             logger.warning(f"运行记录索引保存失败, 已忽略: {type(e).__name__}")
 
     @classmethod
-    def list_recent(cls, limit: int = 50) -> List["RunContext"]:
+    def list_recent(cls, limit: int = 50, offset: int = 0, status: str = None) -> List["RunContext"]:
         """List recent finished and currently running task records."""
         if not isinstance(limit, int) or isinstance(limit, bool) or limit <= 0:
             limit = 50
+        if not isinstance(offset, int) or isinstance(offset, bool) or offset < 0:
+            offset = 0
+        normalized_status = status.strip().upper() if isinstance(status, str) and status.strip() else None
 
         run_ids = list(_running_runs.keys())
         for run_id in cls._read_run_index():
@@ -151,7 +154,8 @@ class RunContext(BaseModel):
                 run_ids.append(run_id)
 
         runs = []
-        for run_id in run_ids[: max(limit, 1) * 2]:
+        scan_limit = max(limit + offset, limit, 1) * 2
+        for run_id in run_ids[:scan_limit]:
             run = cls.get(run_id)
             if run:
                 runs.append(run)
@@ -160,7 +164,43 @@ class RunContext(BaseModel):
             return run.start_time or run.end_time or datetime.min
 
         runs.sort(key=sort_key, reverse=True)
-        return runs[:limit]
+        if normalized_status:
+            runs = [run for run in runs if run.status.name.upper() == normalized_status]
+        return runs[offset : offset + limit]
+
+    @classmethod
+    def cleanup_older_than(cls, days: int) -> int:
+        """Delete finished cached run records older than the requested age."""
+        if not isinstance(days, int) or isinstance(days, bool) or days <= 0:
+            raise ValueError("days must be a positive integer")
+
+        cutoff = datetime.now() - timedelta(days=days)
+        kept_ids = []
+        delete_keys = []
+        deleted = 0
+
+        for run_id in cls._read_run_index():
+            run = cls.get(run_id)
+            if not run:
+                delete_keys.append(f"runinfo.{run_id}")
+                delete_keys.append(f"runinfo.children.{run_id}")
+                deleted += 1
+                continue
+            run_time = run.end_time or run.start_time
+            if run.id not in _running_runs and run_time and run_time < cutoff:
+                delete_keys.append(f"runinfo.{run_id}")
+                delete_keys.append(f"runinfo.children.{run_id}")
+                deleted += 1
+            else:
+                kept_ids.append(run_id)
+
+        try:
+            if delete_keys:
+                cache.delete_many(delete_keys)
+            cache.set(RUNINFO_INDEX_KEY, kept_ids[:RUNINFO_INDEX_LIMIT])
+        except Exception as e:
+            logger.warning(f"运行记录清理失败, 已忽略: {type(e).__name__}")
+        return deleted
 
     @classmethod
     def cancel_all(cls):

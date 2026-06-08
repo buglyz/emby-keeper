@@ -226,6 +226,9 @@ class HealthStatus(BaseModel):
     latest_run_status: Optional[str] = None
     latest_run_status_info: Optional[str] = None
     scheduler_error: Optional[str] = None
+    notifier_last_status: Optional[str] = None
+    notifier_last_time: Optional[datetime] = None
+    notifier_last_error: Optional[str] = None
 
 
 class RunHistoryItem(BaseModel):
@@ -252,6 +255,11 @@ class RunLogResponse(BaseModel):
     logs: List[RunLogItem] = Field(default_factory=list)
 
 
+class RunCleanupResponse(BaseModel):
+    status: str
+    deleted: int = 0
+
+
 class ConfigExportResponse(BaseModel):
     generated_at: datetime
     config_path: Optional[str] = None
@@ -265,3 +273,21 @@ class ConfigBackupResponse(BaseModel):
     status: str
     backup_dir: str
     files: List[str] = Field(default_factory=list)
+
+
+class ConfigBackupItem(BaseModel):
+    id: str
+    backup_dir: str
+    created_at: Optional[datetime] = None
+    files: List[str] = Field(default_factory=list)
+
+
+class ConfigRestoreRequest(BaseModel):
+    confirm: bool = False
+
+
+class ConfigRestoreResponse(BaseModel):
+    status: str
+    backup_dir: str
+    restored_files: List[str] = Field(default_factory=list)
+    safety_backup_dir: Optional[str] = None

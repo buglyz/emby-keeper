@@ -15,6 +15,7 @@ from ..models import (
     CancelResponse,
     DashboardStatus,
     HealthStatus,
+    RunCleanupResponse,
     RunLogResponse,
     RunHistoryItem,
     ScheduleInfo,
@@ -178,13 +179,16 @@ async def get_health_status(user: str = Depends(get_current_user)):
     web_accounts_target = web_accounts_file if web_accounts_file.exists() else web_accounts_file.parent
     web_accounts_writable = web_accounts_target.exists() and os.access(web_accounts_target, os.W_OK)
     notifier_ready = False
+    notifier_delivery = {}
     if notifier and notifier.enabled and notifier.apprise_uri:
         try:
             from embykeeper import notify
+            from embykeeper.apprise import get_delivery_status
 
             notifier_ready = bool(
                 getattr(notify.stream_log, "ready", False) or getattr(notify.stream_msg, "ready", False)
             )
+            notifier_delivery = get_delivery_status()
         except Exception:
             notifier_ready = False
 
@@ -207,6 +211,9 @@ async def get_health_status(user: str = Depends(get_current_user)):
         latest_run_status=latest_run.status.name.lower() if latest_run else None,
         latest_run_status_info=latest_run.status_info if latest_run else None,
         scheduler_error=scheduler_error,
+        notifier_last_status=notifier_delivery.get("status"),
+        notifier_last_time=notifier_delivery.get("time"),
+        notifier_last_error=notifier_delivery.get("error"),
     )
 
 
@@ -242,10 +249,27 @@ async def cancel_schedule_run(schedule_id: str, user: str = Depends(get_current_
 
 
 @router.get("/api/runs", response_model=List[RunHistoryItem])
-async def list_runs(limit: int = 50, user: str = Depends(get_current_user)):
+async def list_runs(
+    limit: int = 50,
+    offset: int = 0,
+    status: str = None,
+    user: str = Depends(get_current_user),
+):
     """List recent run records."""
     limit = min(max(limit, 1), 200)
-    return [_run_to_history_item(run) for run in RunContext.list_recent(limit=limit)]
+    offset = max(offset, 0)
+    return [
+        _run_to_history_item(run)
+        for run in RunContext.list_recent(limit=limit, offset=offset, status=status)
+    ]
+
+
+@router.delete("/api/runs", response_model=RunCleanupResponse)
+async def cleanup_runs(days: int = 30, user: str = Depends(get_current_user)):
+    """Delete cached run records older than the requested number of days."""
+    if not isinstance(days, int) or isinstance(days, bool) or days <= 0:
+        raise HTTPException(status_code=400, detail="days must be a positive integer")
+    return RunCleanupResponse(status="deleted", deleted=RunContext.cleanup_older_than(days))
 
 
 @router.get("/api/runs/{run_id}", response_model=RunHistoryItem)

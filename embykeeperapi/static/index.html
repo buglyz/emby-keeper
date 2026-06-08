@@ -180,8 +180,13 @@
       previewSchedule(data) { return this.post('/api/schedule/preview', data); },
       getStatus() { return this.get('/api/status'); },
       getHealth() { return this.get('/api/status/health'); },
-      getRuns(limit = 50) { return this.get(`/api/runs?limit=${limit}`); },
+      getRuns({ limit = 50, offset = 0, status = null } = {}) {
+        const params = new URLSearchParams({ limit, offset });
+        if (status) params.set('status', status);
+        return this.get(`/api/runs?${params.toString()}`);
+      },
       getRunLogs(id) { return this.get(`/api/runs/${encodeURIComponent(id)}/logs`); },
+      cleanupRuns(days) { return this.delete(`/api/runs?days=${encodeURIComponent(days)}`); },
       healthz() { return this.get('/healthz'); },
 
       // Config
@@ -189,6 +194,8 @@
       updateConfig(data) { return this.put('/api/config', data); },
       exportConfig() { return this.get('/api/config/export'); },
       backupConfig() { return this.post('/api/config/backup'); },
+      listBackups() { return this.get('/api/config/backups'); },
+      restoreBackup(id) { return this.post(`/api/config/backups/${encodeURIComponent(id)}/restore`, { confirm: true }); },
       getNotifier() { return this.get('/api/config/notifier'); },
       updateNotifier(data) { return this.put('/api/config/notifier', data); },
       testNotifier(data) { return this.post('/api/config/notifier/test', data); },
@@ -836,16 +843,29 @@
 
     // ============ Schedule Page ============
     const RunHistoryPage = {
-      components: { NCard, NDataTable, NButton, NSpace, NTag, NEmpty, NSpin, NModal, NText },
+      components: { NCard, NDataTable, NButton, NSpace, NTag, NEmpty, NSpin, NModal, NText, NSelect, NInputNumber, NPopconfirm },
       template: `
         <div class="page-container">
           <n-card title="运行历史">
             <template #header-extra>
-              <n-button size="small" @click="loadData">刷新</n-button>
+              <n-space align="center">
+                <n-select v-model:value="statusFilter" :options="statusOptions" size="small" style="width:130px" @update:value="loadData(true)" />
+                <n-input-number v-model:value="cleanupDays" :min="1" :precision="0" size="small" style="width:110px" />
+                <n-popconfirm @positive-click="handleCleanup">
+                  <template #trigger>
+                    <n-button size="small" :loading="cleanupLoading">清理旧记录</n-button>
+                  </template>
+                  清理超过 {{ cleanupDays }} 天的运行记录？
+                </n-popconfirm>
+                <n-button size="small" @click="loadData(true)">刷新</n-button>
+              </n-space>
             </template>
             <n-spin :show="loading">
               <n-data-table v-if="runs.length" :columns="columns" :data="runs" :bordered="false" />
               <n-empty v-else description="暂无运行记录" />
+              <n-space v-if="runs.length && hasMore" justify="center" style="margin-top:12px">
+                <n-button size="small" :loading="loadingMore" @click="loadMore">加载更多</n-button>
+              </n-space>
             </n-spin>
           </n-card>
           <n-modal v-model:show="logModalVisible" preset="card" style="width:min(900px, 92vw)" title="运行日志">
@@ -865,6 +885,12 @@
         const message = useMessage();
         const runs = ref([]);
         const loading = ref(true);
+        const loadingMore = ref(false);
+        const cleanupLoading = ref(false);
+        const statusFilter = ref(null);
+        const cleanupDays = ref(30);
+        const pageSize = 50;
+        const hasMore = ref(false);
         const logModalVisible = ref(false);
         const logLoading = ref(false);
         const selectedRunId = ref('');
@@ -896,11 +922,44 @@
           }},
         ];
 
-        async function loadData() {
+        const statusOptions = [
+          { label: '全部状态', value: null },
+          { label: '成功', value: 'success' },
+          { label: '失败', value: 'fail' },
+          { label: '错误', value: 'error' },
+          { label: '运行中', value: 'running' },
+          { label: '已取消', value: 'cancelled' },
+        ];
+
+        async function loadData(reset = true) {
           loading.value = true;
-          try { runs.value = await API.getRuns(100); }
+          try {
+            const data = await API.getRuns({ limit: pageSize, offset: 0, status: statusFilter.value });
+            runs.value = data;
+            hasMore.value = data.length === pageSize;
+          }
           catch (e) { message.error(e.message); }
           finally { loading.value = false; }
+        }
+
+        async function loadMore() {
+          loadingMore.value = true;
+          try {
+            const data = await API.getRuns({ limit: pageSize, offset: runs.value.length, status: statusFilter.value });
+            runs.value = runs.value.concat(data);
+            hasMore.value = data.length === pageSize;
+          } catch (e) { message.error(e.message); }
+          finally { loadingMore.value = false; }
+        }
+
+        async function handleCleanup() {
+          cleanupLoading.value = true;
+          try {
+            const res = await API.cleanupRuns(cleanupDays.value || 30);
+            message.success(`已清理 ${res.deleted || 0} 条运行记录`);
+            await loadData(true);
+          } catch (e) { message.error(e.message); }
+          finally { cleanupLoading.value = false; }
         }
 
         async function openRunLogs(runId) {
@@ -916,7 +975,7 @@
         }
 
         onMounted(loadData);
-        return { runs, loading, columns, logModalVisible, logLoading, selectedRunId, runLogs, loadData, openRunLogs, formatDate };
+        return { runs, loading, loadingMore, cleanupLoading, statusFilter, statusOptions, cleanupDays, hasMore, columns, logModalVisible, logLoading, selectedRunId, runLogs, loadData, loadMore, handleCleanup, openRunLogs, formatDate };
       }
     };
 
@@ -1021,7 +1080,7 @@
 
     // ============ Config Page ============
     const ConfigPage = {
-      components: { NCard, NButton, NSpace, NInput, NInputNumber, NSelect, NDescriptions, NDescriptionsItem, NSpin, NText, NSwitch, NTag, NAlert },
+      components: { NCard, NButton, NSpace, NInput, NInputNumber, NSelect, NDescriptions, NDescriptionsItem, NSpin, NText, NSwitch, NTag, NAlert, NDataTable, NEmpty, NPopconfirm },
       template: `
         <div class="page-container">
           <n-spin :show="loading">
@@ -1039,6 +1098,7 @@
                 <n-descriptions-item label="账号文件可写">{{ healthData.web_accounts_writable ? '是' : '否' }}</n-descriptions-item>
                 <n-descriptions-item label="Web 认证">{{ healthData.auth_configured ? '已配置' : '未配置' }}</n-descriptions-item>
                 <n-descriptions-item label="通知">{{ healthData.notifier_configured ? (healthData.notifier_ready ? '已就绪' : '已配置') : '未配置' }}</n-descriptions-item>
+                <n-descriptions-item label="通知发送">{{ healthData.notifier_last_status ? (healthData.notifier_last_status + (healthData.notifier_last_error ? ' / ' + healthData.notifier_last_error : '')) : '-' }}</n-descriptions-item>
                 <n-descriptions-item label="最近运行">{{ healthData.latest_run_id ? healthData.latest_run_id + ' / ' + healthData.latest_run_status : '-' }}</n-descriptions-item>
                 <n-descriptions-item label="配置路径">{{ healthData.config_path || '-' }}</n-descriptions-item>
                 <n-descriptions-item label="账号路径">{{ healthData.web_accounts_path || '-' }}</n-descriptions-item>
@@ -1073,10 +1133,12 @@
             </n-card>
 
             <n-card title="备份与导出" style="margin-bottom:16px">
-              <n-space justify="end">
+              <n-space justify="end" style="margin-bottom:12px">
                 <n-button :loading="exportingBackup" @click="handleExportConfig">下载脱敏快照</n-button>
                 <n-button :loading="creatingBackup" type="primary" @click="handleCreateBackup">创建本地备份</n-button>
               </n-space>
+              <n-data-table v-if="backups.length" :columns="backupColumns" :data="backups" :bordered="false" size="small" />
+              <n-empty v-else description="暂无本地备份" />
             </n-card>
 
             <n-card title="通知配置">
@@ -1114,12 +1176,14 @@
         const configData = ref(null);
         const healthData = ref(null);
         const notifierData = ref(null);
+        const backups = ref([]);
         const loading = ref(true);
         const saving = ref(false);
         const savingNotifier = ref(false);
         const testingNotifier = ref(false);
         const exportingBackup = ref(false);
         const creatingBackup = ref(false);
+        const restoringBackup = ref('');
         const editConfig = reactive({
           emby_time_range: '', emby_interval_days: '', emby_concurrency: 1,
           proxy_hostname: '', proxy_port: null, proxy_scheme: null,
@@ -1129,12 +1193,29 @@
           telegram_bot_token: '', telegram_chat_id: '',
         });
 
+        function formatDate(value) {
+          return value ? new Date(value).toLocaleString() : '-';
+        }
+
+        const backupColumns = [
+          { title: '备份 ID', key: 'id', width: 190 },
+          { title: '创建时间', key: 'created_at', render(row) { return formatDate(row.created_at); } },
+          { title: '文件', key: 'files', render(row) { return (row.files || []).join(', ') || '-'; } },
+          { title: '操作', key: 'actions', width: 100, render(row) {
+            return Vue.h(naiveUI.NPopconfirm, { onPositiveClick: () => handleRestoreBackup(row.id) }, {
+              trigger: () => Vue.h(naiveUI.NButton, { size: 'small', loading: restoringBackup.value === row.id }, () => '恢复'),
+              default: () => `恢复备份 ${row.id}？当前配置会先自动备份。`,
+            });
+          }},
+        ];
+
         async function loadData() {
           try {
             configData.value = await API.getConfig();
             Object.assign(editConfig, configData.value);
             healthData.value = await API.getHealth();
             notifierData.value = await API.getNotifier();
+            backups.value = await API.listBackups();
             notifierForm.enabled = notifierData.value.enabled;
             notifierForm.method = notifierData.value.method === 'telegram' ? 'telegram' : 'apprise';
             notifierForm.telegram_chat_id = notifierData.value.telegram_chat_id || '';
@@ -1246,8 +1327,18 @@
           finally { creatingBackup.value = false; }
         }
 
+        async function handleRestoreBackup(id) {
+          restoringBackup.value = id;
+          try {
+            const res = await API.restoreBackup(id);
+            message.success(`已恢复 ${res.restored_files.join(', ')}`);
+            await loadData();
+          } catch (e) { message.error(e.message); }
+          finally { restoringBackup.value = ''; }
+        }
+
         onMounted(loadData);
-        return { configData, healthData, notifierData, loading, saving, savingNotifier, testingNotifier, exportingBackup, creatingBackup, editConfig, notifierForm, handleSave, handleSaveNotifier, handleTestNotifier, handleExportConfig, handleCreateBackup };
+        return { configData, healthData, notifierData, backups, backupColumns, loading, saving, savingNotifier, testingNotifier, exportingBackup, creatingBackup, restoringBackup, editConfig, notifierForm, handleSave, handleSaveNotifier, handleTestNotifier, handleExportConfig, handleCreateBackup, handleRestoreBackup };
       }
     };
 
