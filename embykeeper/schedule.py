@@ -145,6 +145,11 @@ class Scheduler:
         config_str = json.dumps(config, sort_keys=True)
         return hashlib.md5(config_str.encode()).hexdigest()
 
+    def _runs_once(self) -> bool:
+        return self.days == 0 or (
+            isinstance(self.days, (list, tuple)) and self.days[0] == 0 and self.days[1] == 0
+        )
+
     @property
     def next_time(self) -> datetime:
         """获取下一次执行时间"""
@@ -267,5 +272,5 @@ class Scheduler:
             self._next_time = None
 
             # If days is 0, break the loop after one execution
-            if self.days == 0 or (isinstance(self.days, (list, tuple)) and self.days[0] == 0):
+            if self._runs_once():
                 break
