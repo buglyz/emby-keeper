@@ -25,6 +25,10 @@ async def _close_notifier_stream(stream, name):
         logger.warning(f"{name}消息通知流关闭失败, 已忽略: {type(e).__name__}")
 
 
+def _notifier_stream_ready(stream) -> bool:
+    return bool(getattr(stream, "ready", True))
+
+
 async def _stop_notifier():
     global stream_log, stream_msg, handler_log_id, handler_msg_id
 
@@ -113,14 +117,23 @@ async def start_notifier():
             return None
 
         logger.info("关键消息将通过 Apprise 推送.")
-        stream_log = AppriseStream(uri=notifier.apprise_uri)
+        next_stream_log = AppriseStream(uri=notifier.apprise_uri)
+        next_stream_msg = AppriseStream(uri=notifier.apprise_uri)
+        if not _notifier_stream_ready(next_stream_log) or not _notifier_stream_ready(next_stream_msg):
+            await _close_notifier_stream(next_stream_log, "日志")
+            await _close_notifier_stream(next_stream_msg, "即时")
+            if not change_handle_notifier:
+                change_handle_notifier = config.on_change("notifier", _handle_config_change)
+            return None
+
+        stream_log = next_stream_log
         handler_log_id = logger.add(
             stream_log,
             format=_formatter,
             filter=_filter_log,
             enqueue=True,
         )
-        stream_msg = AppriseStream(uri=notifier.apprise_uri)
+        stream_msg = next_stream_msg
         handler_msg_id = logger.add(
             stream_msg,
             format=_formatter,
