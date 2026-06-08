@@ -53,11 +53,16 @@ def _handle_config_change(*args):
     async def _async():
         global stream_log, stream_msg
 
-        await _stop_notifier()
-        if config.notifier and config.notifier.enabled:
-            streams = await start_notifier()
-            if streams:
-                stream_log, stream_msg = streams
+        try:
+            await _stop_notifier()
+            if config.notifier and config.notifier.enabled:
+                streams = await start_notifier()
+                if streams:
+                    stream_log, stream_msg = streams
+        except asyncio.CancelledError:
+            raise
+        except Exception as e:
+            logger.warning(f"消息通知刷新失败, 已忽略: {type(e).__name__}")
 
     logger.debug("正在刷新消息通知.")
     asyncio.create_task(_async())

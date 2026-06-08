@@ -121,3 +121,27 @@ def test_stop_notifier_continues_after_stream_close_failure():
         assert message_stream.joined is True
 
     asyncio.run(run_test())
+
+
+def test_config_change_refresh_task_ignores_failures(monkeypatch):
+    async def run_test():
+        created_tasks = []
+        original_create_task = notify.asyncio.create_task
+
+        def capture_task(coro):
+            task = original_create_task(coro)
+            created_tasks.append(task)
+            return task
+
+        async def fail_stop_notifier():
+            raise RuntimeError("stop failed")
+
+        monkeypatch.setattr(notify.asyncio, "create_task", capture_task)
+        monkeypatch.setattr(notify, "_stop_notifier", fail_stop_notifier)
+
+        notify._handle_config_change()
+
+        assert created_tasks
+        await created_tasks[0]
+
+    asyncio.run(run_test())
