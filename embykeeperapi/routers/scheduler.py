@@ -1,3 +1,4 @@
+from datetime import datetime
 from typing import List
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -70,17 +71,23 @@ async def get_dashboard_status(user: str = Depends(get_current_user)):
     enabled = sum(1 for a in accounts.values() if a.get("enabled", True))
     running = 0
     online = 0
+    last_global_watch_time = None
     for aid, a in accounts.items():
         st = bridge.get_account_status(aid)
         if st.get("is_running", False):
             running += 1
         if st.get("is_online", False):
             online += 1
+        last_watch_time = st.get("last_watch_time")
+        if isinstance(last_watch_time, datetime) and (
+            last_global_watch_time is None or last_watch_time > last_global_watch_time
+        ):
+            last_global_watch_time = last_watch_time
 
     return DashboardStatus(
         total_servers=total,
         enabled_servers=enabled,
         running_servers=running,
         online_servers=online,
-        last_global_watch_time=None,
+        last_global_watch_time=last_global_watch_time,
     )

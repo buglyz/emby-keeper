@@ -1,4 +1,5 @@
 import asyncio
+from datetime import datetime
 
 import pytest
 from fastapi import HTTPException
@@ -88,5 +89,47 @@ def test_run_now_preserves_bridge_status(schedule_id, account_id, bridge_result,
         monkeypatch.setattr(bridge, "trigger_watch_many", fake_trigger_watch_many)
 
         assert await run_now(schedule_id, user="tester") == bridge_result
+
+    asyncio.run(run_test())
+
+
+def test_dashboard_status_reports_latest_watch_time(monkeypatch):
+    async def run_test():
+        class WebAccounts:
+            def get_all(self):
+                return {
+                    "alice": {"enabled": True},
+                    "bob": {"enabled": False},
+                    "carol": {"enabled": True},
+                }
+
+        statuses = {
+            "alice": {
+                "is_running": True,
+                "is_online": True,
+                "last_watch_time": datetime(2026, 1, 1, 8, 0),
+            },
+            "bob": {
+                "is_running": False,
+                "is_online": False,
+                "last_watch_time": "invalid",
+            },
+            "carol": {
+                "is_running": False,
+                "is_online": True,
+                "last_watch_time": datetime(2026, 1, 2, 9, 0),
+            },
+        }
+
+        bridge.web_accounts = WebAccounts()
+        monkeypatch.setattr(bridge, "get_account_status", lambda account_id: statuses[account_id])
+
+        response = await get_dashboard_status(user="tester")
+
+        assert response.total_servers == 3
+        assert response.enabled_servers == 2
+        assert response.running_servers == 1
+        assert response.online_servers == 2
+        assert response.last_global_watch_time == datetime(2026, 1, 2, 9, 0)
 
     asyncio.run(run_test())
