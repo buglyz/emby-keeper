@@ -151,3 +151,17 @@ def test_run_context_ignores_invalid_children_cache(tmp_path):
     assert run.get_running_children() == []
 
     config.reset()
+
+
+def test_run_context_ignores_children_cache_read_failure(monkeypatch):
+    run = RunContext(id="PARENT")
+
+    def fail_get(key, default=None):
+        if key == "runinfo.children.PARENT":
+            raise OSError("read failed")
+        return default
+
+    monkeypatch.setattr("embykeeper.runinfo.cache.get", fail_get)
+
+    assert run.get_children() == []
+    assert run.get_running_children() == []

@@ -213,7 +213,11 @@ class RunContext(BaseModel):
     def get_children(self):
         """获取所有子任务"""
         children = []
-        child_ids = cache.get(f"runinfo.children.{self.id}", [])
+        try:
+            child_ids = cache.get(f"runinfo.children.{self.id}", [])
+        except Exception as e:
+            logger.warning(f"运行记录 {self.id} 子任务读取失败, 已忽略: {type(e).__name__}")
+            return children
         if not isinstance(child_ids, list):
             return children
         for child_id in child_ids:
@@ -272,7 +276,11 @@ class RunContext(BaseModel):
     def get_running_children(self):
         """获取所有正在运行的子任务"""
         children = []
-        child_ids = cache.get(f"runinfo.children.{self.id}", [])
+        try:
+            child_ids = cache.get(f"runinfo.children.{self.id}", [])
+        except Exception as e:
+            logger.warning(f"运行记录 {self.id} 运行中子任务读取失败, 已忽略: {type(e).__name__}")
+            return children
         if not isinstance(child_ids, list):
             return children
         for child_id in child_ids:
