@@ -248,6 +248,59 @@ def test_create_server_rejects_non_integer_time_when_model_validation_is_bypasse
     asyncio.run(run_test())
 
 
+def test_create_server_rejects_non_string_required_text_when_model_validation_is_bypassed(tmp_path):
+    async def run_test():
+        config.basedir = tmp_path
+        config.set(Config())
+        await bridge.initialize(tmp_path)
+
+        req = EmbyServerCreate.model_construct(
+            url="https://example.com",
+            username=123,
+            auth_method="token",
+            access_token="token-1",
+            _fields_set={"url", "username", "auth_method", "access_token"},
+        )
+
+        try:
+            with pytest.raises(HTTPException) as exc:
+                await create_server(req, user="tester")
+
+            assert exc.value.status_code == 400
+            assert bridge.web_accounts.get_all() == {}
+        finally:
+            await reset_bridge()
+
+    asyncio.run(run_test())
+
+
+def test_create_server_rejects_non_string_optional_text_when_model_validation_is_bypassed(tmp_path):
+    async def run_test():
+        config.basedir = tmp_path
+        config.set(Config())
+        await bridge.initialize(tmp_path)
+
+        req = EmbyServerCreate.model_construct(
+            url="https://example.com",
+            username="alice",
+            auth_method="token",
+            access_token="token-1",
+            play_id=123,
+            _fields_set={"url", "username", "auth_method", "access_token", "play_id"},
+        )
+
+        try:
+            with pytest.raises(HTTPException) as exc:
+                await create_server(req, user="tester")
+
+            assert exc.value.status_code == 400
+            assert bridge.web_accounts.get_all() == {}
+        finally:
+            await reset_bridge()
+
+    asyncio.run(run_test())
+
+
 def test_create_server_rejects_empty_username_without_saving(tmp_path):
     async def run_test():
         config.basedir = tmp_path

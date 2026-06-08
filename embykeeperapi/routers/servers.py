@@ -92,21 +92,25 @@ def _validate_server_fields(url: Optional[str] = None, time=None):
 
 
 def _validate_required_text(field: str, value: Optional[str]):
-    if value is None or not value.strip():
+    if not isinstance(value, str):
+        raise HTTPException(status_code=400, detail=f"{field} must be a string")
+    if not value.strip():
         raise HTTPException(status_code=400, detail=f"{field} cannot be empty")
     return value.strip()
 
 
-def _normalize_optional_text(value: Optional[str]):
+def _normalize_optional_text(value: Optional[str], field: str = "value"):
     if value is None:
         return None
+    if not isinstance(value, str):
+        raise HTTPException(status_code=400, detail=f"{field} must be a string")
     value = value.strip()
     return value or None
 
 
 def _normalized_optional_text_updates(source) -> dict:
     return {
-        field: _normalize_optional_text(getattr(source, field))
+        field: _normalize_optional_text(getattr(source, field), field)
         for field in OPTIONAL_TEXT_FIELDS
         if hasattr(source, field)
     }
@@ -340,7 +344,7 @@ async def update_server(
             elif field == "username":
                 value = _validate_required_text(field, value)
             elif field in OPTIONAL_TEXT_FIELDS:
-                value = _normalize_optional_text(value)
+                value = _normalize_optional_text(value, field)
             update_data[field] = value
 
     if "interval_days" in fields_set or "time_range" in fields_set:
