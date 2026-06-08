@@ -61,10 +61,37 @@ def test_use_str_fields_accept_integer_values():
 
     assert cfg.emby.interval_days == "7"
 
+    cfg = Config(
+        emby={
+            "account": [
+                {
+                    "url": "https://example.com",
+                    "username": "alice",
+                    "interval_days": 7,
+                }
+            ]
+        }
+    )
+
+    assert cfg.emby.account[0].interval_days == "7"
+
 
 def test_use_str_fields_reject_boolean_values():
     with pytest.raises(ValidationError):
         Config(emby={"interval_days": True})
+
+    with pytest.raises(ValidationError):
+        Config(
+            emby={
+                "account": [
+                    {
+                        "url": "https://example.com",
+                        "username": "alice",
+                        "interval_days": True,
+                    }
+                ]
+            }
+        )
 
 
 def test_numeric_config_fields_reject_boolean_values():

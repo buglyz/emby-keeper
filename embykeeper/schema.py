@@ -98,7 +98,7 @@ class EmbyAccount(ConfigModel):
     enabled: Optional[bool] = True
 
     # 站点单独配置
-    interval_days: Optional[Union[int, str]] = None
+    interval_days: Optional[UseStr] = None
     time_range: Optional[str] = None
 
     # 向后兼容字段
