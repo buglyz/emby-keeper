@@ -27,9 +27,9 @@ WEB_ACCOUNT_TEXT_FIELDS = {
     "client_version",
     "device",
     "device_id",
-    "interval_days",
     "time_range",
 }
+WEB_ACCOUNT_AUTH_METHODS = {"token", "password"}
 _DROP_FIELD = object()
 
 
@@ -91,6 +91,26 @@ def _sanitize_optional_text(value):
     return value or _DROP_FIELD
 
 
+def _sanitize_auth_method(value):
+    if not isinstance(value, str):
+        return _DROP_FIELD
+    value = value.strip().lower()
+    if value not in WEB_ACCOUNT_AUTH_METHODS:
+        return _DROP_FIELD
+    return value
+
+
+def _sanitize_interval_days(value):
+    if value is None or isinstance(value, bool):
+        return _DROP_FIELD
+    if isinstance(value, int):
+        return str(value)
+    if not isinstance(value, str):
+        return _DROP_FIELD
+    value = value.strip()
+    return value or _DROP_FIELD
+
+
 def _sanitize_account_record(data) -> Optional[dict]:
     if not isinstance(data, dict):
         return None
@@ -125,6 +145,18 @@ def _sanitize_account_record(data) -> Optional[dict]:
             sanitized.pop("time", None)
         else:
             sanitized["time"] = value
+    if "interval_days" in sanitized:
+        value = _sanitize_interval_days(sanitized["interval_days"])
+        if value is _DROP_FIELD:
+            sanitized.pop("interval_days", None)
+        else:
+            sanitized["interval_days"] = value
+    if "auth_method" in sanitized:
+        value = _sanitize_auth_method(sanitized["auth_method"])
+        if value is _DROP_FIELD:
+            sanitized.pop("auth_method", None)
+        else:
+            sanitized["auth_method"] = value
     return sanitized
 
 

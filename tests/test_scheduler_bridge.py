@@ -562,7 +562,22 @@ def test_web_account_data_normalizes_legacy_text_fields(tmp_path):
                     "device_id": 123,
                     "interval_days": " 7 ",
                     "time_range": " <8:00AM,9:00AM> ",
-                }
+                },
+                "bob@example.com": {
+                    "url": "https://bob.example.com",
+                    "username": "bob",
+                    "interval_days": 12,
+                },
+                "bool@example.com": {
+                    "url": "https://bool.example.com",
+                    "username": "bool",
+                    "interval_days": True,
+                },
+                "list@example.com": {
+                    "url": "https://list.example.com",
+                    "username": "list",
+                    "interval_days": [7, 12],
+                },
             }
         ),
         encoding="utf-8",
@@ -578,16 +593,92 @@ def test_web_account_data_normalizes_legacy_text_fields(tmp_path):
             "play_id": "item-1",
             "interval_days": "7",
             "time_range": "<8:00AM,9:00AM>",
-        }
+        },
+        "bob@example.com": {
+            "url": "https://bob.example.com",
+            "username": "bob",
+            "interval_days": "12",
+        },
+        "bool@example.com": {
+            "url": "https://bool.example.com",
+            "username": "bool",
+        },
+        "list@example.com": {
+            "url": "https://list.example.com",
+            "username": "list",
+        },
     }
     assert accounts.get_all() == expected
     assert json.loads(accounts_file.read_text(encoding="utf-8")) == expected
-    assert len(accounts.to_emby_accounts()) == 1
+    assert len(accounts.to_emby_accounts()) == 4
     backups = list(tmp_path.glob("web_accounts.json.corrupt.*"))
     assert len(backups) == 1
     backup_data = json.loads(backups[0].read_text(encoding="utf-8"))
     assert backup_data["alice@example.com"]["device"] == "   "
     assert backup_data["alice@example.com"]["device_id"] == 123
+    assert backup_data["bool@example.com"]["interval_days"] is True
+    assert backup_data["list@example.com"]["interval_days"] == [7, 12]
+
+
+def test_web_account_data_normalizes_legacy_auth_method(tmp_path):
+    accounts_file = tmp_path / "web_accounts.json"
+    accounts_file.write_text(
+        json.dumps(
+            {
+                "token@example.com": {
+                    "url": "https://token.example.com",
+                    "username": "token",
+                    "auth_method": " TOKEN ",
+                },
+                "password@example.com": {
+                    "url": "https://password.example.com",
+                    "username": "password",
+                    "auth_method": "password",
+                },
+                "legacy@example.com": {
+                    "url": "https://legacy.example.com",
+                    "username": "legacy",
+                    "auth_method": "legacy",
+                },
+                "numeric@example.com": {
+                    "url": "https://numeric.example.com",
+                    "username": "numeric",
+                    "auth_method": 123,
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    accounts = WebAccountData(tmp_path)
+
+    expected = {
+        "token@example.com": {
+            "url": "https://token.example.com",
+            "username": "token",
+            "auth_method": "token",
+        },
+        "password@example.com": {
+            "url": "https://password.example.com",
+            "username": "password",
+            "auth_method": "password",
+        },
+        "legacy@example.com": {
+            "url": "https://legacy.example.com",
+            "username": "legacy",
+        },
+        "numeric@example.com": {
+            "url": "https://numeric.example.com",
+            "username": "numeric",
+        },
+    }
+    assert accounts.get_all() == expected
+    assert json.loads(accounts_file.read_text(encoding="utf-8")) == expected
+    backups = list(tmp_path.glob("web_accounts.json.corrupt.*"))
+    assert len(backups) == 1
+    backup_data = json.loads(backups[0].read_text(encoding="utf-8"))
+    assert backup_data["legacy@example.com"]["auth_method"] == "legacy"
+    assert backup_data["numeric@example.com"]["auth_method"] == 123
 
 
 def test_web_account_data_keeps_memory_unchanged_when_save_fails(tmp_path, monkeypatch):
