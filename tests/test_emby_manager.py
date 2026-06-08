@@ -87,6 +87,20 @@ def test_watch_main_ignores_disabled_accounts(monkeypatch):
     asyncio.run(run_test())
 
 
+def test_schedule_all_handles_missing_emby_config():
+    async def run_test():
+        config.set(Config(emby=None))
+        manager = EmbyManager()
+
+        try:
+            assert await manager.schedule_all() is None
+            assert await manager.run_all(instant=True) is None
+        finally:
+            await manager.shutdown()
+
+    asyncio.run(run_test())
+
+
 def test_watch_main_marks_context_cancelled(monkeypatch):
     async def run_test():
         manager = EmbyManager()

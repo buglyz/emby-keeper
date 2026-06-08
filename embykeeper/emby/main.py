@@ -11,11 +11,17 @@ from embykeeper.schedule import Scheduler
 from embykeeper.utils import show_exception, truncate_str
 from embykeeper.runinfo import RunContext, RunStatus
 from embykeeper.var import console
-from embykeeper.schema import EmbyAccount
+from embykeeper.schema import EmbyAccount, EmbyConfig
 
 from .api import Emby, EmbyPlayError, EmbyConnectError, EmbyRequestError, EmbyError
 
 logger = logger.bind(scheme="embywatcher")
+
+
+def _get_emby_config() -> EmbyConfig:
+    if config._cache and config._cache.emby:
+        return config._cache.emby
+    return EmbyConfig()
 
 
 def _default_url_port(scheme: str) -> Optional[int]:
@@ -75,7 +81,7 @@ class EmbyManager:
                 self.stop_account(account_spec)
 
         self.schedule_unified_accounts()
-        for account in config.emby.account:
+        for account in _get_emby_config().account or []:
             if account.enabled and (account.time_range or account.interval_days):
                 scheduler = self.schedule_independent_account(account)
                 if scheduler:
@@ -167,8 +173,9 @@ class EmbyManager:
             return None
 
         account_spec = self.get_spec(account)
-        time_range = account.time_range or config.emby.time_range
-        interval = account.interval_days or config.emby.interval_days
+        emby_config = _get_emby_config()
+        time_range = account.time_range or emby_config.time_range
+        interval = account.interval_days or emby_config.interval_days
 
         def make_on_next_time(spec):
             return lambda t: logger.bind(log=True).info(
@@ -194,8 +201,9 @@ class EmbyManager:
 
     def schedule_unified_accounts(self):
         """Schedule unified emby watch for global accounts"""
+        emby_config = _get_emby_config()
         unified_accounts = [
-            a for a in config.emby.account if a.enabled and not (a.time_range or a.interval_days)
+            a for a in emby_config.account or [] if a.enabled and not (a.time_range or a.interval_days)
         ]
 
         if not unified_accounts:
@@ -211,8 +219,8 @@ class EmbyManager:
 
         scheduler = Scheduler.from_str(
             func=func,
-            interval_days=config.emby.interval_days,
-            time_range=config.emby.time_range,
+            interval_days=emby_config.interval_days,
+            time_range=emby_config.time_range,
             on_next_time=on_next_time,
             sid="emby.watch.global",
             description="Emby 保活任务",
@@ -226,7 +234,7 @@ class EmbyManager:
         self.schedule_unified_accounts()
 
         # Schedule independent accounts
-        for account in config.emby.account:
+        for account in _get_emby_config().account or []:
             if account.enabled and (account.time_range or account.interval_days):
                 scheduler = self.schedule_independent_account(account)
                 if scheduler:
@@ -281,7 +289,7 @@ class EmbyManager:
 
         # 在config中查找匹配的emby配置
         account = None
-        for a in config.emby.account:
+        for a in _get_emby_config().account or []:
             if _same_emby_origin(a, parsed):
                 account = a
                 break
@@ -339,7 +347,7 @@ class EmbyManager:
             return None
         logger.info("开始执行 Emby 保活.")
         tasks = []
-        sem = asyncio.Semaphore(config.emby.concurrency or 100000)
+        sem = asyncio.Semaphore(_get_emby_config().concurrency or 100000)
 
         ctx = RunContext.prepare(description="使用全局设置的 Emby 统一保活")
         ctx.start(RunStatus.INITIALIZING)
@@ -427,4 +435,4 @@ class EmbyManager:
         return ctx.finish(RunStatus.SUCCESS, f"保活成功")
 
     async def run_all(self, instant: bool = False):
-        return await self._watch_main(config.emby.account, instant)
+        return await self._watch_main(_get_emby_config().account or [], instant)
