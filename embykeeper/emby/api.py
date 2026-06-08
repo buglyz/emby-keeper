@@ -415,6 +415,8 @@ class Emby:
 
     def _build_url(self, path: str) -> str:
         path = str(path)
+        if path.startswith("//"):
+            return f"{urlsplit(str(self.a.url)).scheme}:{path}"
         if path.startswith(("http://", "https://")):
             return path
 

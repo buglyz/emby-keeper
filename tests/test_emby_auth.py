@@ -443,6 +443,7 @@ def test_build_url_preserves_configured_base_path():
     assert emby._build_url("Videos/item-1/stream") == "https://example.com/emby/Videos/item-1/stream"
     assert emby._build_url("/emby/Videos/item-1/stream") == ("https://example.com/emby/Videos/item-1/stream")
     assert emby._build_url("https://cdn.example.com/video.mp4") == "https://cdn.example.com/video.mp4"
+    assert emby._build_url("//cdn.example.com/video.mp4") == "https://cdn.example.com/video.mp4"
 
 
 def test_stream_request_keeps_session_open_until_response_is_closed(monkeypatch):
