@@ -4,7 +4,7 @@ import pytest
 from starlette.requests import Request
 from starlette.responses import Response
 
-from embykeeperapi.app import ProxyFixMiddleware, _normalize_root_path, lifespan
+from embykeeperapi.app import ProxyFixMiddleware, _is_reserved_spa_path, _normalize_root_path, lifespan
 from embykeeperapi.scheduler_bridge import bridge
 
 
@@ -36,6 +36,19 @@ def test_lifespan_resets_bridge_when_initialize_fails(tmp_path, monkeypatch):
 )
 def test_normalize_root_path(value, expected):
     assert _normalize_root_path(value) == expected
+
+
+@pytest.mark.parametrize(
+    ("path", "expected"),
+    [
+        ("api", True),
+        ("api/servers", True),
+        ("healthz", True),
+        ("dashboard", False),
+    ],
+)
+def test_reserved_spa_paths(path, expected):
+    assert _is_reserved_spa_path(path) is expected
 
 
 def test_proxy_fix_middleware_uses_first_non_empty_forwarded_for():

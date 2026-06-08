@@ -52,6 +52,10 @@ def _normalize_root_path(prefix: str) -> str:
     return "/" + prefix.strip("/")
 
 
+def _is_reserved_spa_path(path: str) -> bool:
+    return path == "api" or path.startswith("api/") or path == "healthz"
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Initialize scheduler bridge on startup, cleanup on shutdown."""
@@ -132,7 +136,7 @@ def create_app() -> FastAPI:
 
         @app.get("/{path:path}")
         async def serve_spa(path: str):
-            if path.startswith("api/") or path == "healthz":
+            if _is_reserved_spa_path(path):
                 return JSONResponse({"detail": "Not Found"}, status_code=404)
             return FileResponse(str(static_dir / "index.html"))
 
