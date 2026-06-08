@@ -20,8 +20,10 @@ def test_jwt_secret_file_does_not_break_fernet_key_generation(tmp_path, monkeypa
 
     assert (tmp_path / "jwt_secret.key").is_file()
     assert not (tmp_path / "jwt_secret.key.tmp").exists()
+    assert not list(tmp_path.glob(".jwt_secret.key.*.tmp"))
     assert (tmp_path / "secret.key").is_file()
     assert not (tmp_path / "secret.key.tmp").exists()
+    assert not list(tmp_path.glob(".secret.key.*.tmp"))
     assert stat.S_IMODE((tmp_path / "secret.key").stat().st_mode) == 0o600
     assert decrypt_token(encrypted, tmp_path) == "emby-token"
 
@@ -73,6 +75,23 @@ def test_existing_jwt_secret_file_is_owner_only(tmp_path, monkeypatch):
     assert auth.JWT_SECRET == hashlib.sha256(b"jwt-secret").hexdigest()
 
 
+def test_jwt_secret_generation_creates_missing_basedir(tmp_path, monkeypatch):
+    for key in ("EK_SECRET", "EK_WEBPASS", "EK_TOKEN"):
+        monkeypatch.delenv(key, raising=False)
+    basedir = tmp_path / "missing" / "secrets"
+    old_secret = auth.JWT_SECRET
+
+    try:
+        init_jwt_secret_from_basedir(basedir)
+
+        key_file = basedir / "jwt_secret.key"
+        assert key_file.is_file()
+        assert stat.S_IMODE(key_file.stat().st_mode) == 0o600
+        assert auth.JWT_SECRET == hashlib.sha256(key_file.read_bytes()).hexdigest()
+    finally:
+        auth.JWT_SECRET = old_secret
+
+
 def test_empty_jwt_secret_file_is_replaced(tmp_path, monkeypatch):
     for key in ("EK_SECRET", "EK_WEBPASS", "EK_TOKEN"):
         monkeypatch.delenv(key, raising=False)
@@ -84,6 +103,7 @@ def test_empty_jwt_secret_file_is_replaced(tmp_path, monkeypatch):
     key_bytes = key_file.read_bytes()
     assert key_bytes
     assert not (tmp_path / "jwt_secret.key.tmp").exists()
+    assert not list(tmp_path.glob(".jwt_secret.key.*.tmp"))
     assert stat.S_IMODE(key_file.stat().st_mode) == 0o600
     assert auth.JWT_SECRET == hashlib.sha256(key_bytes).hexdigest()
     assert auth.JWT_SECRET != hashlib.sha256(b"").hexdigest()

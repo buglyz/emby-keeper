@@ -1,6 +1,7 @@
 import base64
 import os
 from pathlib import Path
+from tempfile import NamedTemporaryFile
 
 from cryptography.fernet import Fernet
 
@@ -33,16 +34,25 @@ def _derive_fernet_key(secret: bytes) -> bytes:
 
 
 def _write_key(key_file: Path, key: bytes):
-    tmp_path = key_file.with_suffix(f"{key_file.suffix}.tmp")
+    tmp_path = None
     try:
-        tmp_path.write_bytes(key)
+        with NamedTemporaryFile(
+            "wb",
+            dir=key_file.parent,
+            prefix=f".{key_file.name}.",
+            suffix=".tmp",
+            delete=False,
+        ) as tmp:
+            tmp_path = Path(tmp.name)
+            tmp.write(key)
         os.chmod(tmp_path, 0o600)
         tmp_path.replace(key_file)
     except OSError:
-        try:
-            tmp_path.unlink(missing_ok=True)
-        except OSError:
-            pass
+        if tmp_path is not None:
+            try:
+                tmp_path.unlink(missing_ok=True)
+            except OSError:
+                pass
         raise
 
 

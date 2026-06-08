@@ -4,6 +4,8 @@ import os
 import secrets
 import time
 from datetime import datetime, timedelta
+from pathlib import Path
+from tempfile import NamedTemporaryFile
 
 from typing import Dict, List
 
@@ -55,16 +57,25 @@ def _chmod_secret_file(path):
 
 
 def _write_secret_file_atomic(path, key_bytes: bytes):
-    tmp_path = path.with_suffix(f"{path.suffix}.tmp")
+    tmp_path = None
     try:
-        tmp_path.write_bytes(key_bytes)
+        with NamedTemporaryFile(
+            "wb",
+            dir=path.parent,
+            prefix=f".{path.name}.",
+            suffix=".tmp",
+            delete=False,
+        ) as tmp:
+            tmp_path = Path(tmp.name)
+            tmp.write(key_bytes)
         _chmod_secret_file(tmp_path)
         tmp_path.replace(path)
     except OSError:
-        try:
-            tmp_path.unlink(missing_ok=True)
-        except OSError:
-            pass
+        if tmp_path is not None:
+            try:
+                tmp_path.unlink(missing_ok=True)
+            except OSError:
+                pass
         raise
 
 
@@ -73,9 +84,9 @@ def init_jwt_secret_from_basedir(basedir):
     global JWT_SECRET
     if _get_env_secret("EK_SECRET") or _get_env_secret("EK_WEBPASS") or _get_env_secret("EK_TOKEN"):
         return
-    from pathlib import Path
 
     basedir = Path(basedir)
+    basedir.mkdir(parents=True, exist_ok=True)
     key_file = basedir / JWT_SECRET_FILE
     if key_file.is_file():
         key_bytes = key_file.read_bytes().strip()
