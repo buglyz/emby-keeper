@@ -21,12 +21,14 @@ def validate_schedule_fields(interval_days=None, time_range=None, *, use_default
         if interval_range_match:
             min_days = int(interval_range_match.group(1))
             max_days = int(interval_range_match.group(2))
+            if min_days <= 0 or max_days <= 0:
+                raise ValueError("interval_days values must be greater than 0")
             if min_days > max_days:
                 raise ValueError("interval_days min must be <= max")
         else:
             fixed_days = int(interval)
-            if fixed_days < 0:
-                raise ValueError("interval_days cannot be negative")
+            if fixed_days <= 0:
+                raise ValueError("interval_days must be greater than 0")
 
         watch_time = str(watch_time)
         time_range_match = re.fullmatch(r"<\s*(.*?)\s*,\s*(.*?)\s*>", watch_time)

@@ -14,6 +14,8 @@ def test_validate_schedule_fields_accepts_valid_interval_and_time_range():
     [
         ("<12,7>", "8:00AM"),
         ("-7", "8:00AM"),
+        ("0", "8:00AM"),
+        ("<0,7>", "8:00AM"),
         ("7 trailing", "8:00AM"),
         ("7", "8:00AM trailing"),
         ("7", "<8:00AM>"),
