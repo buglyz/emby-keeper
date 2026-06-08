@@ -27,6 +27,29 @@ def test_rate_limit_removes_stale_attempts():
     assert "203.0.113.1" not in auth._failed_attempts
 
 
+def test_record_failed_attempt_prunes_stale_entries(monkeypatch):
+    auth._failed_attempts.clear()
+    now = time.time()
+    auth._failed_attempts["203.0.113.1"] = [now - 3700, now - 10]
+    monkeypatch.setattr(auth.time, "time", lambda: now)
+
+    auth.record_failed_attempt("203.0.113.1")
+
+    assert len(auth._failed_attempts["203.0.113.1"]) == 2
+    assert now - 3700 not in auth._failed_attempts["203.0.113.1"]
+
+
+def test_record_failed_attempt_caps_entries_per_ip(monkeypatch):
+    auth._failed_attempts.clear()
+    now = time.time()
+    monkeypatch.setattr(auth.time, "time", lambda: now)
+
+    for _ in range(auth.MAX_FAILED_PER_HOUR + 3):
+        auth.record_failed_attempt("203.0.113.1")
+
+    assert len(auth._failed_attempts["203.0.113.1"]) == auth.MAX_STORED_FAILED_ATTEMPTS
+
+
 def test_pre_shared_token_validation_rejects_non_string(monkeypatch):
     monkeypatch.setenv("EK_TOKEN", "token-1")
 

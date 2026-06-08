@@ -23,6 +23,8 @@ security = HTTPBearer(auto_error=False)
 # Simple rate limiter: track failed login attempts
 _failed_attempts: Dict[str, List[float]] = {}
 MAX_FAILED_PER_HOUR = 5
+RATE_LIMIT_WINDOW_SECONDS = 3600
+MAX_STORED_FAILED_ATTEMPTS = MAX_FAILED_PER_HOUR
 TRUTHY_ENV_VALUES = {"1", "true", "yes", "on"}
 
 
@@ -217,11 +219,11 @@ def check_rate_limit(ip: str) -> bool:
     now = time.time()
     # Periodic cleanup: remove stale IPs (no attempts in last hour)
     if len(_failed_attempts) > 100:
-        stale = [k for k, v in _failed_attempts.items() if not v or now - v[-1] > 3600]
+        stale = [k for k, v in _failed_attempts.items() if not v or now - v[-1] > RATE_LIMIT_WINDOW_SECONDS]
         for k in stale:
             del _failed_attempts[k]
     attempts = _failed_attempts.get(ip, [])
-    attempts = [t for t in attempts if now - t < 3600]
+    attempts = [t for t in attempts if now - t < RATE_LIMIT_WINDOW_SECONDS]
     if attempts:
         _failed_attempts[ip] = attempts
     else:
@@ -232,9 +234,9 @@ def check_rate_limit(ip: str) -> bool:
 def record_failed_attempt(ip: str):
     """Record a failed login attempt for rate limiting."""
     now = time.time()
-    if ip not in _failed_attempts:
-        _failed_attempts[ip] = []
-    _failed_attempts[ip].append(now)
+    attempts = [t for t in _failed_attempts.get(ip, []) if now - t < RATE_LIMIT_WINDOW_SECONDS]
+    attempts.append(now)
+    _failed_attempts[ip] = attempts[-MAX_STORED_FAILED_ATTEMPTS:]
 
 
 def clear_failed_attempts(ip: str):
