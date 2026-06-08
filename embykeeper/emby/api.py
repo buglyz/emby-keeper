@@ -106,8 +106,11 @@ class Emby:
         cache.delete(key)
         return {}
 
+    def _credentials_cache_key(self) -> str:
+        return f"emby.credential.{self.hostname}.{self.a.username}"
+
     def _load_credentials(self):
-        data = self._get_cached_dict(f"emby.credential.{self.hostname}.{self.a.username}", "登录凭据")
+        data = self._get_cached_dict(self._credentials_cache_key(), "登录凭据")
         self._token = data.get("token", None)
         self._user_id = data.get("userid", None)
 
@@ -226,12 +229,18 @@ class Emby:
         return env
 
     def set_credentials(self, token: str, user_id: str = None):
+        if not token:
+            self._token = None
+            self._user_id = None
+            cache.delete(self._credentials_cache_key())
+            return
+
         self._token = token
         self._user_id = user_id
         cache_data = {"token": token}
         if user_id:
             cache_data["userid"] = user_id
-        cache.set(f"emby.credential.{self.hostname}.{self.a.username}", cache_data)
+        cache.set(self._credentials_cache_key(), cache_data)
 
     @staticmethod
     def _json_or_none(resp: Response, expected_type=None):

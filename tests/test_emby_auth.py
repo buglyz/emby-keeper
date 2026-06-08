@@ -181,6 +181,26 @@ def test_login_handles_invalid_success_json(monkeypatch):
     assert emby.token is None
 
 
+def test_login_without_access_token_clears_cached_credentials(monkeypatch):
+    key = "emby.credential.example.com.alice"
+    cache.set(key, {"token": "old-token", "userid": "old-user"})
+    account = EmbyAccount(url="https://example.com", username="alice", password="secret")
+    emby = Emby(account)
+
+    async def fake_request(method, path, _login=False, **kwargs):
+        assert method == "POST"
+        assert path == "/Users/AuthenticateByName"
+        assert _login is True
+        return DummyResponse({"User": {"Id": "user-1"}})
+
+    monkeypatch.setattr(emby, "_request", fake_request)
+
+    assert asyncio.run(emby.login()) is None
+    assert emby.token is None
+    assert emby.user_id is None
+    assert cache.get(key) is None
+
+
 def test_authorization_header_uses_real_user_id_only():
     account = EmbyAccount(
         url="https://example.com",
