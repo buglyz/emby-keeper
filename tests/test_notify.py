@@ -87,3 +87,37 @@ def test_stop_notifier_ignores_missing_logger_handlers():
         assert notify.handler_msg_id is None
 
     asyncio.run(run_test())
+
+
+def test_stop_notifier_continues_after_stream_close_failure():
+    class FailingStream:
+        def close(self):
+            raise OSError("close failed")
+
+        async def join(self):
+            raise AssertionError("join should not run after close fails")
+
+    class FakeStream:
+        def __init__(self):
+            self.closed = False
+            self.joined = False
+
+        def close(self):
+            self.closed = True
+
+        async def join(self):
+            self.joined = True
+
+    async def run_test():
+        message_stream = FakeStream()
+        notify.stream_log = FailingStream()
+        notify.stream_msg = message_stream
+
+        await notify._stop_notifier()
+
+        assert notify.stream_log is None
+        assert notify.stream_msg is None
+        assert message_stream.closed is True
+        assert message_stream.joined is True
+
+    asyncio.run(run_test())

@@ -17,6 +17,14 @@ handler_msg_id = None
 change_handle_notifier = None
 
 
+async def _close_notifier_stream(stream, name):
+    try:
+        stream.close()
+        await stream.join()
+    except Exception as e:
+        logger.warning(f"{name}消息通知流关闭失败, 已忽略: {type(e).__name__}")
+
+
 async def _stop_notifier():
     global stream_log, stream_msg, handler_log_id, handler_msg_id
 
@@ -34,12 +42,10 @@ async def _stop_notifier():
         handler_msg_id = None
 
     if stream_log:
-        stream_log.close()
-        await stream_log.join()
+        await _close_notifier_stream(stream_log, "日志")
         stream_log = None
     if stream_msg:
-        stream_msg.close()
-        await stream_msg.join()
+        await _close_notifier_stream(stream_msg, "即时")
         stream_msg = None
 
 
