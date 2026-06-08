@@ -1386,6 +1386,33 @@ def test_schedule_status_tolerates_malformed_display_fields(tmp_path):
     assert schedules[0]["time_range"] == "08:30"
 
 
+def test_schedule_info_marks_running_manager_task(tmp_path):
+    bridge = SchedulerBridge()
+    bridge.web_accounts = WebAccountData(tmp_path)
+
+    class Scheduler:
+        sid = "emby.watch.global"
+        days = 7
+        start_time = time(8, 30)
+        _next_time = None
+        next_time = None
+
+    class RunningTask:
+        def done(self):
+            return False
+
+    bridge.emby_manager = SimpleNamespace(
+        _schedulers={"unified": Scheduler()},
+        _running=set(),
+        _tasks={"unified": RunningTask()},
+    )
+
+    schedules = bridge.get_schedule_info()
+
+    assert schedules[0]["account_spec"] == "unified"
+    assert schedules[0]["is_running"] is True
+
+
 def test_trigger_watch_cleanup_preserves_newer_task_for_same_account(tmp_path, monkeypatch):
     async def run_test():
         bridge = SchedulerBridge()

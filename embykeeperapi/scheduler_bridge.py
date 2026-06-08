@@ -732,6 +732,11 @@ class SchedulerBridge:
                 logger.warning(f"Failed to read next schedule time for {account_spec}: {type(e).__name__}")
                 next_time = None
 
+            manager_running = getattr(self.emby_manager, "_running", set())
+            manager_tasks = getattr(self.emby_manager, "_tasks", {})
+            running_task = manager_tasks.get(account_spec)
+            task_is_running = bool(running_task and not running_task.done())
+
             account_data = self.web_accounts.get(account_spec) if self.web_accounts else None
             enabled = account_data.get("enabled", True) if account_data else True
 
@@ -742,7 +747,7 @@ class SchedulerBridge:
                     "interval_days": interval_days,
                     "time_range": time_range,
                     "next_time": next_time,
-                    "is_running": account_spec in getattr(self.emby_manager, "_running", set()),
+                    "is_running": account_spec in manager_running or task_is_running,
                     "enabled": enabled,
                 }
             )
