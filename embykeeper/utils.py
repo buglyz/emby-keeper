@@ -386,13 +386,17 @@ def distribute_numbers(min_value, max_value, num_elements=1, min_distance=0, max
 def get_proxy_str(proxy: Optional[ProxyConfig] = None, curl: bool = False):
     """将代理设置转为 URL 形式."""
     if proxy:
+        from urllib.parse import quote
+
         if curl and proxy.scheme == "socks5":
             schema = "socks5h"
         else:
             schema = proxy.scheme
         proxy_str = f"{schema}://"
         if proxy.username:
-            proxy_str += f"{proxy.username or ''}:{proxy.password or ''}@"
+            username = quote(str(proxy.username), safe="")
+            password = quote(str(proxy.password or ""), safe="")
+            proxy_str += f"{username}:{password}@"
         proxy_str += f"{proxy.hostname}:{proxy.port}"
     else:
         proxy_str = None

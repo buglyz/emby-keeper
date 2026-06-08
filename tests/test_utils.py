@@ -2,7 +2,8 @@ import asyncio
 
 import pytest
 
-from embykeeper.utils import AsyncTaskPool, batch, format_byte_human, truncate_str
+from embykeeper.schema import ProxyConfig
+from embykeeper.utils import AsyncTaskPool, batch, format_byte_human, get_proxy_str, truncate_str
 
 
 def test_truncate_str_uses_requested_prefix_length():
@@ -25,6 +26,18 @@ def test_batch_rejects_non_positive_size():
 def test_format_byte_human_uses_byte_pluralization():
     assert format_byte_human(1) == "1 Byte"
     assert format_byte_human(2) == "2 Bytes"
+
+
+def test_get_proxy_str_quotes_credentials():
+    proxy = ProxyConfig(
+        scheme="http",
+        hostname="127.0.0.1",
+        port=1080,
+        username="user@example.com",
+        password="p@ss:word",
+    )
+
+    assert get_proxy_str(proxy) == "http://user%40example.com:p%40ss%3Aword@127.0.0.1:1080"
 
 
 def test_async_task_pool_yields_all_precompleted_tasks():
