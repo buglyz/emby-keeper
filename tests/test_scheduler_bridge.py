@@ -218,6 +218,36 @@ def test_api_bridge_skips_credential_cache_for_urls_without_hostname(tmp_path):
     asyncio.run(run_test())
 
 
+def test_web_account_user_id_is_normalized(tmp_path):
+    accounts = WebAccountData(tmp_path)
+
+    assert accounts._get_account_user_id({"user_id": " user-1 "}) == "user-1"
+    assert accounts._get_account_user_id({"userid": 123}) == "123"
+    assert accounts._get_account_user_id({"user_id": ["invalid"]}) == ""
+    assert accounts._get_account_user_id({"user_id": True}) == ""
+
+
+def test_cached_account_credentials_use_normalized_user_id(tmp_path):
+    cache_key = "emby.credential.example.com.alice"
+    cache.delete(cache_key)
+    bridge = SchedulerBridge()
+    bridge.web_accounts = WebAccountData(tmp_path)
+
+    bridge._cache_account_credentials(
+        {
+            "url": "https://example.com",
+            "username": "alice",
+            "encrypted_token": encrypt_token("token-1", tmp_path),
+            "user_id": 123,
+        }
+    )
+
+    try:
+        assert cache.get(cache_key) == {"token": "token-1", "userid": "123"}
+    finally:
+        cache.delete(cache_key)
+
+
 def test_web_account_data_backs_up_invalid_json_shapes(tmp_path):
     accounts_file = tmp_path / "web_accounts.json"
     accounts_file.write_text(

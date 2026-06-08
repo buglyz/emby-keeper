@@ -148,7 +148,14 @@ class WebAccountData:
         return decrypt_token(encrypted_token, self.basedir) if encrypted_token else ""
 
     def _get_account_user_id(self, data: dict) -> str:
-        return data.get("user_id") or data.get("userid") or ""
+        user_id = data.get("user_id") or data.get("userid") or ""
+        if isinstance(user_id, bool) or user_id is None:
+            return ""
+        if isinstance(user_id, int):
+            user_id = str(user_id)
+        if not isinstance(user_id, str):
+            return ""
+        return user_id.strip()
 
     def _to_emby_account(self, data: dict) -> EmbyAccount:
         account_dict = {
