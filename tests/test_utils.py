@@ -60,6 +60,12 @@ def test_get_proxy_str_quotes_credentials():
     assert get_proxy_str(proxy) == "http://user%40example.com:p%40ss%3Aword@127.0.0.1:1080"
 
 
+def test_get_proxy_str_ignores_incomplete_proxy():
+    assert get_proxy_str(ProxyConfig(scheme="http", hostname=None, port=1080)) is None
+    assert get_proxy_str(ProxyConfig(scheme="http", hostname="127.0.0.1", port=None)) is None
+    assert get_proxy_str(ProxyConfig(scheme=None, hostname="127.0.0.1", port=1080)) is None
+
+
 def test_distribute_numbers_accepts_default_min_distance():
     values = distribute_numbers(0, 10, num_elements=3)
 

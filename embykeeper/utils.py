@@ -406,7 +406,7 @@ def distribute_numbers(min_value, max_value, num_elements=1, min_distance=0, max
 
 def get_proxy_str(proxy: Optional[ProxyConfig] = None, curl: bool = False):
     """将代理设置转为 URL 形式."""
-    if proxy:
+    if proxy and proxy.scheme and proxy.hostname and proxy.port:
         from urllib.parse import quote
 
         if curl and proxy.scheme == "socks5":
