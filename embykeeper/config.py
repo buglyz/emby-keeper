@@ -366,9 +366,10 @@ class ConfigManager(ProxyBase):
 
         if conf_file:
             logger.debug(f"现在使用的配置文件为: {conf_file.absolute()}")
+            is_same_conf_file = self._conf_file == conf_file
             self.set(cfg_model)
-            if not self._conf_file == conf_file:
-                self._conf_file = conf_file
+            self._conf_file = conf_file
+            if not is_same_conf_file:
                 await self.start_observer()
             return True
 

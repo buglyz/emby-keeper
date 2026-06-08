@@ -72,3 +72,28 @@ def test_reset_cancels_observer_task():
         await asyncio.gather(task, return_exceptions=True)
 
     asyncio.run(run_test())
+
+
+def test_reload_conf_does_not_restart_same_file_observer(tmp_path, monkeypatch):
+    async def run_test():
+        config_file = tmp_path / "config.toml"
+        config_file.write_text(
+            """
+[emby]
+time_range = "<8:00AM,9:00AM>"
+interval_days = "7"
+""".strip(),
+            encoding="utf-8",
+        )
+        manager = ConfigManager(config_file)
+        manager._conf_file = config_file
+
+        async def fail_start_observer(_manager):
+            raise AssertionError("same config file should not restart observer")
+
+        monkeypatch.setattr(ConfigManager, "start_observer", fail_start_observer)
+
+        assert await manager.reload_conf(config_file) is True
+        assert manager._conf_file == config_file
+
+    asyncio.run(run_test())
