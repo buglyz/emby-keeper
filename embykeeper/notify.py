@@ -83,6 +83,8 @@ async def start_notifier():
     if notifier.method == "apprise":
         if not notifier.apprise_uri:
             logger.error("Apprise URI 未配置, 无法发送消息推送.")
+            if not change_handle_notifier:
+                change_handle_notifier = config.on_change("notifier", _handle_config_change)
             return None
 
         logger.info("关键消息将通过 Apprise 推送.")
