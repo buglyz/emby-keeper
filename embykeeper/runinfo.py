@@ -10,7 +10,7 @@ import string
 from loguru import logger
 
 from rich.text import Text
-from pydantic import BaseModel, PrivateAttr
+from pydantic import BaseModel, PrivateAttr, ValidationError
 
 from .utils import to_iterable
 from .cache import cache
@@ -169,7 +169,11 @@ class RunContext(BaseModel):
         # 从缓存加载
         run_json = cache.get(f"runinfo.{run_id}")
         if run_json:
-            return cls.model_validate_json(run_json)
+            try:
+                return cls.model_validate_json(run_json)
+            except (ValidationError, ValueError) as e:
+                logger.warning(f"运行记录 {run_id} 损坏, 已忽略: {type(e).__name__}")
+                return None
         return None
 
     def get_parents(self):
