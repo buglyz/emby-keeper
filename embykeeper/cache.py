@@ -94,6 +94,7 @@ class Cache:
             next_data = deepcopy(self._data)
             current = next_data
             path = []
+            changed = False
 
             # 遍历路径, 检查每一层
             for part in parts[:-1]:
@@ -105,6 +106,7 @@ class Cache:
             # 检查并删除最后一个键
             if isinstance(current, dict) and parts[-1] in current:
                 del current[parts[-1]]
+                changed = True
 
                 # 清理空字典
                 for part, parent in reversed(path):
@@ -113,8 +115,9 @@ class Cache:
                     else:
                         break
 
-            self._write_json_cache(next_data)
-            self._data = next_data
+            if changed:
+                self._write_json_cache(next_data)
+                self._data = next_data
 
     def find_by_prefix(self, prefix: str) -> List[str]:
         if self._mongo_client:

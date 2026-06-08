@@ -80,3 +80,21 @@ def test_json_cache_isolates_mutable_values(tmp_path):
     assert cache.get("example.value") == {"items": ["a"], "meta": {"source": "test"}}
 
     config.reset()
+
+
+def test_json_cache_delete_missing_key_is_noop(tmp_path, monkeypatch):
+    config.set(Config())
+    config.basedir = tmp_path
+
+    cache = Cache()
+    cache.set("scheduler.example", {"next_time": "old"})
+
+    def fail_write(*_args, **_kwargs):
+        raise AssertionError("delete of missing key should not write")
+
+    monkeypatch.setattr(cache, "_write_json_cache", fail_write)
+
+    cache.delete("scheduler.missing")
+    assert cache.get("scheduler.example") == {"next_time": "old"}
+
+    config.reset()
