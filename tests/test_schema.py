@@ -65,3 +65,69 @@ def test_use_str_fields_accept_integer_values():
 def test_use_str_fields_reject_boolean_values():
     with pytest.raises(ValidationError):
         Config(emby={"interval_days": True})
+
+
+def test_numeric_config_fields_reject_boolean_values():
+    with pytest.raises(ValidationError):
+        Config(proxy={"hostname": "127.0.0.1", "port": True, "scheme": "socks5"})
+
+    with pytest.raises(ValidationError):
+        Config(emby={"concurrency": True})
+
+    with pytest.raises(ValidationError):
+        Config(
+            emby={
+                "account": [
+                    {
+                        "url": "https://example.com",
+                        "username": "alice",
+                        "time": True,
+                    }
+                ]
+            }
+        )
+
+
+def test_emby_account_time_rejects_invalid_ranges():
+    with pytest.raises(ValidationError):
+        Config(emby={"account": [{"url": "https://example.com", "username": "alice", "time": 0}]})
+
+    with pytest.raises(ValidationError):
+        Config(
+            emby={
+                "account": [
+                    {
+                        "url": "https://example.com",
+                        "username": "alice",
+                        "time": [600, 300],
+                    }
+                ]
+            }
+        )
+
+    with pytest.raises(ValidationError):
+        Config(
+            emby={
+                "account": [
+                    {
+                        "url": "https://example.com",
+                        "username": "alice",
+                        "time": [300, 600, 900],
+                    }
+                ]
+            }
+        )
+
+
+def test_emby_account_time_accepts_positive_integer_and_range():
+    cfg = Config(
+        emby={
+            "account": [
+                {"url": "https://example.com", "username": "alice", "time": 300},
+                {"url": "https://example.net", "username": "bob", "time": [300, 600]},
+            ]
+        }
+    )
+
+    assert cfg.emby.account[0].time == 300
+    assert cfg.emby.account[1].time == [300, 600]

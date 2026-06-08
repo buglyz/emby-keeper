@@ -1,5 +1,5 @@
 from typing import List, Optional, Union, Dict, Any, ClassVar, Set
-from pydantic import BaseModel, Field, model_validator, ValidationError
+from pydantic import BaseModel, Field, StrictInt, model_validator, ValidationError
 from pydantic.networks import HttpUrl
 from pydantic_core import core_schema
 
@@ -57,7 +57,7 @@ class UseHttpUrl(HttpUrl):
 
 class ProxyConfig(ConfigModel):
     hostname: Optional[str] = None
-    port: Optional[int] = Field(None, gt=0)
+    port: Optional[StrictInt] = Field(None, gt=0)
     scheme: Optional[str] = Field(None, pattern="^(socks5|http)$")
     username: Optional[str] = None
     password: Optional[str] = None
@@ -75,8 +75,8 @@ class NotifierConfig(ConfigModel):
 class MediaServerBaseConfig(ConfigModel):
     time_range: Optional[UseStr] = DEFAULT_TIME_RANGE
     interval_days: Optional[UseStr] = DEFAULT_EMBY_INTERVAL_DAYS
-    concurrency: Optional[int] = 1
-    retries: Optional[int] = 5
+    concurrency: Optional[StrictInt] = Field(1, gt=0)
+    retries: Optional[StrictInt] = Field(5, ge=0)
 
 
 class EmbyAccount(ConfigModel):
@@ -84,7 +84,7 @@ class EmbyAccount(ConfigModel):
     username: str
     password: Optional[str] = None
     name: str = None
-    time: Optional[Union[int, List[int]]] = [300, 600]
+    time: Optional[Union[StrictInt, List[StrictInt]]] = [300, 600]
     useragent: Optional[str] = None
     client: Optional[str] = None
     client_version: Optional[str] = None
@@ -108,6 +108,21 @@ class EmbyAccount(ConfigModel):
     ua: Optional[str] = None
     jellyfin: Optional[bool] = None
     continuous: Optional[bool] = False
+
+    @model_validator(mode="after")
+    def validate_time(self):
+        if self.time is None:
+            return self
+        if isinstance(self.time, list):
+            if len(self.time) != 2:
+                raise ValueError("time must be an integer or a [min, max] pair")
+            if self.time[0] <= 0 or self.time[1] <= 0:
+                raise ValueError("time values must be positive")
+            if self.time[0] > self.time[1]:
+                raise ValueError("time[0] (min) must be <= time[1] (max)")
+        elif self.time <= 0:
+            raise ValueError("time must be positive")
+        return self
 
 
 class EmbyConfig(MediaServerBaseConfig):
