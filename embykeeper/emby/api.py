@@ -361,8 +361,10 @@ class Emby:
         if resp.status_code == 200:
             user = self._json_or_none(resp, dict)
             if user is not None:
-                self.set_credentials(self.token, user.get("Id"))
-                return bool(self.user_id)
+                user_id = self._normalize_user_id(user.get("Id"))
+                if user_id:
+                    self.set_credentials(self.token, user_id)
+                    return True
 
         user_id = await self._discover_user_id_from_sessions()
         if not user_id:

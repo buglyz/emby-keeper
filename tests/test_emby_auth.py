@@ -275,6 +275,31 @@ def test_token_authentication_ignores_invalid_session_user_ids(monkeypatch):
     assert emby.user_id == "user-1"
 
 
+def test_token_authentication_discovers_user_id_when_me_id_is_invalid(monkeypatch):
+    account = EmbyAccount(url="https://example.com", username="alice", device_id="device-1")
+    emby = Emby(account)
+    emby.set_credentials("token-1")
+
+    requests = []
+
+    async def fake_request(method, path, _login=False, **kwargs):
+        requests.append(path)
+        assert method == "GET"
+        assert _login is True
+        if path == "/Users/Me":
+            return DummyResponse({"Id": True})
+        if path == "/Sessions":
+            return DummyResponse([{"UserId": "user-1", "UserName": "alice", "DeviceId": "device-1"}])
+        assert path == "/Users/user-1"
+        return DummyResponse({"Id": "user-1"})
+
+    monkeypatch.setattr(emby, "_request", fake_request)
+
+    assert asyncio.run(emby.authenticate_with_token()) is True
+    assert requests == ["/Users/Me", "/Sessions", "/Users/user-1"]
+    assert emby.user_id == "user-1"
+
+
 def test_token_authentication_preserves_discovered_user_id_when_user_response_id_is_invalid(monkeypatch):
     account = EmbyAccount(url="https://example.com", username="alice", device_id="device-1")
     emby = Emby(account)
@@ -297,6 +322,31 @@ def test_token_authentication_preserves_discovered_user_id_when_user_response_id
 
     assert asyncio.run(emby.authenticate_with_token()) is True
     assert emby.user_id == "user-1"
+
+
+def test_token_authentication_does_not_cache_invalid_users_me_id(monkeypatch):
+    account = EmbyAccount(url="https://example.com", username="alice")
+    emby = Emby(account)
+    emby.set_credentials("token-1")
+    credential_updates = []
+
+    async def fake_request(method, path, _login=False, **kwargs):
+        assert method == "GET"
+        assert _login is True
+        if path == "/Users/Me":
+            return DummyResponse({"Id": True})
+        assert path == "/Sessions"
+        return DummyResponse([])
+
+    monkeypatch.setattr(emby, "_request", fake_request)
+    monkeypatch.setattr(
+        emby,
+        "set_credentials",
+        lambda token, user_id=None: credential_updates.append((token, user_id)),
+    )
+
+    assert asyncio.run(emby.authenticate_with_token()) is False
+    assert credential_updates == []
 
 
 def test_token_authentication_handles_invalid_success_json(monkeypatch):
