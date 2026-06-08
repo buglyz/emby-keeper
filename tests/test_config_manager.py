@@ -155,6 +155,18 @@ def test_basedir_ignores_blank_values(tmp_path):
     assert manager.basedir != tmp_path
 
 
+def test_set_can_preserve_loaded_config_file(tmp_path):
+    manager = ConfigManager()
+    config_file = tmp_path / "config.toml"
+    manager._conf_file = config_file
+
+    assert manager.set(Config(), preserve_conf_file=True) is True
+    assert manager._conf_file == config_file
+
+    assert manager.set(Config()) is True
+    assert manager._conf_file is None
+
+
 def test_reload_conf_does_not_restart_same_file_observer(tmp_path, monkeypatch):
     async def run_test():
         config_file = tmp_path / "config.toml"

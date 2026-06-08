@@ -392,7 +392,7 @@ class SchedulerBridge:
             logger.warning("No valid config loaded; using defaults for API-managed accounts.")
             config.set(Config())
         if config._cache.emby is None:
-            config.set(config._cache.model_copy(update={"emby": EmbyConfig()}))
+            config.set(config._cache.model_copy(update={"emby": EmbyConfig()}), preserve_conf_file=True)
         self._base_emby_accounts = list(config._cache.emby.account or [])
 
         # Merge web-managed accounts into the config
@@ -428,7 +428,7 @@ class SchedulerBridge:
         new_config = config._cache.model_copy(
             update={"emby": emby_config.model_copy(update={"account": all_accounts})}
         )
-        config.set(new_config)
+        config.set(new_config, preserve_conf_file=True)
 
     def add_account(self, account_id: str, data: dict):
         """Add a new account via the web API."""

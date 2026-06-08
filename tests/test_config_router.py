@@ -113,6 +113,22 @@ def test_update_config_creates_missing_emby_section(tmp_path):
     config.reset()
 
 
+def test_update_config_preserves_loaded_config_file(tmp_path):
+    async def run_test():
+        config_file = tmp_path / "config.toml"
+        config_file.write_text("[emby]\nconcurrency = 1\n", encoding="utf-8")
+        config.basedir = tmp_path
+        config.set(Config(emby={"concurrency": 1}))
+        config._conf_file = config_file
+
+        await update_config(GlobalConfigUpdate(emby_concurrency=2), user="tester")
+
+        assert config._conf_file == config_file
+
+    asyncio.run(run_test())
+    config.reset()
+
+
 def test_write_text_atomic_preserves_existing_file_when_replace_fails(tmp_path, monkeypatch):
     config_file = tmp_path / "config.toml"
     config_file.write_text("old-content", encoding="utf-8")

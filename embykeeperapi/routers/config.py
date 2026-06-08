@@ -195,7 +195,7 @@ async def update_config(req: GlobalConfigUpdate, user: str = Depends(get_current
             raise HTTPException(status_code=400, detail=e.errors()[0]["msg"])
 
     _persist_global_config(new_config)
-    if not config.set(new_config):
+    if not config.set(new_config, preserve_conf_file=True):
         raise HTTPException(status_code=400, detail="Invalid config")
 
     return {"status": "updated"}

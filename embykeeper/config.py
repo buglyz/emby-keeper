@@ -124,13 +124,14 @@ class ConfigManager(ProxyBase):
                             logger.warning("根据新配置更新程序状态时出错, 您可能需要重新启动程序.")
                             show_exception(e, regular=False)
 
-    def set(self, value: Union[dict, Config]):
+    def set(self, value: Union[dict, Config], *, preserve_conf_file: bool = False):
         if isinstance(value, dict):
             value = self.validate_config(value)
         if value:
             old_config = self._cache
             self._cache = value
-            self._conf_file = None
+            if not preserve_conf_file:
+                self._conf_file = None
             self._process_changes(old_config, value)
             return True
         else:
@@ -386,7 +387,7 @@ class ConfigManager(ProxyBase):
         if conf_file:
             logger.debug(f"现在使用的配置文件为: {conf_file.absolute()}")
             is_same_conf_file = self._conf_file == conf_file
-            self.set(cfg_model)
+            self.set(cfg_model, preserve_conf_file=True)
             self._conf_file = conf_file
             if not is_same_conf_file:
                 await self.start_observer()

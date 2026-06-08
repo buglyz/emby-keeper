@@ -184,6 +184,19 @@ def test_api_bridge_merge_accounts_creates_missing_emby_config(tmp_path):
     assert config._cache.emby.account == []
 
 
+def test_api_bridge_merge_accounts_preserves_loaded_config_file(tmp_path):
+    config_file = tmp_path / "config.toml"
+    config.basedir = tmp_path
+    config.set(Config())
+    config._conf_file = config_file
+    bridge = SchedulerBridge()
+    bridge.web_accounts = WebAccountData(tmp_path)
+
+    bridge._merge_accounts()
+
+    assert config._conf_file == config_file
+
+
 def test_api_bridge_skips_invalid_encrypted_token_cache_on_initialize(tmp_path):
     async def run_test():
         cache.delete("emby.credential.example.com.alice")
