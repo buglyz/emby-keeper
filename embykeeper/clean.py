@@ -4,6 +4,10 @@ from .cache import cache
 from .var import console
 
 
+def _matches_cache_prefix(key: str, prefix: str) -> bool:
+    return key == prefix or key.startswith(f"{prefix}.")
+
+
 def get_cache_options():
     """获取缓存清理选项"""
     return {
@@ -38,7 +42,9 @@ def clean_cache(cache_key: str = None, cache_prefix: str = None):
             # 特殊处理：清理除凭据和配置外所有缓存
             except_prefixes = ["emby.credential", "config"]
             all_keys = cache.find_by_prefix("")
-            keys_to_delete = [k for k in all_keys if not any(k.startswith(p) for p in except_prefixes)]
+            keys_to_delete = [
+                k for k in all_keys if not any(_matches_cache_prefix(k, p) for p in except_prefixes)
+            ]
             count = len(keys_to_delete)
             cache.delete_many(keys_to_delete)
             return f"已清理除凭据和配置外所有缓存, 共 {count} 条"
