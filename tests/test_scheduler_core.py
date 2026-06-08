@@ -76,3 +76,34 @@ def test_scheduler_with_zero_days_runs_once(monkeypatch):
         assert calls == 1
 
     asyncio.run(run_test())
+
+
+def test_scheduler_ignores_invalid_cached_next_time(tmp_path, monkeypatch):
+    from embykeeper.cache import cache
+
+    cache._cache_file = tmp_path / "cache.json"
+    cache._data = {}
+    scheduler = Scheduler(
+        noop,
+        days=1,
+        start_time="8:00AM",
+        end_time="8:00AM",
+        sid="test.invalid-cache",
+    )
+    cache.set(
+        "scheduler.test.invalid-cache",
+        {
+            "config_hash": scheduler._get_scheduler_config(),
+            "next_time": "not-a-date",
+        },
+    )
+    monkeypatch.setattr(
+        schedule_module,
+        "next_random_datetime",
+        lambda *, start_time, end_time, interval_days: datetime(2026, 1, 1, 8, 0),
+    )
+
+    try:
+        assert scheduler.next_time == datetime(2026, 1, 1, 8, 0)
+    finally:
+        cache.delete("scheduler.test.invalid-cache")

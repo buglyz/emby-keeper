@@ -139,14 +139,18 @@ class Scheduler:
             if cached:
                 cached_config_hash = cached.get("config_hash")
                 cached_time = cached.get("next_time")
+                try:
+                    cached_next_time = parser.parse(cached_time) if cached_time else None
+                except (TypeError, ValueError, parser.ParserError):
+                    cached_next_time = None
 
                 # Check if config hash matches and time hasn't passed
                 if (
                     cached_config_hash == self._get_scheduler_config()
-                    and cached_time
-                    and parser.parse(cached_time) > now
+                    and cached_next_time
+                    and cached_next_time > now
                 ):
-                    next_time = parser.parse(cached_time)
+                    next_time = cached_next_time
 
         # Calculate new next_time if needed
         if not next_time:
