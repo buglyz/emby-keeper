@@ -311,7 +311,10 @@ class ConfigManager(ProxyBase):
         cfg_dict = {}
         env_config = os.environ.get(f"EK_CONFIG", None)
         if env_config:
-            cfg_dict.update(self.load_config_str(env_config))
+            loaded_env_config = self.load_config_str(env_config)
+            if loaded_env_config is None:
+                return False
+            cfg_dict.update(loaded_env_config)
         else:
             if self.windows:
                 default_conf_file = self.basedir / "config.toml"
