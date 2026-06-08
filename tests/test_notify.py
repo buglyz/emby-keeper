@@ -74,3 +74,16 @@ def test_start_notifier_replaces_existing_streams(tmp_path, monkeypatch):
             config.reset()
 
     asyncio.run(run_test())
+
+
+def test_stop_notifier_ignores_missing_logger_handlers():
+    async def run_test():
+        notify.handler_log_id = 999999
+        notify.handler_msg_id = 999998
+
+        await notify._stop_notifier()
+
+        assert notify.handler_log_id is None
+        assert notify.handler_msg_id is None
+
+    asyncio.run(run_test())

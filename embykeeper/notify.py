@@ -21,10 +21,16 @@ async def _stop_notifier():
     global stream_log, stream_msg, handler_log_id, handler_msg_id
 
     if handler_log_id is not None:
-        logger.remove(handler_log_id)
+        try:
+            logger.remove(handler_log_id)
+        except ValueError:
+            pass
         handler_log_id = None
     if handler_msg_id is not None:
-        logger.remove(handler_msg_id)
+        try:
+            logger.remove(handler_msg_id)
+        except ValueError:
+            pass
         handler_msg_id = None
 
     if stream_log:
