@@ -40,6 +40,8 @@ class Cache:
                     self._data = {}
             except json.JSONDecodeError:
                 logger.warning("缓存文件损坏, 将使用全新缓存.")
+            except OSError as e:
+                logger.warning(f"缓存文件读取失败, 将使用全新缓存: {type(e).__name__}.")
 
     def _write_json_cache(self, data=None):
         tmp_path = None

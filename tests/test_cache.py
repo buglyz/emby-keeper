@@ -34,6 +34,18 @@ def test_json_cache_ignores_non_object_file(tmp_path):
     config.reset()
 
 
+def test_json_cache_ignores_unreadable_cache_file(tmp_path):
+    config.set(Config())
+    config.basedir = tmp_path
+    (tmp_path / "cache.json").mkdir()
+
+    cache = Cache()
+
+    assert cache.get("scheduler.example") is None
+
+    config.reset()
+
+
 def test_json_cache_writes_atomically(tmp_path):
     config.set(Config())
     config.basedir = tmp_path
