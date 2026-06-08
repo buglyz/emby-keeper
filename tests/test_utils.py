@@ -73,6 +73,14 @@ def test_distribute_numbers_accepts_default_min_distance():
     assert all(0 <= value <= 10 for value in values)
 
 
+def test_distribute_numbers_does_not_mutate_base_values():
+    base = [8, 2]
+
+    distribute_numbers(0, 10, num_elements=1, base=base)
+
+    assert base == [8, 2]
+
+
 def test_distribute_numbers_rejects_negative_min_distance():
     with pytest.raises(ValueError):
         distribute_numbers(0, 10, min_distance=-1)

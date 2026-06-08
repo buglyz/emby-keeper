@@ -340,7 +340,7 @@ async def optional(lock: Optional[asyncio.Lock]):
             yield
 
 
-def distribute_numbers(min_value, max_value, num_elements=1, min_distance=0, max_distance=None, base=[]):
+def distribute_numbers(min_value, max_value, num_elements=1, min_distance=0, max_distance=None, base=None):
     """随机将一定数量的元素分布在最大最小值之间, 同时限定两元素之间的最小距离和最大距离, 生成起始元素由 `base` 定义."""
     if max_value < min_value:
         raise ValueError("invalid value range.")
@@ -354,6 +354,8 @@ def distribute_numbers(min_value, max_value, num_elements=1, min_distance=0, max
     if max_distance is not None and max_distance < min_distance:
         raise ValueError("invalid distance range.")
 
+    if base is None:
+        base = []
     numbers = sorted(base)
     for value in numbers:
         if value < min_value or value > max_value:
