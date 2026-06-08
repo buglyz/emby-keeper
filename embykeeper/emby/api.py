@@ -632,7 +632,9 @@ class Emby:
         if user is None:
             self.log.warning("登陆时服务器返回内容无法解析, 执行失败.")
             return None
-        self.set_credentials(user.get("AccessToken", None), user.get("User", {}).get("Id"))
+        user_info = user.get("User")
+        user_id = user_info.get("Id") if isinstance(user_info, dict) else None
+        self.set_credentials(user.get("AccessToken", None), user_id)
         if self.token and self.user_id:
             return self.token
 

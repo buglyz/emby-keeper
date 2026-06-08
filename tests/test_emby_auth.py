@@ -201,6 +201,23 @@ def test_login_without_access_token_clears_cached_credentials(monkeypatch):
     assert cache.get(key) is None
 
 
+def test_login_handles_invalid_user_object(monkeypatch):
+    account = EmbyAccount(url="https://example.com", username="alice", password="secret")
+    emby = Emby(account)
+
+    async def fake_request(method, path, _login=False, **kwargs):
+        assert method == "POST"
+        assert path == "/Users/AuthenticateByName"
+        assert _login is True
+        return DummyResponse({"AccessToken": "token-1", "User": "invalid"})
+
+    monkeypatch.setattr(emby, "_request", fake_request)
+
+    assert asyncio.run(emby.login()) is None
+    assert emby.token == "token-1"
+    assert emby.user_id is None
+
+
 def test_authorization_header_uses_real_user_id_only():
     account = EmbyAccount(
         url="https://example.com",
