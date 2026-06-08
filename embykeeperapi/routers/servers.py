@@ -227,8 +227,8 @@ async def create_server(req: EmbyServerCreate, user: str = Depends(get_current_u
 
     # Handle auth method
     if req.auth_method == "token":
-        _validate_required_text("access_token", req.access_token)
-        encrypted_token = encrypt_token(req.access_token, bridge.web_accounts.basedir)
+        access_token = _validate_required_text("access_token", req.access_token)
+        encrypted_token = encrypt_token(access_token, bridge.web_accounts.basedir)
         user_id = None
     elif req.auth_method == "password":
         _validate_required_text("password", req.password)
@@ -369,9 +369,9 @@ async def update_server(
             )
 
     if "access_token" in fields_set:
-        _validate_required_text("access_token", req.access_token)
+        access_token = _validate_required_text("access_token", req.access_token)
         update_data["auth_method"] = "token"
-        update_data["encrypted_token"] = encrypt_token(req.access_token, bridge.web_accounts.basedir)
+        update_data["encrypted_token"] = encrypt_token(access_token, bridge.web_accounts.basedir)
         update_data["user_id"] = None
     elif auth_method == "token" and existing.get("auth_method", "token") != "token":
         raise HTTPException(status_code=400, detail="access_token is required when auth_method is 'token'")

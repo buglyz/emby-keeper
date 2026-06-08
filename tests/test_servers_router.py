@@ -7,7 +7,7 @@ from pydantic import ValidationError
 from embykeeper.config import config
 from embykeeper.emby.api import Emby
 from embykeeper.schema import Config
-from embykeeperapi.crypto import encrypt_token
+from embykeeperapi.crypto import decrypt_token, encrypt_token
 from embykeeperapi.models import EmbyServerCreate, EmbyServerUpdate
 from embykeeperapi.routers.servers import create_server, update_server
 from embykeeperapi.scheduler_bridge import bridge
@@ -459,6 +459,7 @@ def test_create_server_trims_url_username_and_name(tmp_path):
             assert stored["url"] == "https://example.com"
             assert stored["username"] == "alice"
             assert stored["name"] == "primary"
+            assert decrypt_token(stored["encrypted_token"], tmp_path) == "token-1"
         finally:
             await reset_bridge()
 
@@ -598,6 +599,38 @@ def test_update_server_blank_optional_text_fields_remove_existing_values(tmp_pat
             stored = bridge.web_accounts.get(account_id)
             assert "play_id" not in stored
             assert stored["useragent"] == "New Agent"
+        finally:
+            await reset_bridge()
+
+    asyncio.run(run_test())
+
+
+def test_update_server_trims_access_token_before_saving(tmp_path):
+    async def run_test():
+        config.basedir = tmp_path
+        config.set(Config())
+        await bridge.initialize(tmp_path)
+
+        account_id = "alice@example.com"
+        bridge.add_account(
+            account_id,
+            {
+                "url": "https://example.com",
+                "username": "alice",
+                "encrypted_token": encrypt_token("token-old", tmp_path),
+                "auth_method": "token",
+            },
+        )
+
+        try:
+            await update_server(
+                account_id,
+                EmbyServerUpdate(access_token=" token-new "),
+                user="tester",
+            )
+
+            stored = bridge.web_accounts.get(account_id)
+            assert decrypt_token(stored["encrypted_token"], tmp_path) == "token-new"
         finally:
             await reset_bridge()
 
