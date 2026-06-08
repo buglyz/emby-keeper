@@ -1,5 +1,6 @@
 import time
 import asyncio
+from datetime import datetime, timedelta
 
 import pytest
 from fastapi import HTTPException
@@ -54,8 +55,32 @@ def test_auth_methods_ignore_blank_env_values(monkeypatch):
     assert asyncio.run(get_auth_methods()) == {"token": False, "password": False}
 
 
+def test_create_jwt_rejects_invalid_subjects():
+    with pytest.raises(ValueError):
+        auth.create_jwt(subject="")
+
+    with pytest.raises(ValueError):
+        auth.create_jwt(subject=123)
+
+
 @pytest.mark.parametrize("token", [None, "", 123])
 def test_verify_jwt_rejects_non_string_tokens(token):
+    with pytest.raises(HTTPException) as exc:
+        auth.verify_jwt(token)
+
+    assert exc.value.status_code == 401
+
+
+def test_verify_jwt_rejects_non_string_subject():
+    token = auth.jwt.encode(
+        {
+            "sub": 123,
+            "exp": datetime.utcnow() + timedelta(days=1),
+        },
+        auth.JWT_SECRET,
+        algorithm=auth.ALGORITHM,
+    )
+
     with pytest.raises(HTTPException) as exc:
         auth.verify_jwt(token)
 

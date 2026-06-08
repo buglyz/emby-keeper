@@ -98,6 +98,8 @@ def init_jwt_secret_from_basedir(basedir):
 
 def create_jwt(subject: str = "admin", expire_days: int = DEFAULT_EXPIRE_DAYS) -> str:
     """Create a JWT token."""
+    if not isinstance(subject, str) or not subject:
+        raise ValueError("JWT subject must be a non-empty string")
     expire = datetime.utcnow() + timedelta(days=expire_days)
     payload = {"sub": subject, "exp": expire, "iat": datetime.utcnow()}
     return jwt.encode(payload, JWT_SECRET, algorithm=ALGORITHM)
@@ -112,6 +114,9 @@ def verify_jwt(token: str) -> dict:
         )
     try:
         payload = jwt.decode(token, JWT_SECRET, algorithms=[ALGORITHM])
+        subject = payload.get("sub")
+        if subject is not None and not isinstance(subject, str):
+            raise JWTError("Invalid subject")
         return payload
     except JWTError:
         raise HTTPException(
