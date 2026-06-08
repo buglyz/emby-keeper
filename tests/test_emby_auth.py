@@ -994,9 +994,7 @@ def test_audio_stream_index_rejects_non_list_media_streams():
 
 
 def test_audio_stream_index_ignores_non_object_media_streams():
-    assert Emby._audio_stream_index(
-        {"MediaStreams": ["invalid", {"Type": "Audio", "Index": 2}]}
-    ) == 2
+    assert Emby._audio_stream_index({"MediaStreams": ["invalid", {"Type": "Audio", "Index": 2}]}) == 2
 
 
 def test_item_list_methods_return_empty_lists_for_invalid_json(monkeypatch):

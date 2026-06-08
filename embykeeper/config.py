@@ -260,7 +260,7 @@ class ConfigManager(ProxyBase):
         c["enabled"] = False
         c.add(comment("推送方式, 仅支持 apprise:"))
         c["method"] = "apprise"
-        c.add(comment('Apprise 推送地址, 仅当 enabled = true 时有效'))
+        c.add(comment("Apprise 推送地址, 仅当 enabled = true 时有效"))
         c["apprise_uri"] = ""
         doc["notifier"] = c
 

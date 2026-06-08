@@ -6,8 +6,10 @@ from subprocess import Popen
 try:
     from msvcrt import getch
 except ImportError:
+
     def getch():
         return b""
+
 
 from rich import box
 from rich.align import Align

@@ -1,6 +1,5 @@
 from pathlib import Path
 
-
 STATIC_INDEX = Path(__file__).resolve().parents[1] / "embykeeperapi" / "static" / "index.html"
 STATIC_VENDOR = STATIC_INDEX.parent / "vendor"
 

@@ -74,12 +74,14 @@ async def lifespan(app: FastAPI):
     else:
         from appdirs import user_data_dir
         from embykeeper import __name__ as __product__
+
         basedir = Path(user_data_dir(__product__))
 
     basedir.mkdir(parents=True, exist_ok=True)
     logger.info(f"Working directory: {basedir}")
 
     from .auth import init_jwt_secret_from_basedir
+
     init_jwt_secret_from_basedir(basedir)
 
     # Initialize scheduler bridge

@@ -45,7 +45,9 @@ async def list_schedule(user: str = Depends(get_current_user)):
 async def run_now(schedule_id: str, user: str = Depends(get_current_user)):
     """Force immediate execution of a scheduled task."""
     _require_bridge()
-    account_spec = schedule_id.replace("emby.watch.", "") if schedule_id.startswith("emby.watch.") else schedule_id
+    account_spec = (
+        schedule_id.replace("emby.watch.", "") if schedule_id.startswith("emby.watch.") else schedule_id
+    )
 
     if account_spec in {"global", "unified"}:
         result = await bridge.trigger_watch_many(unified_only=True)

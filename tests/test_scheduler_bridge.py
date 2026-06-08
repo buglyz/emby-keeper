@@ -308,9 +308,7 @@ def test_web_account_data_filters_non_object_accounts(tmp_path):
 
     accounts = WebAccountData(tmp_path)
 
-    assert accounts.get_all() == {
-        "alice@example.com": {"url": "https://example.com", "username": "alice"}
-    }
+    assert accounts.get_all() == {"alice@example.com": {"url": "https://example.com", "username": "alice"}}
     assert not list(tmp_path.glob("web_accounts.json.corrupt.*"))
 
 
@@ -329,9 +327,7 @@ def test_web_account_data_filters_accounts_missing_required_fields(tmp_path):
 
     accounts = WebAccountData(tmp_path)
 
-    assert accounts.get_all() == {
-        "alice@example.com": {"url": "https://example.com", "username": "alice"}
-    }
+    assert accounts.get_all() == {"alice@example.com": {"url": "https://example.com", "username": "alice"}}
 
 
 def test_web_account_data_filters_non_string_required_fields(tmp_path):
@@ -349,9 +345,7 @@ def test_web_account_data_filters_non_string_required_fields(tmp_path):
 
     accounts = WebAccountData(tmp_path)
 
-    assert accounts.get_all() == {
-        "alice@example.com": {"url": "https://example.com", "username": "alice"}
-    }
+    assert accounts.get_all() == {"alice@example.com": {"url": "https://example.com", "username": "alice"}}
 
 
 def test_web_account_data_keeps_memory_unchanged_when_save_fails(tmp_path, monkeypatch):

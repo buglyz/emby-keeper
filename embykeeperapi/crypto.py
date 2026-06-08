@@ -4,7 +4,6 @@ from pathlib import Path
 
 from cryptography.fernet import Fernet
 
-
 _fernet_instance = None
 FERNET_KEY_FILE = "secret.key"
 

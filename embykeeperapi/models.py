@@ -3,11 +3,11 @@ from typing import List, Optional, Union
 
 from pydantic import BaseModel, Field, StrictInt
 
-
 WatchTime = Union[StrictInt, List[StrictInt]]
 
 
 # ============ Auth Models ============
+
 
 class TokenExchangeRequest(BaseModel):
     token: str
@@ -25,15 +25,19 @@ class LoginResponse(BaseModel):
 
 # ============ Emby Server (Account) Models ============
 
+
 class EmbyServerCreate(BaseModel):
     """Create a new Emby server account."""
+
     url: str = Field(description="Emby server URL, e.g. https://emby.example.com:8096")
     username: str = Field(description="Emby username")
     auth_method: str = Field(default="token", description="Authentication method: 'token' or 'password'")
     # For token auth: direct AccessToken
     access_token: Optional[str] = Field(default=None, description="AccessToken (for token auth method)")
     # For password auth: will be exchanged for token
-    password: Optional[str] = Field(default=None, description="Password (for password auth method, one-time use)")
+    password: Optional[str] = Field(
+        default=None, description="Password (for password auth method, one-time use)"
+    )
     name: Optional[str] = Field(default=None, description="Display name for this server")
     time: Optional[WatchTime] = Field(default=[300, 600], description="Watch duration range (seconds)")
     allow_multiple: Optional[bool] = Field(default=True, description="Allow playing multiple videos")
@@ -53,6 +57,7 @@ class EmbyServerCreate(BaseModel):
 
 class EmbyServerUpdate(BaseModel):
     """Update an existing Emby server account (all fields optional)."""
+
     url: Optional[str] = None
     username: Optional[str] = None
     auth_method: Optional[str] = None
@@ -76,6 +81,7 @@ class EmbyServerUpdate(BaseModel):
 
 class EmbyServerResponse(BaseModel):
     """Response model for Emby server account (never includes password/token)."""
+
     id: str
     url: str
     username: str
@@ -110,6 +116,7 @@ class EmbyServerToggle(BaseModel):
 
 # ============ Action Models ============
 
+
 class ActionResponse(BaseModel):
     run_id: str
     status: str = "started"
@@ -117,6 +124,7 @@ class ActionResponse(BaseModel):
 
 
 # ============ Schedule Models ============
+
 
 class ScheduleInfo(BaseModel):
     id: str
@@ -130,6 +138,7 @@ class ScheduleInfo(BaseModel):
 
 
 # ============ Config Models ============
+
 
 class ProxyConfigUpdate(BaseModel):
     hostname: Optional[str] = None
@@ -154,6 +163,7 @@ class GlobalConfigResponse(BaseModel):
 
 
 # ============ Status Models ============
+
 
 class DashboardStatus(BaseModel):
     total_servers: int = 0

@@ -37,7 +37,9 @@ def test_healthz_does_not_require_scheduler_bridge():
     asyncio.run(run_test())
 
 
-@pytest.mark.parametrize("handler,args", [(list_schedule, ()), (get_dashboard_status, ()), (run_now, ("unified",))])
+@pytest.mark.parametrize(
+    "handler,args", [(list_schedule, ()), (get_dashboard_status, ()), (run_now, ("unified",))]
+)
 def test_scheduler_routes_return_503_before_bridge_initializes(handler, args):
     async def run_test():
         bridge.web_accounts = None

@@ -273,9 +273,7 @@ scheme = "socks5"
             encoding="utf-8",
         )
         config.basedir = tmp_path
-        config.set(
-            Config(proxy={"hostname": "127.0.0.1", "port": 1080, "scheme": "socks5"})
-        )
+        config.set(Config(proxy={"hostname": "127.0.0.1", "port": 1080, "scheme": "socks5"}))
 
         await update_config(
             GlobalConfigUpdate(

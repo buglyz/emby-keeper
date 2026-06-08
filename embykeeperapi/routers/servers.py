@@ -361,15 +361,9 @@ async def update_server(
 
     auth_method = req.auth_method
     has_access_token = (
-        "access_token" in fields_set
-        and req.access_token is not None
-        and _has_nonblank_text(req.access_token)
+        "access_token" in fields_set and req.access_token is not None and _has_nonblank_text(req.access_token)
     )
-    has_password = (
-        "password" in fields_set
-        and req.password is not None
-        and _has_nonblank_text(req.password)
-    )
+    has_password = "password" in fields_set and req.password is not None and _has_nonblank_text(req.password)
     if auth_method is not None:
         if auth_method not in {"token", "password"}:
             raise HTTPException(status_code=400, detail="auth_method must be 'token' or 'password'")

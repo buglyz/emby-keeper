@@ -133,7 +133,9 @@ class AsyncTaskPool:
                 self.waiter.notify()
                 return await task
 
-        task_name = name or getattr(coro, "__name__", None) or getattr(coro, "__qualname__", None) or "async-task"
+        task_name = (
+            name or getattr(coro, "__name__", None) or getattr(coro, "__qualname__", None) or "async-task"
+        )
         t = asyncio.create_task(wrapper())
         t.set_name(task_name)
         self.tasks.append(t)
@@ -382,8 +384,7 @@ def distribute_numbers(min_value, max_value, num_elements=1, min_distance=0, max
         # Calculate estimated elements for each range
         if min_distance:
             estimated_num_elements = [
-                max(1, min(int((r[1] - r[0]) // min_distance), num_elements))
-                for r in allowed_range
+                max(1, min(int((r[1] - r[0]) // min_distance), num_elements)) for r in allowed_range
             ]
         else:
             estimated_num_elements = [1 for _ in allowed_range]
