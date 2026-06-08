@@ -371,15 +371,16 @@ def distribute_numbers(min_value, max_value, num_elements=1, min_distance=0, max
     for _ in range(num_elements):
         allowed_range = []
         for i in range(-1, len(numbers)):
-            if i == -1:
-                min_allowed_value = min_value
-            else:
-                min_allowed_value = max(numbers[i] + min_distance, min_value)
-            if i == len(numbers) - 1:
-                max_allowed_value = max_value
-            else:
-                max_allowed_value = min(numbers[i + 1] - min_distance, max_value)
-            if min_allowed_value < max_allowed_value:
+            left = numbers[i] if i >= 0 else None
+            right = numbers[i + 1] if i + 1 < len(numbers) else None
+            min_allowed_value = min_value if left is None else max(left + min_distance, min_value)
+            max_allowed_value = max_value if right is None else min(right - min_distance, max_value)
+            if max_distance is not None:
+                if left is not None:
+                    max_allowed_value = min(max_allowed_value, left + max_distance)
+                if right is not None:
+                    min_allowed_value = max(min_allowed_value, right - max_distance)
+            if min_allowed_value <= max_allowed_value:
                 allowed_range.append((min_allowed_value, max_allowed_value))
         if not allowed_range:
             break
@@ -394,13 +395,7 @@ def distribute_numbers(min_value, max_value, num_elements=1, min_distance=0, max
 
         # Select a range using the estimated numbers as weights
         r = random.choices(allowed_range, k=1, weights=estimated_num_elements)[0]
-        d = r[1] - r[0]
-        min_v = r[0] + min_distance if r[0] == min_value else r[0]
-        max_v = r[1]
-        if max_distance is not None and d > max_distance:
-            value = random.uniform(min_v, r[0] + max_distance - min_distance)
-        else:
-            value = random.uniform(min_v, max_v)
+        value = random.uniform(r[0], r[1])
         numbers = sorted(numbers + [value])
         results.append(value)
     return sorted(results)

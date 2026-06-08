@@ -81,6 +81,27 @@ def test_distribute_numbers_does_not_mutate_base_values():
     assert base == [8, 2]
 
 
+def test_distribute_numbers_accepts_single_point_range():
+    assert distribute_numbers(0, 0, num_elements=1) == [0]
+
+
+def test_distribute_numbers_can_fill_exact_distance_endpoints():
+    assert distribute_numbers(0, 10, num_elements=2, min_distance=5, base=[5]) == [0, 10]
+
+
+def test_distribute_numbers_respects_max_distance_between_neighbors(monkeypatch):
+    seen = []
+
+    def fake_uniform(start, end):
+        seen.append((start, end))
+        return start
+
+    monkeypatch.setattr("embykeeper.utils.random.uniform", fake_uniform)
+
+    assert distribute_numbers(0, 10, num_elements=1, min_distance=1, max_distance=5, base=[0]) == [1]
+    assert seen == [(1, 5)]
+
+
 def test_distribute_numbers_rejects_negative_min_distance():
     with pytest.raises(ValueError):
         distribute_numbers(0, 10, min_distance=-1)
