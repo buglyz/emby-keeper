@@ -1056,6 +1056,40 @@ def test_main_page_ignores_invalid_listing_json(monkeypatch):
     asyncio.run(run_test())
 
 
+def test_item_and_user_methods_return_empty_dicts_for_invalid_json(monkeypatch):
+    async def run_test():
+        account = EmbyAccount(url="https://example.com", username="alice")
+        emby = Emby(account)
+        emby.set_credentials("token-1", "user-1")
+
+        async def fake_request(method, path, **kwargs):
+            return BrokenJsonResponse()
+
+        monkeypatch.setattr(emby, "_request", fake_request)
+
+        assert await emby.get_item("item-1") == {}
+        assert await emby.get_user() == {}
+
+    asyncio.run(run_test())
+
+
+def test_item_and_user_methods_return_empty_dicts_for_non_object_json(monkeypatch):
+    async def run_test():
+        account = EmbyAccount(url="https://example.com", username="alice")
+        emby = Emby(account)
+        emby.set_credentials("token-1", "user-1")
+
+        async def fake_request(method, path, **kwargs):
+            return DummyResponse(["invalid"])
+
+        monkeypatch.setattr(emby, "_request", fake_request)
+
+        assert await emby.get_item("item-1") == {}
+        assert await emby.get_user() == {}
+
+    asyncio.run(run_test())
+
+
 @pytest.mark.parametrize(
     ("item", "expected"),
     [

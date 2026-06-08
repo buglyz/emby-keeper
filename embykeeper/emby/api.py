@@ -293,6 +293,11 @@ class Emby:
         return data if data is not None else []
 
     @staticmethod
+    def _json_dict_or_empty(resp: Response):
+        data = Emby._json_or_none(resp, dict)
+        return data if data is not None else {}
+
+    @staticmethod
     def _json_items_or_empty(resp: Response):
         data = Emby._json_or_none(resp, dict)
         if data is None:
@@ -1217,12 +1222,12 @@ class Emby:
 
     async def get_item(self, iid, **kw) -> dict:
         resp = await self._request(method="GET", path=f"/Users/{self.user_id}/Items/{iid}")
-        return resp.json()
+        return self._json_dict_or_empty(resp)
 
     async def get_user(self) -> dict:
         """Get current user information."""
         response = await self._request("GET", f"/Users/{self.user_id}")
-        return response.json()
+        return self._json_dict_or_empty(response)
 
     async def mark_played(self, item_id: str) -> bool:
         """Mark an item as played."""
