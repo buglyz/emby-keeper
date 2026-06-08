@@ -221,3 +221,30 @@ def test_scheduler_ignores_cache_delete_failure(monkeypatch):
         assert calls == 1
 
     asyncio.run(run_test())
+
+
+def test_scheduler_ignores_next_time_callback_failure(monkeypatch):
+    async def run_test():
+        calls = 0
+
+        async def func(_ctx):
+            nonlocal calls
+            calls += 1
+
+        def fail_on_next_time(_next_time):
+            raise RuntimeError("callback failed")
+
+        scheduler = Scheduler(
+            func,
+            days=0,
+            start_time=None,
+            end_time=None,
+            on_next_time=fail_on_next_time,
+        )
+        monkeypatch.setattr(scheduler, "_get_next_time", lambda: datetime.now())
+
+        await asyncio.wait_for(scheduler.schedule(), timeout=1)
+
+        assert calls == 1
+
+    asyncio.run(run_test())

@@ -202,7 +202,11 @@ class Scheduler:
 
             # Call the hook function if provided
             if self.on_next_time:
-                self._ctx = self.on_next_time(self._next_time)
+                try:
+                    self._ctx = self.on_next_time(self._next_time)
+                except Exception as e:
+                    logger.warning(f"计划任务时间回调执行失败, 已忽略: {type(e).__name__}")
+                    self._ctx = None
 
             # Wait until the scheduled time
             wait_seconds = (self._next_time - now).total_seconds()
