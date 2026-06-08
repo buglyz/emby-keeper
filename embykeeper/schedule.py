@@ -138,7 +138,11 @@ class Scheduler:
 
         # Try to get cached next execution time
         if self._cache_key:
-            cached = cache.get(self._cache_key)
+            try:
+                cached = cache.get(self._cache_key)
+            except Exception as e:
+                logger.warning(f"计划任务缓存读取失败, 已忽略: {type(e).__name__}")
+                cached = None
             if isinstance(cached, dict):
                 cached_config_hash = cached.get("config_hash")
                 cached_time = cached.get("next_time")
@@ -174,14 +178,17 @@ class Scheduler:
 
             # Cache the next execution time with config hash
             if self._cache_key:
-                cache.set(
-                    self._cache_key,
-                    {
-                        "config_hash": self._get_scheduler_config(),
-                        "next_time": next_time.isoformat(),
-                        "description": self.description,
-                    },
-                )
+                try:
+                    cache.set(
+                        self._cache_key,
+                        {
+                            "config_hash": self._get_scheduler_config(),
+                            "next_time": next_time.isoformat(),
+                            "description": self.description,
+                        },
+                    )
+                except Exception as e:
+                    logger.warning(f"计划任务缓存写入失败, 已忽略: {type(e).__name__}")
 
         return next_time
 
@@ -226,7 +233,8 @@ class Scheduler:
             if self._cache_key:
                 try:
                     cache.delete(self._cache_key)
-                except KeyError:
+                except Exception as e:
+                    logger.warning(f"计划任务缓存删除失败, 已忽略: {type(e).__name__}")
                     pass
             self._ctx = None
             self._next_time = None

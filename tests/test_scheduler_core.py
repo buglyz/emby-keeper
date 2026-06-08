@@ -169,3 +169,55 @@ def test_scheduler_ignores_timezone_aware_cached_next_time(tmp_path, monkeypatch
         assert scheduler.next_time == datetime(2026, 1, 1, 8, 0)
     finally:
         cache.delete("scheduler.test.aware-cache-time")
+
+
+def test_scheduler_ignores_cache_read_failure(monkeypatch):
+    def fail_get(_key, default=None):
+        raise OSError("read failed")
+
+    monkeypatch.setattr("embykeeper.cache.cache.get", fail_get)
+    monkeypatch.setattr(
+        schedule_module,
+        "next_random_datetime",
+        lambda *, start_time, end_time, interval_days: datetime(2026, 1, 1, 8, 0),
+    )
+    scheduler = Scheduler(noop, days=1, start_time="8:00AM", end_time="8:00AM", sid="test.read-fail")
+
+    assert scheduler.next_time == datetime(2026, 1, 1, 8, 0)
+
+
+def test_scheduler_ignores_cache_write_failure(monkeypatch):
+    def fail_set(_key, _value):
+        raise OSError("write failed")
+
+    monkeypatch.setattr("embykeeper.cache.cache.set", fail_set)
+    monkeypatch.setattr(
+        schedule_module,
+        "next_random_datetime",
+        lambda *, start_time, end_time, interval_days: datetime(2026, 1, 1, 8, 0),
+    )
+    scheduler = Scheduler(noop, days=1, start_time="8:00AM", end_time="8:00AM", sid="test.write-fail")
+
+    assert scheduler.next_time == datetime(2026, 1, 1, 8, 0)
+
+
+def test_scheduler_ignores_cache_delete_failure(monkeypatch):
+    async def run_test():
+        calls = 0
+
+        async def func(_ctx):
+            nonlocal calls
+            calls += 1
+
+        def fail_delete(_key):
+            raise OSError("delete failed")
+
+        scheduler = Scheduler(func, days=0, start_time=None, end_time=None, sid="test.delete-fail")
+        monkeypatch.setattr(scheduler, "_get_next_time", lambda: datetime.now())
+        monkeypatch.setattr("embykeeper.cache.cache.delete", fail_delete)
+
+        await asyncio.wait_for(scheduler.schedule(), timeout=1)
+
+        assert calls == 1
+
+    asyncio.run(run_test())
