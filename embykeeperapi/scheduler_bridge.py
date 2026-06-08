@@ -458,9 +458,9 @@ class SchedulerBridge:
         ctx = RunContext.prepare(description=f"Login test: {account_id}")
         ctx.start(RunStatus.INITIALIZING)
 
-        emby, _ = self._prepare_emby(account_data)
         now = datetime.now(timezone.utc)
         try:
+            emby, _ = self._prepare_emby(account_data)
             if await self._authenticate_emby(emby):
                 self._remember_user_id(account_id, account_data, emby)
                 ctx.finish(RunStatus.SUCCESS, "Token authentication successful")

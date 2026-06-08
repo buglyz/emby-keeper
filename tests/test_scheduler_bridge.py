@@ -675,6 +675,34 @@ def test_trigger_login_remembers_user_id(tmp_path, monkeypatch):
     asyncio.run(run_test())
 
 
+def test_trigger_login_handles_invalid_encrypted_token(tmp_path):
+    async def run_test():
+        bridge = SchedulerBridge()
+        await bridge.initialize(tmp_path)
+
+        account_id = "alice@example.com"
+        bridge.add_account(
+            account_id,
+            {
+                "url": "https://example.com",
+                "username": "alice",
+                "encrypted_token": "not-a-fernet-token",
+                "enabled": True,
+            },
+        )
+
+        try:
+            result = await bridge.trigger_login(account_id)
+
+            assert result["status"] == "error"
+            assert result["run_id"]
+            assert bridge.get_account_status(account_id)["is_online"] is False
+        finally:
+            await bridge.shutdown()
+
+    asyncio.run(run_test())
+
+
 def test_trigger_watch_uses_stored_credentials_and_play_id(tmp_path, monkeypatch):
     async def run_test():
         bridge = SchedulerBridge()
