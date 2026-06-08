@@ -105,6 +105,11 @@ def create_jwt(subject: str = "admin", expire_days: int = DEFAULT_EXPIRE_DAYS) -
 
 def verify_jwt(token: str) -> dict:
     """Verify a JWT token and return its payload."""
+    if not isinstance(token, str) or not token:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid or expired token",
+        )
     try:
         payload = jwt.decode(token, JWT_SECRET, algorithms=[ALGORITHM])
         return payload

@@ -1,6 +1,9 @@
 import time
 import asyncio
 
+import pytest
+from fastapi import HTTPException
+
 import embykeeperapi.auth as auth
 from embykeeperapi.routers.auth_router import get_auth_methods
 
@@ -49,3 +52,11 @@ def test_auth_methods_ignore_blank_env_values(monkeypatch):
     monkeypatch.setenv("EK_WEBPASS", "")
 
     assert asyncio.run(get_auth_methods()) == {"token": False, "password": False}
+
+
+@pytest.mark.parametrize("token", [None, "", 123])
+def test_verify_jwt_rejects_non_string_tokens(token):
+    with pytest.raises(HTTPException) as exc:
+        auth.verify_jwt(token)
+
+    assert exc.value.status_code == 401
