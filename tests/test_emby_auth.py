@@ -905,3 +905,30 @@ def test_play_fails_when_stream_request_fails(monkeypatch):
             await emby.play({"Id": "item-1", "Name": "Movie"}, time=1)
 
     asyncio.run(run_test())
+
+
+def test_watch_returns_false_when_no_items():
+    account = EmbyAccount(url="https://example.com", username="alice", time=30)
+    emby = Emby(account)
+
+    assert asyncio.run(emby.watch()) is False
+
+
+def test_watch_returns_false_when_all_items_are_too_short():
+    account = EmbyAccount(
+        url="https://example.com",
+        username="alice",
+        time=30,
+        allow_multiple=False,
+    )
+    emby = Emby(account)
+    emby.items = {
+        "item-1": {
+            "Id": "item-1",
+            "Name": "Short Movie",
+            "MediaType": "Video",
+            "RunTimeTicks": 10_000_000,
+        }
+    }
+
+    assert asyncio.run(emby.watch()) is False

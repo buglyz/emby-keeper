@@ -1260,6 +1260,7 @@ class Emby:
                             f"{failed_reasons['short_length']} 个视频时长不足 (未开启 allow_multiple)"
                         )
                     self.log.warning(f"所有视频均不符合要求, 保活失败. 其中: {', '.join(reasons)}")
+                    return False
                 elif played_time > last_played_time:
                     last_played_time = played_time
                     continue
