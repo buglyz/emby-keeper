@@ -377,6 +377,44 @@ def test_web_account_data_backs_up_corrupt_json(tmp_path):
     assert backups[0].read_text(encoding="utf-8") == '{"alice":'
 
 
+def test_web_account_data_ignores_symlinked_accounts_file(tmp_path):
+    outside = tmp_path / "outside-web-accounts.json"
+    outside.write_text(
+        '{"alice@example.com":{"url":"https://example.com","username":"alice"}}',
+        encoding="utf-8",
+    )
+    accounts_file = tmp_path / "web_accounts.json"
+    try:
+        accounts_file.symlink_to(outside)
+    except OSError:
+        return
+
+    accounts = WebAccountData(tmp_path)
+
+    assert accounts.get_all() == {}
+    assert accounts_file.is_symlink()
+    assert json.loads(outside.read_text(encoding="utf-8")) == {
+        "alice@example.com": {"url": "https://example.com", "username": "alice"}
+    }
+
+
+def test_web_account_data_rejects_save_to_symlinked_accounts_file(tmp_path):
+    outside = tmp_path / "outside-web-accounts.json"
+    outside.write_text("{}", encoding="utf-8")
+    accounts_file = tmp_path / "web_accounts.json"
+    try:
+        accounts_file.symlink_to(outside)
+    except OSError:
+        return
+    accounts = WebAccountData(tmp_path)
+
+    with pytest.raises(OSError, match="symlink"):
+        accounts.add("alice@example.com", {"url": "https://example.com", "username": "alice"})
+
+    assert accounts_file.is_symlink()
+    assert outside.read_text(encoding="utf-8") == "{}"
+
+
 def test_web_account_data_creates_missing_basedir(tmp_path):
     basedir = tmp_path / "missing" / "accounts"
     accounts = WebAccountData(basedir)
@@ -460,16 +498,19 @@ def test_web_account_data_normalizes_updated_accounts_before_save(tmp_path):
     accounts = WebAccountData(tmp_path)
     accounts.add("alice@example.com", {"url": "https://example.com", "username": "alice"})
 
-    assert accounts.update(
-        "alice@example.com",
-        {
-            "username": " alice2 ",
-            "enabled": "true",
-            "time": "450",
-            "client": " Infuse ",
-        },
-        new_account_id="alice2@example.com",
-    ) == "alice2@example.com"
+    assert (
+        accounts.update(
+            "alice@example.com",
+            {
+                "username": " alice2 ",
+                "enabled": "true",
+                "time": "450",
+                "client": " Infuse ",
+            },
+            new_account_id="alice2@example.com",
+        )
+        == "alice2@example.com"
+    )
 
     expected = {
         "url": "https://example.com",
@@ -491,9 +532,7 @@ def test_web_account_data_rejects_updates_that_remove_required_fields(tmp_path):
     with pytest.raises(ValueError):
         accounts.update("alice@example.com", {"username": " "})
 
-    assert accounts.get_all() == {
-        "alice@example.com": {"url": "https://example.com", "username": "alice"}
-    }
+    assert accounts.get_all() == {"alice@example.com": {"url": "https://example.com", "username": "alice"}}
 
 
 def test_web_account_data_filters_non_object_accounts(tmp_path):

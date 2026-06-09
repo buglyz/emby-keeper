@@ -52,9 +52,11 @@ def _json_request(url, method="GET", json_body=None, headers=None):
         )
 
 
-def _start_webui_process(tmp_path, port):
+def _start_webui_process(tmp_path, port, extra_env=None):
     env = os.environ.copy()
     env["EK_TOKEN"] = "smoke-token"
+    if extra_env:
+        env.update(extra_env)
     return subprocess.Popen(
         [
             sys.executable,
@@ -211,6 +213,37 @@ def test_webui_process_serves_entry_and_authenticates_with_mock_token(tmp_path):
         )
         assert me_response.status_code == 200
         assert me_response.json() == {"user": "admin", "valid": True}
+    finally:
+        _stop_process(process)
+
+
+def test_webui_process_supports_base_prefix_with_mock_token(tmp_path):
+    port = _free_port()
+    process = _start_webui_process(tmp_path, port, {"EK_BASE_PREFIX": "/emby"})
+    try:
+        base_url = f"http://127.0.0.1:{port}/emby"
+        _wait_for_health(f"http://127.0.0.1:{port}/healthz")
+
+        index_response = _json_request(f"{base_url}/")
+        assert index_response.status_code == 200
+        index_html = index_response.body.decode("utf-8")
+        assert "<title>Emby Keeper</title>" in index_html
+        assert "window.EK_LOAD_STATIC('app-core.js')" in index_html
+
+        asset_response = _json_request(f"{base_url}/static/app-core.js")
+        assert asset_response.status_code == 200
+        assert b"const API_BASE_PATH = getApiBasePath()" in asset_response.body
+
+        methods_response = _json_request(f"{base_url}/api/auth/methods")
+        assert methods_response.status_code == 200
+        assert methods_response.json() == {"token": True, "password": False}
+
+        login_response = _json_request(
+            f"{base_url}/api/auth/token-exchange",
+            method="POST",
+            json_body={"token": "smoke-token"},
+        )
+        assert login_response.status_code == 200
     finally:
         _stop_process(process)
 

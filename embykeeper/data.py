@@ -56,7 +56,15 @@ def _data_path(basedir: Path, name: str):
     normalized = _normalize_data_name(name)
     if normalized is None:
         return None
-    return basedir / normalized
+    basedir = Path(basedir)
+    path = basedir / normalized
+    try:
+        if path.is_symlink():
+            return None
+        path.resolve().relative_to(basedir.resolve())
+    except (OSError, RuntimeError, ValueError):
+        return None
+    return path
 
 
 def _custom_cdn_origin_from_env():
@@ -118,9 +126,12 @@ async def get_datas(names: Union[Iterable[str], str], caller: str = None):
         if normalized is None:
             logger.warning(f"忽略非法资源文件名: {name}")
             continue
-        normalized_names.append(normalized)
         data_path = _data_path(basedir, normalized)
-        if data_path and data_path.is_file():
+        if data_path is None:
+            logger.warning(f"忽略不安全资源文件路径: {name}")
+            continue
+        normalized_names.append(normalized)
+        if data_path.is_file():
             logger.debug(f'检测到请求的本地文件: "{name}".')
         else:
             not_existing.append(normalized)
@@ -173,7 +184,9 @@ async def get_datas(names: Union[Iterable[str], str], caller: str = None):
                                     if name in versions:
                                         versioned_name = _normalize_data_name(versions[name])
                                         if versioned_name is None:
-                                            logger.warning(f'忽略非法资源版本映射: "{name}" -> "{versions[name]}"')
+                                            logger.warning(
+                                                f'忽略非法资源版本映射: "{name}" -> "{versions[name]}"'
+                                            )
                                             continue
                                         logger.debug(f'解析版本 "{name}" -> "{versioned_name}"')
                                         name = versioned_name

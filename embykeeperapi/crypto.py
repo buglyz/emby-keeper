@@ -66,6 +66,11 @@ def _chmod_key_file(key_file: Path):
         pass
 
 
+def _reject_symlink_key_file(key_file: Path):
+    if key_file.is_symlink():
+        raise OSError(f"Encryption key file must not be a symlink: {key_file.name}")
+
+
 def _get_key(basedir: Path) -> bytes:
     """Get or generate the Fernet encryption key."""
     env_secret = _get_env_secret("EK_SECRET")
@@ -79,6 +84,7 @@ def _get_key(basedir: Path) -> bytes:
     basedir.mkdir(parents=True, exist_ok=True)
     # Auto-generate and store in basedir
     key_file = basedir / FERNET_KEY_FILE
+    _reject_symlink_key_file(key_file)
     if key_file.is_file():
         key = key_file.read_bytes().strip()
         _chmod_key_file(key_file)

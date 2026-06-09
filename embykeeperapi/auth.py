@@ -127,6 +127,11 @@ def _chmod_secret_file(path):
         pass
 
 
+def _reject_symlink_secret_file(path: Path):
+    if path.is_symlink():
+        raise OSError(f"Secret file must not be a symlink: {path.name}")
+
+
 def _write_secret_file_atomic(path, key_bytes: bytes):
     tmp_path = None
     try:
@@ -159,6 +164,7 @@ def init_jwt_secret_from_basedir(basedir):
     basedir = Path(basedir)
     basedir.mkdir(parents=True, exist_ok=True)
     key_file = basedir / JWT_SECRET_FILE
+    _reject_symlink_secret_file(key_file)
     if key_file.is_file():
         key_bytes = key_file.read_bytes().strip()
         if not key_bytes:
@@ -168,6 +174,7 @@ def init_jwt_secret_from_basedir(basedir):
         JWT_SECRET = hashlib.sha256(key_bytes).hexdigest()
     else:
         legacy_key_file = basedir / "secret.key"
+        _reject_symlink_secret_file(legacy_key_file)
         if legacy_key_file.is_file():
             key_bytes = legacy_key_file.read_bytes().strip()
         else:

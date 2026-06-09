@@ -178,6 +178,11 @@ def _backup_invalid_accounts_file(filepath: Path) -> bool:
         return False
 
 
+def _reject_symlink_accounts_file(filepath: Path):
+    if filepath.is_symlink():
+        raise OSError("web accounts file must not be a symlink")
+
+
 class WebAccountData:
     """Manages Emby accounts created via the web UI."""
 
@@ -189,6 +194,10 @@ class WebAccountData:
 
     def _load(self):
         filepath = self.basedir / WEB_ACCOUNTS_FILE
+        if filepath.is_symlink():
+            logger.warning("Web accounts file must not be a symlink, starting fresh.")
+            self._data = {}
+            return
         if filepath.is_file():
             try:
                 with open(filepath, "r", encoding="utf-8") as f:
@@ -231,6 +240,7 @@ class WebAccountData:
 
     def _save(self, data: Optional[Dict[str, dict]] = None):
         filepath = self.basedir / WEB_ACCOUNTS_FILE
+        _reject_symlink_accounts_file(filepath)
         tmp_path = None
         payload = self._data if data is None else data
         try:

@@ -129,6 +129,51 @@ def test_new_jwt_secret_write_failure_keeps_runtime_secret(tmp_path, monkeypatch
         auth.JWT_SECRET = old_secret
 
 
+def test_jwt_secret_rejects_symlink_secret_file(tmp_path, monkeypatch):
+    for key in ("EK_SECRET", "EK_WEBPASS", "EK_TOKEN"):
+        monkeypatch.delenv(key, raising=False)
+    outside = tmp_path / "outside-jwt-secret"
+    outside.write_bytes(b"outside-secret")
+    key_file = tmp_path / "jwt_secret.key"
+    try:
+        key_file.symlink_to(outside)
+    except OSError:
+        return
+    old_secret = auth.JWT_SECRET
+
+    try:
+        with pytest.raises(OSError, match="symlink"):
+            init_jwt_secret_from_basedir(tmp_path)
+
+        assert outside.read_bytes() == b"outside-secret"
+        assert auth.JWT_SECRET == old_secret
+    finally:
+        auth.JWT_SECRET = old_secret
+
+
+def test_jwt_secret_rejects_symlink_legacy_secret_file(tmp_path, monkeypatch):
+    for key in ("EK_SECRET", "EK_WEBPASS", "EK_TOKEN"):
+        monkeypatch.delenv(key, raising=False)
+    outside = tmp_path / "outside-legacy-secret"
+    outside.write_bytes(b"legacy-secret")
+    legacy_key_file = tmp_path / "secret.key"
+    try:
+        legacy_key_file.symlink_to(outside)
+    except OSError:
+        return
+    old_secret = auth.JWT_SECRET
+
+    try:
+        with pytest.raises(OSError, match="symlink"):
+            init_jwt_secret_from_basedir(tmp_path)
+
+        assert outside.read_bytes() == b"legacy-secret"
+        assert not (tmp_path / "jwt_secret.key").exists()
+        assert auth.JWT_SECRET == old_secret
+    finally:
+        auth.JWT_SECRET = old_secret
+
+
 def test_jwt_secret_write_cleans_temp_file_on_type_error(tmp_path):
     key_file = tmp_path / "jwt_secret.key"
 
@@ -194,6 +239,25 @@ def test_existing_valid_fernet_secret_key_is_used_as_is(tmp_path, monkeypatch):
 
     assert stat.S_IMODE(key_file.stat().st_mode) == 0o600
     assert Fernet(key).decrypt(encrypted.encode()).decode() == "emby-token"
+
+
+def test_fernet_key_rejects_symlink_secret_file(tmp_path, monkeypatch):
+    for key in ("EK_SECRET", "EK_WEBPASS", "EK_TOKEN"):
+        monkeypatch.delenv(key, raising=False)
+    outside = tmp_path / "outside-fernet-secret"
+    outside.write_bytes(Fernet.generate_key())
+    key_file = tmp_path / "secret.key"
+    try:
+        key_file.symlink_to(outside)
+    except OSError:
+        return
+
+    reset_fernet()
+    with pytest.raises(OSError, match="symlink"):
+        encrypt_token("emby-token", tmp_path)
+
+    assert outside.is_file()
+    assert key_file.is_symlink()
 
 
 def test_fernet_key_write_cleans_temp_file_on_type_error(tmp_path):

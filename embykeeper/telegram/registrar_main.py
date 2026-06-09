@@ -232,7 +232,9 @@ class RegisterManager:
                     sid=f"registrar.timed.{account.phone}.{site_name}.{idx}",
                 )
             except ValueError as e:
-                logger.warning(f"{account.phone} 账号 {site_name} 站点抢注时间 {run_time!r} 无效, 已跳过: {e}")
+                logger.warning(
+                    f"{account.phone} 账号 {site_name} 站点抢注时间 {run_time!r} 无效, 已跳过: {e}"
+                )
                 continue
             self._schedulers[f"{account.phone}.{site_name}.{idx}"] = scheduler
             schedulers.append(scheduler)
@@ -311,6 +313,7 @@ class RegisterManager:
         return ctx.finish(RunStatus.FAIL, "无法连接 Telegram 账号")
 
     async def run_account(self, ctx: RunContext, account: TelegramAccount, instant: bool = False):
+        ctx = ctx or RunContext.prepare(f"{account.phone} 账号抢注")
         if ctx.status == RunStatus.PENDING:
             ctx.start(RunStatus.RUNNING)
         config_to_use = self._registrar_config_for(account)
@@ -333,7 +336,27 @@ class RegisterManager:
         if not tasks:
             return ctx.finish(RunStatus.NONEED, "未配置可执行抢注任务")
 
-        results = await asyncio.gather(*tasks)
+        task_handles = [asyncio.create_task(task) for task in tasks]
+        try:
+            results = await asyncio.gather(*task_handles)
+        except asyncio.CancelledError:
+            for task in task_handles:
+                if not task.done():
+                    task.cancel()
+            await asyncio.gather(*task_handles, return_exceptions=True)
+            if not ctx._finished.is_set():
+                ctx.finish(RunStatus.CANCELLED, "任务被取消")
+            raise
+        except Exception as e:
+            for task in task_handles:
+                if not task.done():
+                    task.cancel()
+            await asyncio.gather(*task_handles, return_exceptions=True)
+            if not ctx._finished.is_set():
+                ctx.finish(RunStatus.ERROR, "抢注异常")
+            logger.warning(f"{account.phone} 账号抢注异常: {format_exception_summary(e)}")
+            show_exception(e, regular=False)
+            raise
         statuses = [result.status for result in results if isinstance(result, RunContext)]
         if any(status == RunStatus.SUCCESS for status in statuses):
             return ctx.finish(RunStatus.SUCCESS, "抢注任务已完成")

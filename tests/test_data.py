@@ -169,6 +169,58 @@ def test_get_datas_rejects_unsafe_requested_name(monkeypatch, tmp_path):
     config.reset()
 
 
+def test_get_datas_rejects_symlinked_existing_file(monkeypatch, tmp_path):
+    basedir = tmp_path / "basedir"
+    basedir.mkdir()
+    outside = tmp_path / "outside.txt"
+    outside.write_text("secret", encoding="utf-8")
+    symlink = basedir / "model.bin"
+    try:
+        symlink.symlink_to(outside)
+    except OSError:
+        return
+    config.set(Config())
+    config.basedir = basedir
+
+    class FailingAsyncClient:
+        def __init__(self, *args, **kwargs):
+            raise AssertionError("unsafe symlinked resource paths must not trigger network access")
+
+    monkeypatch.setattr(data.httpx, "AsyncClient", FailingAsyncClient)
+
+    results = collect_datas("model.bin")
+
+    assert results == []
+    assert outside.read_text(encoding="utf-8") == "secret"
+    config.reset()
+
+
+def test_get_datas_rejects_parent_symlink_escape(monkeypatch, tmp_path):
+    basedir = tmp_path / "basedir"
+    outside = tmp_path / "outside"
+    basedir.mkdir()
+    outside.mkdir()
+    symlink_dir = basedir / "models"
+    try:
+        symlink_dir.symlink_to(outside, target_is_directory=True)
+    except OSError:
+        return
+    config.set(Config())
+    config.basedir = basedir
+
+    class FailingAsyncClient:
+        def __init__(self, *args, **kwargs):
+            raise AssertionError("unsafe symlinked resource paths must not trigger network access")
+
+    monkeypatch.setattr(data.httpx, "AsyncClient", FailingAsyncClient)
+
+    results = collect_datas("models/model.bin")
+
+    assert results == []
+    assert not (outside / "model.bin").exists()
+    config.reset()
+
+
 def test_get_datas_rejects_unsafe_version_mapping(monkeypatch, tmp_path):
     config.set(Config())
     config.basedir = tmp_path

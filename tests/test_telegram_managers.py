@@ -9,6 +9,7 @@ from embykeeper.config import config
 from embykeeper.runinfo import RunContext, RunStatus, _running_runs
 from embykeeper.schema import Config, TelegramAccount
 import embykeeper.telegram.checkin_main as checkin_main
+import embykeeper.telegram.registrar_main as registrar_main
 from embykeeper.telegram.checkiner._base import BaseBotCheckin, BotCheckin
 from embykeeper.telegram.registrar._base import BaseBotRegister
 from embykeeper.telegram.dynamic import get_cls, get_names
@@ -262,6 +263,100 @@ def test_checkiner_run_account_finishes_parent_context(monkeypatch):
             assert result is ctx
             assert ctx.status == RunStatus.SUCCESS
             assert ctx.status_info == "签到成功"
+            assert ctx.id not in _running_runs
+        finally:
+            if ctx.id in _running_runs:
+                _running_runs.pop(ctx.id, None)
+            await manager.shutdown()
+
+    asyncio.run(run_test())
+
+
+def test_registrar_run_account_finishes_parent_context(monkeypatch):
+    async def run_test():
+        manager = RegisterManager()
+        account = TelegramAccount(phone="+8613800000000", registrar=True)
+        site_name = "templ_a<TestBot>"
+        site_cls = type("SuccessfulRegister", (DummyRegister,), {"templ_name": site_name})
+        ctx = RunContext.prepare("registrar parent")
+
+        async def fake_run_with_sem(_sem, parent_ctx, _account, _site_name, _site_config):
+            site_ctx = RunContext.prepare("registrar site", parent_ids=parent_ctx.id)
+            return site_ctx.finish(RunStatus.SUCCESS)
+
+        try:
+            config.set(Config(site={"registrar": [site_name]}, registrar={site_name: {"times": ["9:00AM"]}}))
+            monkeypatch.setattr(registrar_main, "get_cls", lambda *_args, **_kwargs: [site_cls])
+            monkeypatch.setattr(manager, "_run_with_sem", fake_run_with_sem)
+
+            result = await manager.run_account(ctx, account, instant=True)
+
+            assert result is ctx
+            assert ctx.status == RunStatus.SUCCESS
+            assert ctx.status_info == "抢注任务已完成"
+            assert ctx.id not in _running_runs
+        finally:
+            if ctx.id in _running_runs:
+                _running_runs.pop(ctx.id, None)
+            await manager.shutdown()
+
+    asyncio.run(run_test())
+
+
+def test_registrar_run_account_cancels_parent_context(monkeypatch):
+    async def run_test():
+        manager = RegisterManager()
+        account = TelegramAccount(phone="+8613800000000", registrar=True)
+        site_name = "templ_a<TestBot>"
+        site_cls = type("SlowRegister", (DummyRegister,), {"templ_name": site_name})
+        ctx = RunContext.prepare("registrar parent cancel")
+
+        async def fake_run_with_sem(_sem, _parent_ctx, _account, _site_name, _site_config):
+            await asyncio.Event().wait()
+
+        try:
+            config.set(Config(site={"registrar": [site_name]}, registrar={site_name: {"times": ["9:00AM"]}}))
+            monkeypatch.setattr(registrar_main, "get_cls", lambda *_args, **_kwargs: [site_cls])
+            monkeypatch.setattr(manager, "_run_with_sem", fake_run_with_sem)
+
+            task = asyncio.create_task(manager.run_account(ctx, account, instant=True))
+            await asyncio.sleep(0)
+            task.cancel()
+            with pytest.raises(asyncio.CancelledError):
+                await task
+
+            assert ctx.status == RunStatus.CANCELLED
+            assert ctx.status_info == "任务被取消"
+            assert ctx.id not in _running_runs
+        finally:
+            if ctx.id in _running_runs:
+                _running_runs.pop(ctx.id, None)
+            await manager.shutdown()
+
+    asyncio.run(run_test())
+
+
+def test_registrar_run_account_finishes_parent_on_site_exception(monkeypatch):
+    async def run_test():
+        manager = RegisterManager()
+        account = TelegramAccount(phone="+8613800000000", registrar=True)
+        site_name = "templ_a<TestBot>"
+        site_cls = type("BrokenRegister", (DummyRegister,), {"templ_name": site_name})
+        ctx = RunContext.prepare("registrar parent error")
+
+        async def fake_run_with_sem(_sem, _parent_ctx, _account, _site_name, _site_config):
+            raise RuntimeError("site failed")
+
+        try:
+            config.set(Config(site={"registrar": [site_name]}, registrar={site_name: {"times": ["9:00AM"]}}))
+            monkeypatch.setattr(registrar_main, "get_cls", lambda *_args, **_kwargs: [site_cls])
+            monkeypatch.setattr(manager, "_run_with_sem", fake_run_with_sem)
+
+            with pytest.raises(RuntimeError, match="site failed"):
+                await manager.run_account(ctx, account, instant=True)
+
+            assert ctx.status == RunStatus.ERROR
+            assert ctx.status_info == "抢注异常"
             assert ctx.id not in _running_runs
         finally:
             if ctx.id in _running_runs:
