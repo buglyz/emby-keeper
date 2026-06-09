@@ -2,6 +2,7 @@ import asyncio
 import os
 import time
 from pathlib import Path, PurePosixPath
+from tempfile import NamedTemporaryFile
 from typing import Iterable, Union
 
 import aiofiles
@@ -164,17 +165,39 @@ async def get_datas(names: Union[Iterable[str], str], caller: str = None):
                                     file_size = int(resp.headers.get("content-length", 0))
                                     logger.info(f"开始下载: {name} ({format_byte_human(file_size)})")
                                     data_path.parent.mkdir(parents=True, exist_ok=True)
-                                    async with aiofiles.open(data_path, mode="wb+") as f:
-                                        timer = time.time()
-                                        length = 0
-                                        async for chunk in resp.aiter_bytes(chunk_size=512):
-                                            if time.time() - timer > 3:
-                                                timer = time.time()
-                                                logger.info(
-                                                    f"正在下载: {name} ({format_byte_human(length)} / {format_byte_human(file_size)})"
-                                                )
-                                            await f.write(chunk)
-                                            length += len(chunk)
+                                    tmp_path = None
+                                    try:
+                                        with NamedTemporaryFile(
+                                            "wb",
+                                            dir=data_path.parent,
+                                            prefix=f".{data_path.name}.",
+                                            suffix=".tmp",
+                                            delete=False,
+                                        ) as tmp:
+                                            tmp_path = Path(tmp.name)
+                                        async with aiofiles.open(tmp_path, mode="wb") as f:
+                                            timer = time.time()
+                                            length = 0
+                                            async for chunk in resp.aiter_bytes(chunk_size=512):
+                                                if time.time() - timer > 3:
+                                                    timer = time.time()
+                                                    logger.info(
+                                                        f"正在下载: {name} ({format_byte_human(length)} / {format_byte_human(file_size)})"
+                                                    )
+                                                await f.write(chunk)
+                                                length += len(chunk)
+                                        try:
+                                            tmp_path.chmod(0o600)
+                                        except OSError:
+                                            pass
+                                        tmp_path.replace(data_path)
+                                        tmp_path = None
+                                    finally:
+                                        if tmp_path is not None:
+                                            try:
+                                                tmp_path.unlink(missing_ok=True)
+                                            except OSError:
+                                                pass
                                     logger.info(f"下载完成: {name} ({format_byte_human(file_size)})")
                                     yield data_path
                                     version_matching = False

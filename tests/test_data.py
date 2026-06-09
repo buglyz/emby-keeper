@@ -1,4 +1,5 @@
 import asyncio
+from pathlib import Path
 
 from embykeeper.config import config
 import embykeeper.data as data
@@ -257,4 +258,35 @@ def test_get_datas_creates_parent_directory_for_safe_nested_name(monkeypatch, tm
     assert results == [tmp_path / "ocr" / "model.onnx"]
     assert (tmp_path / "ocr" / "model.onnx").read_bytes() == b"nested"
     assert calls == ["https://cdn.example/data/ocr/model.onnx"]
+    config.reset()
+
+
+def test_get_datas_downloads_to_temp_file_before_replacing_target(monkeypatch, tmp_path):
+    config.set(Config())
+    config.basedir = tmp_path
+    monkeypatch.setattr(data, "cdn_urls", ["https://cdn.example"])
+    responses = [FakeResponse(200, body=b"content")]
+    calls = []
+    opened_paths = []
+    original_open = data.aiofiles.open
+    target = tmp_path / "model.bin"
+
+    def recording_open(path, *args, **kwargs):
+        path = Path(path)
+        opened_paths.append(path)
+        if path == target:
+            raise AssertionError("download should not write directly to the target path")
+        return original_open(path, *args, **kwargs)
+
+    monkeypatch.setattr(data.httpx, "AsyncClient", fake_async_client(responses, calls))
+    monkeypatch.setattr(data.aiofiles, "open", recording_open)
+
+    results = collect_datas("model.bin")
+
+    assert results == [target]
+    assert target.read_bytes() == b"content"
+    assert opened_paths
+    assert all(path.parent == tmp_path for path in opened_paths)
+    assert all(path.name.startswith(".model.bin.") and path.name.endswith(".tmp") for path in opened_paths)
+    assert not list(tmp_path.glob(".model.bin.*.tmp"))
     config.reset()
