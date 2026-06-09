@@ -471,6 +471,10 @@ class ConfigManager(ProxyBase):
             return False
 
         if env_config:
+            if self._observer:
+                self._observer.cancel()
+                await asyncio.gather(self._observer, return_exceptions=True)
+                self._observer = None
             self.set(cfg_model)
             return True
 

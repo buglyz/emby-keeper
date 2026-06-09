@@ -75,6 +75,29 @@ interval_days = "7"
     asyncio.run(run_test())
 
 
+def test_reload_conf_from_env_stops_existing_file_observer(tmp_path, monkeypatch):
+    async def run_test():
+        manager = ConfigManager()
+        old_task = asyncio.create_task(asyncio.Event().wait())
+        manager._observer = old_task
+        manager._conf_file = tmp_path / "config.toml"
+        config_toml = b"""
+[emby]
+time_range = "<8:00AM,9:00AM>"
+interval_days = "7"
+"""
+        monkeypatch.setenv("EK_CONFIG", base64.b64encode(config_toml).decode())
+
+        assert await manager.reload_conf() is True
+
+        assert manager._observer is None
+        assert old_task.done()
+        assert old_task.cancelled()
+        assert manager._conf_file is None
+
+    asyncio.run(run_test())
+
+
 def test_start_observer_waits_for_previous_observer_cancel(tmp_path, monkeypatch):
     async def run_test():
         manager = ConfigManager(tmp_path / "config.toml")
