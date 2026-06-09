@@ -103,8 +103,7 @@ def get_client_ip(request) -> str:
     return real_ip or direct_ip
 
 
-def _get_jwt_secret() -> str:
-    """Get the JWT signing secret from env or derive from EK_WEBPASS."""
+def _get_configured_jwt_secret():
     secret = _get_env_secret("EK_SECRET")
     if secret:
         return secret
@@ -114,6 +113,14 @@ def _get_jwt_secret() -> str:
     token = _get_env_secret("EK_TOKEN")
     if token:
         return hashlib.sha256(token.encode()).hexdigest()
+    return None
+
+
+def _get_jwt_secret() -> str:
+    """Get the JWT signing secret from env or derive from EK_WEBPASS."""
+    configured_secret = _get_configured_jwt_secret()
+    if configured_secret:
+        return configured_secret
     return secrets.token_urlsafe(32)
 
 
@@ -158,7 +165,9 @@ def _write_secret_file_atomic(path, key_bytes: bytes):
 def init_jwt_secret_from_basedir(basedir):
     """Re-derive JWT secret using persistent key file when no env vars are set."""
     global JWT_SECRET
-    if _get_env_secret("EK_SECRET") or _get_env_secret("EK_WEBPASS") or _get_env_secret("EK_TOKEN"):
+    configured_secret = _get_configured_jwt_secret()
+    if configured_secret:
+        JWT_SECRET = configured_secret
         return
 
     basedir = Path(basedir)

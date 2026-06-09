@@ -63,6 +63,32 @@ def test_env_secret_is_trimmed_for_fernet_key(tmp_path, monkeypatch):
     assert decrypt_token(encrypted, tmp_path) == "emby-token"
 
 
+@pytest.mark.parametrize(
+    ("env_name", "env_value", "expected_secret"),
+    [
+        ("EK_SECRET", " shared-secret ", "shared-secret"),
+        ("EK_WEBPASS", " web-pass ", hashlib.sha256(b"web-pass").hexdigest()),
+        ("EK_TOKEN", " token-1 ", hashlib.sha256(b"token-1").hexdigest()),
+    ],
+)
+def test_jwt_secret_init_uses_env_set_after_import(
+    tmp_path, monkeypatch, env_name, env_value, expected_secret
+):
+    for key in ("EK_SECRET", "EK_WEBPASS", "EK_TOKEN"):
+        monkeypatch.delenv(key, raising=False)
+    monkeypatch.setenv(env_name, env_value)
+    old_secret = auth.JWT_SECRET
+    auth.JWT_SECRET = "runtime-generated-before-env"
+
+    try:
+        init_jwt_secret_from_basedir(tmp_path)
+
+        assert auth.JWT_SECRET == expected_secret
+        assert not (tmp_path / "jwt_secret.key").exists()
+    finally:
+        auth.JWT_SECRET = old_secret
+
+
 def test_existing_jwt_secret_file_is_owner_only(tmp_path, monkeypatch):
     for key in ("EK_SECRET", "EK_WEBPASS", "EK_TOKEN"):
         monkeypatch.delenv(key, raising=False)
