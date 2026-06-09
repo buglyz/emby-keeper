@@ -1,5 +1,6 @@
 import asyncio
 import random
+import re
 from typing import List, Dict, Set, Optional
 from urllib.parse import parse_qs, urlparse
 from datetime import datetime
@@ -17,6 +18,7 @@ from .api import Emby, EmbyPlayError, EmbyConnectError, EmbyRequestError, EmbyEr
 
 logger = logger.bind(scheme="embywatcher")
 _INVALID_PORT = object()
+REDACTED_HEADER_VALUE = "***REDACTED***"
 
 
 def _get_emby_config() -> EmbyConfig:
@@ -69,6 +71,15 @@ def _extract_emby_item_id(parsed_url) -> Optional[str]:
                 if item_id:
                     return item_id
     return None
+
+
+def _redact_emby_header_for_display(name: str, value: str) -> str:
+    normalized = (name or "").lower()
+    if normalized == "x-emby-token":
+        return REDACTED_HEADER_VALUE
+    if normalized == "x-emby-authorization":
+        return re.sub(r"Token=[^,]*", f"Token={REDACTED_HEADER_VALUE}", str(value))
+    return value
 
 
 class EmbyManager:
@@ -329,7 +340,7 @@ class EmbyManager:
             console.rule("Headers")
             headers = emby.build_headers()
             for k, v in headers.items():
-                console.print(f"{k.title()}: {v}")
+                console.print(f"{k.title()}: {_redact_emby_header_for_display(k, v)}")
             console.rule()
             item = await emby.get_item(iid)
             if not item:

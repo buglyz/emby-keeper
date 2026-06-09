@@ -220,6 +220,9 @@ def test_registrar_quick_run_starts_background_task(tmp_path, api_app, monkeypat
 
             run_single_bot = fake_run_single_bot
 
+            async def shutdown(self):
+                captured["shutdown"] = True
+
         monkeypatch.setattr(
             "embykeeperapi.routers.registrar._get_register_manager_class",
             lambda: FakeRegisterManager,
@@ -239,6 +242,7 @@ def test_registrar_quick_run_starts_background_task(tmp_path, api_app, monkeypat
             },
         )
         await asyncio.sleep(0)
+        await asyncio.sleep(0)
 
         assert response.status_code == 200
         data = response.json()
@@ -251,6 +255,7 @@ def test_registrar_quick_run_starts_background_task(tmp_path, api_app, monkeypat
         assert captured["password"] == "secret"
         assert captured["interval_seconds"] == 2
         assert captured["register_callbacks"] is False
+        assert captured["shutdown"] is True
         assert "最长运行 3 分钟" in data["message"]
         run = RunContext.get(data["run_id"])
         assert run.status == RunStatus.SUCCESS
@@ -290,6 +295,46 @@ def test_registrar_quick_run_marks_timeout(tmp_path, api_app, monkeypatch):
 
         assert ctx.status == RunStatus.FAIL
         assert ctx.status_info == "抢注超过 0 分钟仍未成功"
+
+    asyncio.run(run_test())
+
+
+def test_registrar_quick_run_shutdowns_manager_after_timeout(tmp_path, api_app):
+    async def run_test():
+        from embykeeperapi.routers.registrar import _run_quick_register
+
+        config.basedir = tmp_path
+        config.set(Config(telegram={"account": [{"phone": "+8613800000000", "enabled": True}]}))
+        captured = {}
+
+        async def slow_run_single_bot(self, bot_username, **kwargs):
+            await asyncio.sleep(60)
+            return [False]
+
+        class SlowRegisterManager:
+            def __init__(self, register_callbacks=True):
+                captured["register_callbacks"] = register_callbacks
+
+            run_single_bot = slow_run_single_bot
+
+            async def shutdown(self):
+                captured["shutdown"] = True
+
+        ctx = RunContext.prepare("timeout registrar cleanup")
+        await _run_quick_register(
+            ctx,
+            bot_username="TestBot",
+            accounts=config.telegram.account,
+            username="alice",
+            password="secret",
+            interval_seconds=1,
+            timeout_minutes=0,
+            register_manager_cls=SlowRegisterManager,
+        )
+
+        assert ctx.status == RunStatus.FAIL
+        assert captured["register_callbacks"] is False
+        assert captured["shutdown"] is True
 
     asyncio.run(run_test())
 

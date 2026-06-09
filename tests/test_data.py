@@ -150,3 +150,59 @@ def test_get_datas_yields_none_once_when_all_sources_fail(monkeypatch, tmp_path)
         "https://worse.example/data/missing.yaml",
     ]
     config.reset()
+
+
+def test_get_datas_rejects_unsafe_requested_name(monkeypatch, tmp_path):
+    config.set(Config())
+    config.basedir = tmp_path
+
+    class FailingAsyncClient:
+        def __init__(self, *args, **kwargs):
+            raise AssertionError("unsafe resource names must not trigger network access")
+
+    monkeypatch.setattr(data.httpx, "AsyncClient", FailingAsyncClient)
+
+    results = collect_datas("../secret.txt")
+
+    assert results == []
+    assert not (tmp_path.parent / "secret.txt").exists()
+    config.reset()
+
+
+def test_get_datas_rejects_unsafe_version_mapping(monkeypatch, tmp_path):
+    config.set(Config())
+    config.basedir = tmp_path
+    data.versions.clear()
+    monkeypatch.setattr(data, "cdn_urls", ["https://cdn.example"])
+    responses = [
+        FakeResponse(404),
+        FakeResponse(200, text="latest.yaml=../secret.txt\n"),
+    ]
+    calls = []
+    monkeypatch.setattr(data.httpx, "AsyncClient", fake_async_client(responses, calls))
+
+    results = collect_datas("latest.yaml")
+
+    assert results == [None]
+    assert not (tmp_path.parent / "secret.txt").exists()
+    assert calls == [
+        "https://cdn.example/data/latest.yaml",
+        "https://cdn.example/version",
+    ]
+    config.reset()
+
+
+def test_get_datas_creates_parent_directory_for_safe_nested_name(monkeypatch, tmp_path):
+    config.set(Config())
+    config.basedir = tmp_path
+    monkeypatch.setattr(data, "cdn_urls", ["https://cdn.example"])
+    responses = [FakeResponse(200, body=b"nested")]
+    calls = []
+    monkeypatch.setattr(data.httpx, "AsyncClient", fake_async_client(responses, calls))
+
+    results = collect_datas("ocr/model.onnx")
+
+    assert results == [tmp_path / "ocr" / "model.onnx"]
+    assert (tmp_path / "ocr" / "model.onnx").read_bytes() == b"nested"
+    assert calls == ["https://cdn.example/data/ocr/model.onnx"]
+    config.reset()

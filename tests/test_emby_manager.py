@@ -4,7 +4,12 @@ from urllib.parse import urlparse
 import pytest
 
 from embykeeper.config import config
-from embykeeper.emby.main import EmbyManager, _extract_emby_item_id, _same_emby_origin
+from embykeeper.emby.main import (
+    EmbyManager,
+    _extract_emby_item_id,
+    _redact_emby_header_for_display,
+    _same_emby_origin,
+)
 from embykeeper.runinfo import RunStatus, _running_runs
 from embykeeper.schema import Config, EmbyAccount
 
@@ -237,6 +242,15 @@ def test_extract_emby_item_id_returns_none_for_invalid_url():
 def test_extract_emby_item_id_trims_blank_values():
     assert _extract_emby_item_id(urlparse("https://example.com/web/index.html?id=%20item-1%20")) == "item-1"
     assert _extract_emby_item_id(urlparse("https://example.com/web/index.html?id=%20%20")) is None
+
+
+def test_emby_header_display_redacts_tokens():
+    auth = "MediaBrowser Token=token-1,Client=Fileball,UserId=user-1"
+
+    assert _redact_emby_header_for_display("X-Emby-Token", "token-1") == "***REDACTED***"
+    assert "token-1" not in _redact_emby_header_for_display("X-Emby-Authorization", auth)
+    assert "UserId=user-1" in _redact_emby_header_for_display("X-Emby-Authorization", auth)
+    assert _redact_emby_header_for_display("User-Agent", "Fileball") == "Fileball"
 
 
 def test_same_emby_origin_requires_matching_scheme():

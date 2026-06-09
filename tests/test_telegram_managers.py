@@ -1,6 +1,7 @@
 import asyncio
 from datetime import datetime, timedelta
 import inspect
+from types import SimpleNamespace
 
 import pytest
 
@@ -11,6 +12,7 @@ import embykeeper.telegram.checkin_main as checkin_main
 from embykeeper.telegram.checkiner._base import BaseBotCheckin, BotCheckin
 from embykeeper.telegram.registrar._base import BaseBotRegister
 from embykeeper.telegram.dynamic import get_cls, get_names
+from embykeeper.telegram.embyboss import EmbybossRegister
 from embykeeper.telegram.checkin_main import CheckinerManager
 from embykeeper.telegram.registrar_main import RegisterManager
 
@@ -54,6 +56,23 @@ class DummyRegister(BaseBotRegister):
 
     async def start(self):
         return self.ctx.finish(RunStatus.SUCCESS)
+
+
+class DummyLogger:
+    def __init__(self):
+        self.messages = []
+
+    def debug(self, message):
+        self.messages.append(("debug", message))
+
+    def info(self, message):
+        self.messages.append(("info", message))
+
+    def warning(self, message):
+        self.messages.append(("warning", message))
+
+    def error(self, message):
+        self.messages.append(("error", message))
 
 
 def test_checkiner_ignores_disabled_added_accounts():
@@ -148,6 +167,44 @@ def test_base_checkin_and_register_keep_zero_retries():
     bot_checkin = BotCheckin(DummyClient(), retries=5)
     bot_checkin.max_retries = 0
     assert bot_checkin.valid_retries == 0
+
+
+def test_embyboss_register_handles_empty_callback_answer_message(monkeypatch):
+    async def run_test():
+        class ReplyCapture:
+            async def __aenter__(self):
+                return object()
+
+            async def __aexit__(self, exc_type, exc, tb):
+                return False
+
+        class FakeClient:
+            def catch_reply(self, chat_id):
+                return ReplyCapture()
+
+        class FakePanel:
+            chat = SimpleNamespace(id=100)
+            reply_markup = SimpleNamespace(
+                inline_keyboard=[[SimpleNamespace(text="创建账户")]]
+            )
+
+            async def click(self, button_text):
+                return SimpleNamespace(message=None, alert=False)
+
+        async def fake_wait_for(_future, _timeout):
+            raise asyncio.TimeoutError
+
+        import embykeeper.telegram.embyboss as embyboss
+
+        monkeypatch.setattr(embyboss.random, "uniform", lambda *_args: 0)
+        monkeypatch.setattr(embyboss.asyncio, "wait_for", fake_wait_for)
+        log = DummyLogger()
+        register = EmbybossRegister(FakeClient(), log, "alice", "secret")
+
+        assert await register._attempt_with_panel(FakePanel()) is False
+        assert ("warning", "创建账户按钮点击无响应, 无法注册.") in log.messages
+
+    asyncio.run(run_test())
 
 
 def test_checkiner_reschedule_uses_current_site_name(monkeypatch):

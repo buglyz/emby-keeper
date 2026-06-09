@@ -115,7 +115,8 @@ class EmbybossRegister:
         async with self.client.catch_reply(panel.chat.id) as f:
             try:
                 answer: BotCallbackAnswer = await panel.click(create_button)
-                if "已关闭" in answer.message or answer.alert:
+                answer_message = getattr(answer, "message", None) or ""
+                if "已关闭" in answer_message or getattr(answer, "alert", False):
                     self.log.debug("未开注, 将继续监控.")
                     return False
             except (TimeoutError, MessageIdInvalid):

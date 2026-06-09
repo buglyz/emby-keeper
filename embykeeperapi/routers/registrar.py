@@ -173,6 +173,15 @@ async def _run_quick_register(
         if not config.nofail:
             raise
         return
+    finally:
+        shutdown = getattr(manager, "shutdown", None)
+        if shutdown:
+            try:
+                await shutdown()
+            except Exception as e:
+                logger.warning(
+                    f"Failed to shutdown quick registrar manager: {format_exception_summary(e)}"
+                )
 
     success_count = sum(1 for result in results if result)
     total = len(results)

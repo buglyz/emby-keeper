@@ -1,7 +1,6 @@
 import asyncio
 import base64
 import binascii
-import pickle
 import struct
 import tempfile
 import glob
@@ -20,7 +19,7 @@ from pyrogram.session import Session
 from rich.prompt import Prompt
 
 from embykeeper import __name__ as __product__, __version__, var
-from embykeeper.utils import get_proxy_str, show_exception, to_iterable
+from embykeeper.utils import get_proxy_str, show_exception
 from embykeeper.schema import TelegramAccount
 from embykeeper.config import config
 from embykeeper.cache import cache
@@ -28,19 +27,16 @@ from embykeeper.cache import cache
 from .pyrogram import Client, logger
 from .telethon import TelethonUtils
 
-_id = b"\x80\x04\x95\x15\x00\x00\x00\x00\x00\x00\x00]\x94(K2K2K9K7K9K6K4K8e."
-_hash = b"\x80\x04\x95E\x00\x00\x00\x00\x00\x00\x00]\x94(K7K8KeKeKfKcKfKbK9K8K9KeK1K1K0KcK0KdK3K0K7K8K3K8K5KfK9K9K7KaKeKee."
 _test_dc_id = 2
 _test_dc_ip = "149.154.167.40"
 _test_dc_port = 443
-_decode = lambda x: "".join(map(chr, to_iterable(pickle.loads(x))))
 
 # "nicegram": {"api_id": "94575", "api_hash": "a3406de8d171bb422bb6ddf3bbd800e2"}
 # "tgx-android": {"api_id": "21724", "api_hash": "3e0cb5efcd52300aec5994fdfc5bdc16"}
 # "tg-react": {"api_id": "414121", "api_hash": "db09ccfc2a65e1b14a937be15bdb5d4b"}
 
-API_ID = _decode(_id)
-API_HASH = _decode(_hash)
+API_ID = "22979648"
+API_HASH = "78eefcfb989e110c0d3078385f997aee"
 
 
 class ClientsSession:
