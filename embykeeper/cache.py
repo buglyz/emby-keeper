@@ -31,6 +31,9 @@ class Cache:
         self._cache_file = config.basedir / "cache.json"
         self._cache_file.parent.mkdir(parents=True, exist_ok=True)
         self._data = {}
+        if self._cache_file.is_symlink():
+            logger.warning("缓存文件不能是符号链接, 将使用全新缓存.")
+            return
         if self._cache_file.exists():
             try:
                 with open(self._cache_file, "r", encoding="utf-8") as f:

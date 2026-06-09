@@ -46,6 +46,49 @@ def test_json_cache_ignores_unreadable_cache_file(tmp_path):
     config.reset()
 
 
+def test_json_cache_ignores_symlink_cache_file(tmp_path):
+    config.set(Config())
+    config.basedir = tmp_path
+    outside = tmp_path / "outside-cache.json"
+    outside.write_text('{"leak": "outside-secret"}', encoding="utf-8")
+    cache_file = tmp_path / "cache.json"
+    try:
+        cache_file.symlink_to(outside)
+    except OSError:
+        return
+
+    cache = Cache()
+
+    assert cache.get("leak") is None
+    assert cache_file.is_symlink()
+    assert outside.read_text(encoding="utf-8") == '{"leak": "outside-secret"}'
+
+    config.reset()
+
+
+def test_json_cache_write_replaces_symlink_without_touching_target(tmp_path):
+    config.set(Config())
+    config.basedir = tmp_path
+    outside = tmp_path / "outside-cache.json"
+    outside.write_text('{"leak": "outside-secret"}', encoding="utf-8")
+    cache_file = tmp_path / "cache.json"
+    try:
+        cache_file.symlink_to(outside)
+    except OSError:
+        return
+
+    cache = Cache()
+    cache.set("scheduler.example", {"next_time": "new"})
+
+    assert not cache_file.is_symlink()
+    assert json.loads(cache_file.read_text(encoding="utf-8")) == {
+        "scheduler": {"example": {"next_time": "new"}}
+    }
+    assert outside.read_text(encoding="utf-8") == '{"leak": "outside-secret"}'
+
+    config.reset()
+
+
 def test_json_cache_writes_atomically(tmp_path):
     config.set(Config())
     config.basedir = tmp_path
