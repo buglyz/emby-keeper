@@ -494,6 +494,27 @@ def test_web_account_data_rejects_invalid_added_accounts(tmp_path):
     assert accounts.get_all() == {}
 
 
+@pytest.mark.parametrize(
+    "url",
+    [
+        "not-a-url",
+        "ftp://example.com",
+        "https://example.com:bad",
+        "https://user:pass@example.com",
+        "https://example.com?token=secret",
+        "https://example.com#fragment",
+        "https://exa mple.com",
+    ],
+)
+def test_web_account_data_rejects_invalid_added_account_urls(tmp_path, url):
+    accounts = WebAccountData(tmp_path)
+
+    with pytest.raises(ValueError):
+        accounts.add("alice@example.com", {"url": url, "username": "alice"})
+
+    assert accounts.get_all() == {}
+
+
 def test_web_account_data_normalizes_updated_accounts_before_save(tmp_path):
     accounts = WebAccountData(tmp_path)
     accounts.add("alice@example.com", {"url": "https://example.com", "username": "alice"})
@@ -603,6 +624,39 @@ def test_web_account_data_filters_non_string_required_fields(tmp_path):
     backup_data = json.loads(backups[0].read_text(encoding="utf-8"))
     assert "numeric-url" in backup_data
     assert "numeric-username" in backup_data
+
+
+def test_web_account_data_filters_accounts_with_invalid_urls(tmp_path):
+    accounts_file = tmp_path / "web_accounts.json"
+    accounts_file.write_text(
+        json.dumps(
+            {
+                "alice@example.com": {"url": "https://example.com", "username": "alice"},
+                "bad-scheme": {"url": "ftp://example.com", "username": "bob"},
+                "bad-port": {"url": "https://example.com:bad", "username": "carol"},
+                "with-secret": {"url": "https://user:pass@example.com", "username": "dave"},
+                "with-query": {"url": "https://example.com?token=secret", "username": "erin"},
+                "with-fragment": {"url": "https://example.com#fragment", "username": "frank"},
+                "with-space": {"url": "https://exa mple.com", "username": "grace"},
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    accounts = WebAccountData(tmp_path)
+
+    expected = {"alice@example.com": {"url": "https://example.com", "username": "alice"}}
+    assert accounts.get_all() == expected
+    assert json.loads(accounts_file.read_text(encoding="utf-8")) == expected
+    backups = list(tmp_path.glob("web_accounts.json.corrupt.*"))
+    assert len(backups) == 1
+    backup_data = json.loads(backups[0].read_text(encoding="utf-8"))
+    assert "bad-scheme" in backup_data
+    assert "bad-port" in backup_data
+    assert "with-secret" in backup_data
+    assert "with-query" in backup_data
+    assert "with-fragment" in backup_data
+    assert "with-space" in backup_data
 
 
 def test_web_account_data_trims_required_fields_from_legacy_file(tmp_path):

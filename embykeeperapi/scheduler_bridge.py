@@ -5,6 +5,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from tempfile import NamedTemporaryFile
 from typing import Dict, List, Optional
+from urllib.parse import urlparse
 
 from loguru import logger
 
@@ -30,7 +31,6 @@ WEB_ACCOUNT_TEXT_FIELDS = {
     "time_range",
 }
 WEB_ACCOUNT_AUTH_METHODS = {"token", "password"}
-WEB_ACCOUNT_REQUIRED_FIELDS = ("url", "username")
 _DROP_FIELD = object()
 
 
@@ -92,6 +92,26 @@ def _sanitize_optional_text(value):
     return value or _DROP_FIELD
 
 
+def _sanitize_url(value):
+    value = _sanitize_optional_text(value)
+    if value is _DROP_FIELD:
+        return _DROP_FIELD
+    if any(ch.isspace() for ch in value):
+        return _DROP_FIELD
+    parsed = urlparse(value)
+    if parsed.scheme not in {"http", "https"}:
+        return _DROP_FIELD
+    if not parsed.hostname:
+        return _DROP_FIELD
+    try:
+        parsed.port
+    except ValueError:
+        return _DROP_FIELD
+    if parsed.username or parsed.password or parsed.query or parsed.fragment:
+        return _DROP_FIELD
+    return value
+
+
 def _sanitize_auth_method(value):
     if not isinstance(value, str):
         return _DROP_FIELD
@@ -116,14 +136,14 @@ def _sanitize_account_record(data) -> Optional[dict]:
     if not isinstance(data, dict):
         return None
     sanitized = {}
-    for field in WEB_ACCOUNT_REQUIRED_FIELDS:
-        value = data.get(field)
-        if not isinstance(value, str):
-            return None
-        value = value.strip()
-        if not value:
-            return None
-        sanitized[field] = value
+    url = _sanitize_url(data.get("url"))
+    if url is _DROP_FIELD:
+        return None
+    sanitized["url"] = url
+    username = _sanitize_optional_text(data.get("username"))
+    if username is _DROP_FIELD:
+        return None
+    sanitized["username"] = username
     for field in WEB_ACCOUNT_BOOL_FIELDS:
         if field not in data:
             continue
