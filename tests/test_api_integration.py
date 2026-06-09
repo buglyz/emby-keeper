@@ -601,6 +601,46 @@ def test_config_backup_rejects_symlink_backup_root(tmp_path, api_app):
     assert not list(outside.iterdir())
 
 
+def test_config_export_rejects_symlink_config_source(tmp_path, api_app):
+    config.basedir = tmp_path
+    outside = tmp_path / "outside.toml"
+    outside.write_text('safe_value = "outside-secret"\n', encoding="utf-8")
+    config_file = tmp_path / "config.toml"
+    try:
+        config_file.symlink_to(outside)
+    except OSError:
+        return
+    config.set(Config())
+
+    response = asyncio.run(_asgi_request(api_app, "GET", "/api/config/export"))
+
+    assert response.status_code == 500
+    assert "symlink" in response.json()["detail"]
+    assert b"outside-secret" not in response.body
+
+
+def test_config_backup_rejects_symlink_source_files(tmp_path, api_app):
+    config.basedir = tmp_path
+    config_file = tmp_path / "config.toml"
+    config_file.write_text("[emby]\n", encoding="utf-8")
+    config.set(Config())
+    outside = tmp_path / "outside-web-accounts.json"
+    outside.write_text('{"leak": "outside-secret"}', encoding="utf-8")
+    accounts_file = tmp_path / "web_accounts.json"
+    bridge.web_accounts = None
+    try:
+        accounts_file.symlink_to(outside)
+    except OSError:
+        return
+
+    response = asyncio.run(_asgi_request(api_app, "POST", "/api/config/backup"))
+
+    assert response.status_code == 500
+    assert "symlink" in response.json()["detail"]
+    backup_root = tmp_path / "backups"
+    assert not backup_root.is_dir() or not list(backup_root.iterdir())
+
+
 def test_config_restore_stages_files_before_overwriting_current_config(tmp_path, api_app, monkeypatch):
     config.basedir = tmp_path
     config_file = tmp_path / "config.toml"

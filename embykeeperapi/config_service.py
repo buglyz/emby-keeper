@@ -366,6 +366,22 @@ class ConfigService:
             raise HTTPException(status_code=500, detail="Backup directory must not be a symlink")
 
     @staticmethod
+    def source_file_exists(path: Path) -> bool:
+        if path.is_symlink():
+            raise HTTPException(status_code=500, detail=f"Config source must not be a symlink: {path.name}")
+        try:
+            return path.is_file()
+        except OSError as e:
+            raise HTTPException(status_code=500, detail=f"Failed to inspect config source {path.name}: {e}")
+
+    def backup_source_files(self) -> List[Path]:
+        sources = []
+        for source in (self.config_file_path(), self.web_accounts_file_path()):
+            if self.source_file_exists(source):
+                sources.append(source)
+        return sources
+
+    @staticmethod
     def backup_created_at(backup_id: str):
         timestamp = backup_id.split("-", 1)[0]
         try:
@@ -398,6 +414,12 @@ class ConfigService:
 
     def create_backup_snapshot(self, *, raise_if_empty: bool = True) -> Optional[ConfigBackupResponse]:
         backup_root = self.prepare_backup_root()
+        sources = self.backup_source_files()
+        if not sources:
+            if raise_if_empty:
+                raise HTTPException(status_code=404, detail="No config files found to back up")
+            return None
+
         timestamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
         backup_dir = backup_root / timestamp
         for counter in range(100):
@@ -419,9 +441,7 @@ class ConfigService:
 
         copied = []
         try:
-            for source in (self.config_file_path(), self.web_accounts_file_path()):
-                if not source.is_file():
-                    continue
+            for source in sources:
                 target = backup_dir / source.name
                 shutil.copy2(source, target)
                 try:
@@ -432,15 +452,6 @@ class ConfigService:
         except OSError as e:
             shutil.rmtree(backup_dir, ignore_errors=True)
             raise HTTPException(status_code=500, detail=f"Failed to back up {source.name}: {e}")
-
-        if not copied:
-            try:
-                backup_dir.rmdir()
-            except OSError as e:
-                raise HTTPException(status_code=500, detail=f"Failed to remove empty backup directory: {e}")
-            if raise_if_empty:
-                raise HTTPException(status_code=404, detail="No config files found to back up")
-            return None
 
         return ConfigBackupResponse(status="created", backup_dir=str(backup_dir), files=copied)
 
@@ -649,7 +660,7 @@ class ConfigService:
         config_file = self.config_file_path()
         accounts_file = self.web_accounts_file_path()
         config_toml = None
-        if config_file.is_file():
+        if self.source_file_exists(config_file):
             try:
                 config_toml = redact_config_toml(config_file.read_text(encoding="utf-8"))
             except HTTPException:
