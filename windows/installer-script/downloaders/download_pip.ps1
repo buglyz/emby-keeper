@@ -1,13 +1,15 @@
 # A script to download and install pip using get-pip.py
-# Usage: .\download_pip.ps1 [-TargetDirectory <TargetDirectory>]
-# Example: .\download_pip.ps1 -TargetDirectory C:\Python\3.8.0
+# Usage: .\download_pip.ps1 [-TargetDirectory <TargetDirectory>] [-NoMirror]
+# Example: .\download_pip.ps1 -TargetDirectory C:\Python\3.11.9 -NoMirror
 
 param(
     [Parameter()]
-    [string]$TargetDirectory=(Get-Location).Path
+    [string]$TargetDirectory=(Get-Location).Path,
+    [Parameter()]
+    [switch]$NoMirror = $false
 )
 
-$PipUrl = "https://bootstrap.pypa.io/pip/3.8/get-pip.py"
+$PipUrl = "https://bootstrap.pypa.io/get-pip.py"
 $PipFile = "$TargetDirectory\get-pip.py"
 $PipExe = "$TargetDirectory\Scripts\pip.exe"
 
@@ -27,7 +29,11 @@ if ($ProxyBypassed){
 }
 
 Write-Host "Installing pip"
-& $TargetDirectory\python.exe $PipFile --no-warn-script-location -i "https://mirrors.aliyun.com/pypi/simple"
+if ($NoMirror) {
+    & $TargetDirectory\python.exe $PipFile --no-warn-script-location
+} else {
+    & $TargetDirectory\python.exe $PipFile --no-warn-script-location -i "https://mirrors.aliyun.com/pypi/simple"
+}
 $exitCode = $LASTEXITCODE
 
 if ($exitCode -eq 0) {

@@ -3,3 +3,4 @@ black
 bump2version
 pre-commit
 debugpy
+playwright

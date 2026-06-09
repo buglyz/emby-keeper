@@ -9,19 +9,33 @@ class MinimalConfig(ConfigModel):
     alpha: int = 1
 
 
-def test_legacy_non_emby_config_sections_are_ignored():
+def test_telegram_checkiner_config_sections_are_supported():
     cfg = Config(
         emby=[{"url": "https://example.com", "username": "alice", "ua": "Fileball/1.3.30"}],
-        telegram={"account": [{"phone": "+8613800000000"}]},
+        telegram={"account": [{"phone": "+86 138 0000 0000", "checkin": False, "send": False}]},
         checkiner={"timeout": 120},
+        registrar={"concurrency": 2, "templ_a<XiguaEmbyBot>": {"times": ["9:00AM"]}},
         subsonic={"account": [{"url": "https://music.example.com", "username": "bob", "password": "secret"}]},
-        site={"checkiner": ["all"]},
+        site={"checkiner": ["all"], "registrar": ["templ_a<XiguaEmbyBot>"]},
+        service={"checkiner": ["terminus"]},
+        time="8:00AM",
+        concurrent=2,
+        random=5,
         listentime="8:00AM",
     )
 
     assert cfg.emby.account[0].useragent == "Fileball/1.3.30"
-    assert not hasattr(cfg, "telegram")
-    assert not hasattr(cfg, "checkiner")
+    assert cfg.telegram.account[0].phone == "+8613800000000"
+    assert cfg.telegram.account[0].checkiner is False
+    assert cfg.telegram.account[0].messager is False
+    assert cfg.checkiner.timeout == 120
+    assert cfg.checkiner.time_range == "8:00AM"
+    assert cfg.checkiner.concurrency == 2
+    assert cfg.checkiner.random_start == 5
+    assert cfg.site.checkiner == ["all"]
+    assert cfg.site.registrar == ["templ_a<XiguaEmbyBot>"]
+    assert cfg.registrar.concurrency == 2
+    assert cfg.registrar.get_site_config("templ_a<XiguaEmbyBot>")["times"] == ["9:00AM"]
     assert not hasattr(cfg, "subsonic")
 
 
@@ -30,10 +44,14 @@ def test_schema_mutable_defaults_are_isolated():
     second = Config()
 
     first.emby.account.append(EmbyAccount(url="https://example.com", username="alice"))
+    first.telegram.account.append({"phone": "+8613800000000"})
     first.notifier.enabled = True
+    first.site = {"checkiner": ["all"]}
 
     assert second.emby.account == []
+    assert second.telegram.account == []
     assert second.notifier.enabled is False
+    assert second.site is None
 
     first_account = EmbyAccount(url="https://example.com", username="alice")
     second_account = EmbyAccount(url="https://example.net", username="bob")
@@ -71,6 +89,44 @@ def test_legacy_emby_account_alias_does_not_mutate_source_dict():
         "username": "alice",
         "ua": "Fileball/1.3.30",
     }
+
+
+def test_legacy_emby_account_schedule_aliases_are_applied():
+    cfg = Config(
+        emby={
+            "account": [
+                {
+                    "url": "https://example.com",
+                    "username": "alice",
+                    "interval": 7,
+                    "watchtime": "<8:00AM,9:00AM>",
+                    "ua": "Fileball/1.3.30",
+                }
+            ]
+        }
+    )
+
+    account = cfg.emby.account[0]
+    assert account.interval_days == "7"
+    assert account.time_range == "<8:00AM,9:00AM>"
+    assert account.useragent == "Fileball/1.3.30"
+
+
+def test_legacy_emby_account_aliases_do_not_override_canonical_fields():
+    account = EmbyAccount(
+        url="https://example.com",
+        username="alice",
+        interval=7,
+        interval_days="12",
+        watchtime="<8:00AM,9:00AM>",
+        time_range="<10:00AM,11:00AM>",
+        ua="LegacyAgent",
+        useragent="CurrentAgent",
+    )
+
+    assert account.interval_days == "12"
+    assert account.time_range == "<10:00AM,11:00AM>"
+    assert account.useragent == "CurrentAgent"
 
 
 def test_legacy_global_alias_does_not_mutate_source_dict():
@@ -219,9 +275,38 @@ def test_emby_account_time_accepts_positive_integer_and_range():
     assert cfg.emby.account[1].time == [300, 600]
 
 
-def test_notifier_account_rejects_boolean_values():
+def test_notifier_legacy_fixed_bot_fields_are_rejected():
     with pytest.raises(ValidationError):
-        Config(notifier={"account": True})
+        Config(notifier={"account": 2})
 
-    cfg = Config(notifier={"account": 2})
-    assert cfg.notifier.account == 2
+    with pytest.raises(ValidationError):
+        Config(notifier={"immediately": True})
+
+    with pytest.raises(ValidationError):
+        Config(notifier={"once": True})
+
+    with pytest.raises(ValidationError):
+        Config(notifier={"enabled": True, "method": "telegram"})
+
+
+def test_notifier_boolean_shorthand_only_toggles_enabled():
+    cfg = Config(notifier=True)
+
+    assert cfg.notifier.enabled is True
+    assert cfg.notifier.method == "apprise"
+
+
+def test_notifier_string_and_integer_shorthand_are_no_longer_supported():
+    with pytest.raises(ValidationError):
+        Config(notifier="telegram-account")
+
+    with pytest.raises(ValidationError):
+        Config(notifier=1)
+
+
+def test_legacy_fixed_bot_top_level_fields_are_no_longer_ignored():
+    with pytest.raises(ValidationError):
+        Config(bot={"token": "legacy-token"})
+
+    with pytest.raises(ValidationError):
+        Config(notify_immediately=True)

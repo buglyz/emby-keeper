@@ -1,21 +1,14 @@
-from pathlib import Path
-from collections.abc import MutableMapping
-from datetime import datetime, timezone
-import json
-import re
-import shutil
-from tempfile import NamedTemporaryFile
-from typing import List, Optional
-from urllib.parse import parse_qsl, quote, unquote, urlparse
+from typing import List
 
-from fastapi import APIRouter, Depends, HTTPException
-from loguru import logger
-from pydantic import ValidationError
-import tomli as tomllib
-from tomlkit import document, dumps, parse
+from fastapi import APIRouter, Depends
+
+from embykeeper.config import config
 
 from ..auth import get_current_user
+from ..config_service import ConfigService
 from ..models import (
+    AutomationConfigResponse,
+    AutomationConfigUpdate,
     ConfigBackupResponse,
     ConfigBackupItem,
     ConfigExportResponse,
@@ -26,523 +19,70 @@ from ..models import (
     NotifierConfigResponse,
     NotifierConfigUpdate,
 )
-from ..validation import validate_schedule_fields
 from ..scheduler_bridge import bridge
-from embykeeper.config import config
-from embykeeper.apprise import AppriseStream
-from embykeeper.schema import EmbyConfig, NotifierConfig, ProxyConfig
 
 router = APIRouter(prefix="/api/config", tags=["config"])
-logger = logger.bind(scheme="embykeeperapi")
-REDACTED_VALUE = "***REDACTED***"
-SECRET_CONFIG_KEYS = {"password", "apprise_uri", "mongodb", "token", "access_token", "encrypted_token", "secret"}
-SECRET_CONFIG_KEY_PARTS = ("token", "secret", "password", "credential", "apikey", "api_key")
-BACKUP_ID_PATTERN = re.compile(r"^\d{8}T\d{6}Z(?:-\d+)?$")
-
-
-def _model_fields_set(model) -> set:
-    fields_set = getattr(model, "model_fields_set", None)
-    if fields_set is not None:
-        return fields_set
-    return getattr(model, "__fields_set__", set())
-
-
-def _normalize_schedule_text(field: str, value):
-    if value is None:
-        raise HTTPException(status_code=400, detail=f"{field} cannot be empty")
-    if not isinstance(value, str):
-        raise HTTPException(status_code=400, detail=f"{field} must be a string")
-    value = value.strip()
-    if not value:
-        raise HTTPException(status_code=400, detail=f"{field} cannot be empty")
-    return value
-
-
-def _normalize_optional_positive_int(field: str, value):
-    if value is None:
-        return None
-    if not isinstance(value, int) or isinstance(value, bool):
-        raise HTTPException(status_code=400, detail=f"{field} must be an integer")
-    if value <= 0:
-        raise HTTPException(status_code=400, detail=f"{field} must be greater than 0")
-    return value
-
-
-def _normalize_optional_text(field: str, value):
-    if value is None:
-        return None
-    if not isinstance(value, str):
-        raise HTTPException(status_code=400, detail=f"{field} must be a string")
-    value = value.strip()
-    return value or None
-
-
-def _telegram_uri(bot_token: str, chat_id: str) -> str:
-    token = quote(bot_token, safe=":")
-    target = quote(chat_id, safe="@:-")
-    return f"tgram://{token}/{target}"
-
-
-def _telegram_chat_id_from_uri(uri: str):
-    if not isinstance(uri, str) or not uri.startswith("tgram://"):
-        return None
-    parsed = urlparse(uri)
-    path_parts = [unquote(part) for part in parsed.path.split("/") if part]
-    return path_parts[1] if len(path_parts) >= 2 else (path_parts[0] if path_parts else None)
-
-
-def _is_telegram_uri(uri: str) -> bool:
-    return bool(_telegram_chat_id_from_uri(uri))
-
-
-def _notifier_response() -> NotifierConfigResponse:
-    notifier = config._cache.notifier if config._cache and config._cache.notifier else NotifierConfig()
-    uri = notifier.apprise_uri
-    telegram_chat_id = _telegram_chat_id_from_uri(uri)
-    if telegram_chat_id:
-        target_label = f"Telegram: {telegram_chat_id}"
-    elif uri:
-        target_label = "Apprise URI configured"
-    else:
-        target_label = None
-    return NotifierConfigResponse(
-        enabled=bool(notifier.enabled),
-        method="telegram" if telegram_chat_id else (notifier.method or "apprise"),
-        configured=bool(uri),
-        target_label=target_label,
-        telegram_chat_id=telegram_chat_id,
-    )
-
-
-async def _refresh_notifier():
-    try:
-        from embykeeper.notify import start_notifier
-
-        await start_notifier()
-    except Exception as e:
-        logger.warning(f"Failed to refresh notifier: {type(e).__name__}")
-
-
-def _set_toml_value(table, key: str, value):
-    if value is None:
-        table.pop(key, None)
-    else:
-        table[key] = value
-
-
-def _write_text_atomic(path: Path, content: str):
-    path.parent.mkdir(parents=True, exist_ok=True)
-    tmp_path = None
-    try:
-        with NamedTemporaryFile(
-            "w",
-            encoding="utf-8",
-            dir=path.parent,
-            prefix=f".{path.name}.",
-            suffix=".tmp",
-            delete=False,
-        ) as tmp:
-            tmp_path = Path(tmp.name)
-            tmp.write(content)
-        try:
-            tmp_path.chmod(0o600)
-        except OSError:
-            pass
-        tmp_path.replace(path)
-    except Exception:
-        if tmp_path is not None:
-            try:
-                tmp_path.unlink(missing_ok=True)
-            except OSError:
-                pass
-        raise
-
-
-def _config_file_path() -> Path:
-    return Path(config._conf_file) if config._conf_file else Path(config.basedir) / "config.toml"
-
-
-def _web_accounts_file_path() -> Path:
-    basedir = getattr(bridge.web_accounts, "basedir", None)
-    if basedir:
-        return Path(basedir) / "web_accounts.json"
-    return Path(config.basedir) / "web_accounts.json"
-
-
-def _backup_root() -> Path:
-    return Path(config.basedir) / "backups"
-
-
-def _prepare_backup_root() -> Path:
-    backup_root = _backup_root()
-    try:
-        backup_root.mkdir(parents=True, exist_ok=True)
-        backup_root.chmod(0o700)
-    except OSError as e:
-        raise HTTPException(status_code=500, detail=f"Failed to prepare backup directory: {e}")
-    return backup_root
-
-
-def _backup_created_at(backup_id: str):
-    timestamp = backup_id.split("-", 1)[0]
-    try:
-        return datetime.strptime(timestamp, "%Y%m%dT%H%M%SZ").replace(tzinfo=timezone.utc)
-    except ValueError:
-        return None
-
-
-def _backup_dir_from_id(backup_id: str) -> Path:
-    if not isinstance(backup_id, str) or not BACKUP_ID_PATTERN.fullmatch(backup_id):
-        raise HTTPException(status_code=404, detail="Backup not found")
-    backup_dir = _backup_root() / backup_id
-    try:
-        backup_dir.relative_to(_backup_root())
-    except ValueError:
-        raise HTTPException(status_code=404, detail="Backup not found")
-    if backup_dir.is_symlink() or not backup_dir.is_dir():
-        raise HTTPException(status_code=404, detail="Backup not found")
-    return backup_dir
-
-
-def _backup_files(backup_dir: Path) -> List[str]:
-    try:
-        return sorted(path.name for path in backup_dir.iterdir() if path.is_file() and not path.is_symlink())
-    except OSError as e:
-        raise HTTPException(status_code=500, detail=f"Failed to read backup directory: {e}")
-
-
-def _create_backup_snapshot(*, raise_if_empty: bool = True) -> Optional[ConfigBackupResponse]:
-    backup_root = _prepare_backup_root()
-    timestamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
-    backup_dir = backup_root / timestamp
-    for counter in range(100):
-        candidate = backup_dir if counter == 0 else backup_root / f"{timestamp}-{counter}"
-        try:
-            candidate.mkdir(parents=True, exist_ok=False)
-            try:
-                candidate.chmod(0o700)
-            except OSError:
-                pass
-            backup_dir = candidate
-            break
-        except FileExistsError:
-            continue
-        except OSError as e:
-            raise HTTPException(status_code=500, detail=f"Failed to create backup directory: {e}")
-    else:
-        raise HTTPException(status_code=500, detail="Failed to create unique backup directory")
-
-    copied = []
-    try:
-        for source in (_config_file_path(), _web_accounts_file_path()):
-            if not source.is_file():
-                continue
-            target = backup_dir / source.name
-            shutil.copy2(source, target)
-            try:
-                target.chmod(0o600)
-            except OSError:
-                pass
-            copied.append(source.name)
-    except OSError as e:
-        shutil.rmtree(backup_dir, ignore_errors=True)
-        raise HTTPException(status_code=500, detail=f"Failed to back up {source.name}: {e}")
-
-    if not copied:
-        try:
-            backup_dir.rmdir()
-        except OSError as e:
-            raise HTTPException(status_code=500, detail=f"Failed to remove empty backup directory: {e}")
-        if raise_if_empty:
-            raise HTTPException(status_code=404, detail="No config files found to back up")
-        return None
-
-    return ConfigBackupResponse(status="created", backup_dir=str(backup_dir), files=copied)
-
-
-async def _reload_restored_runtime(restored_files: List[str]):
-    config_file = _config_file_path()
-    should_merge_accounts = False
-    if config_file.name in restored_files and config_file.is_file():
-        if not await config.reload_conf(config_file):
-            raise HTTPException(status_code=500, detail="Restored config.toml is invalid")
-        if bridge.web_accounts and config._cache and config._cache.emby:
-            bridge._base_emby_accounts = list(config._cache.emby.account or [])
-            should_merge_accounts = True
-    if bridge.web_accounts and _web_accounts_file_path().name in restored_files:
-        from ..scheduler_bridge import WebAccountData
-
-        bridge.web_accounts = WebAccountData(_web_accounts_file_path().parent)
-        should_merge_accounts = True
-    if bridge.web_accounts and should_merge_accounts:
-        bridge._merge_accounts()
-
-
-def _validate_restore_sources(restored):
-    config_file = _config_file_path()
-    web_accounts_file = _web_accounts_file_path()
-    for source, target in restored:
-        if target.name == config_file.name:
-            try:
-                data = tomllib.loads(source.read_text(encoding="utf-8"))
-            except Exception as e:
-                raise HTTPException(status_code=400, detail=f"Backup config.toml is invalid: {e}")
-            if not config.validate_config(data):
-                raise HTTPException(status_code=400, detail="Backup config.toml failed validation")
-        elif target.name == web_accounts_file.name:
-            try:
-                data = json.loads(source.read_text(encoding="utf-8"))
-            except Exception as e:
-                raise HTTPException(status_code=400, detail=f"Backup web_accounts.json is invalid: {e}")
-            if not isinstance(data, dict):
-                raise HTTPException(status_code=400, detail="Backup web_accounts.json must be an object")
-            from ..scheduler_bridge import _sanitize_account_record
-
-            if any(_sanitize_account_record(value) is None for value in data.values()):
-                raise HTTPException(status_code=400, detail="Backup web_accounts.json has invalid accounts")
-
-
-def _stage_restore_files(restored):
-    staged = []
-    current_tmp_path = None
-    try:
-        for source, target in restored:
-            current_tmp_path = None
-            target.parent.mkdir(parents=True, exist_ok=True)
-            with NamedTemporaryFile(
-                "wb",
-                dir=target.parent,
-                prefix=f".{target.name}.restore.",
-                suffix=".tmp",
-                delete=False,
-            ) as tmp:
-                tmp_path = Path(tmp.name)
-            current_tmp_path = tmp_path
-            shutil.copy2(source, tmp_path)
-            try:
-                tmp_path.chmod(0o600)
-            except OSError:
-                pass
-            staged.append((tmp_path, target))
-            current_tmp_path = None
-        return staged
-    except Exception:
-        if current_tmp_path is not None:
-            try:
-                current_tmp_path.unlink(missing_ok=True)
-            except OSError:
-                pass
-        for tmp_path, _target in staged:
-            try:
-                tmp_path.unlink(missing_ok=True)
-            except OSError:
-                pass
-        raise
-
-
-def _replace_staged_restore_files(staged):
-    replaced = []
-    try:
-        for tmp_path, target in staged:
-            tmp_path.replace(target)
-            replaced.append(target.name)
-        return replaced
-    except OSError as e:
-        for tmp_path, _target in staged:
-            try:
-                tmp_path.unlink(missing_ok=True)
-            except OSError:
-                pass
-        raise HTTPException(status_code=500, detail=f"Failed to restore files: {e}")
-
-
-def _is_secret_key(key) -> bool:
-    normalized = str(key).lower()
-    return normalized in SECRET_CONFIG_KEYS or any(part in normalized for part in SECRET_CONFIG_KEY_PARTS)
-
-
-def _is_sensitive_url(value: str) -> bool:
-    parsed = urlparse(value)
-    if not parsed.scheme:
-        return False
-    if parsed.username or parsed.password:
-        return True
-    return any(_is_secret_key(key) for key, _value in parse_qsl(parsed.query, keep_blank_values=True))
-
-
-def _redact_scalar_value(value):
-    if isinstance(value, str) and _is_sensitive_url(value):
-        return REDACTED_VALUE
-    return value
-
-
-def _redact_toml_value(value):
-    if isinstance(value, MutableMapping):
-        for key in list(value.keys()):
-            if _is_secret_key(key):
-                value[key] = REDACTED_VALUE
-            else:
-                child = value[key]
-                if isinstance(child, (MutableMapping, list)):
-                    _redact_toml_value(child)
-                else:
-                    value[key] = _redact_scalar_value(child)
-    elif isinstance(value, list):
-        for index, item in enumerate(value):
-            if isinstance(item, (MutableMapping, list)):
-                _redact_toml_value(item)
-            else:
-                value[index] = _redact_scalar_value(item)
-
-
-def _redact_config_toml(content: str) -> str:
-    doc = parse(content)
-    _redact_toml_value(doc)
-    return dumps(doc)
-
-
-def _redact_web_accounts(accounts: dict) -> dict:
-    return _redact_plain_mapping(accounts)
-
-
-def _redact_plain_mapping(value):
-    if isinstance(value, dict):
-        redacted = {}
-        for key, item in value.items():
-            redacted[key] = (
-                REDACTED_VALUE
-                if _is_secret_key(key)
-                else _redact_plain_mapping(_redact_scalar_value(item))
-            )
-        return redacted
-    if isinstance(value, list):
-        return [_redact_plain_mapping(item) for item in value]
-    return _redact_scalar_value(value)
-
-
-def _persist_global_config(next_config=None):
-    """Persist Web UI global settings without rewriting account secrets."""
-    target_config = next_config or config._cache
-    config_file = _config_file_path()
-    if config_file.is_file():
-        try:
-            doc = parse(config_file.read_text(encoding="utf-8"))
-        except Exception as e:
-            raise HTTPException(status_code=500, detail=f"Failed to parse config.toml: {e}")
-    else:
-        doc = document()
-
-    if "emby" not in doc or not isinstance(doc["emby"], MutableMapping):
-        doc["emby"] = {}
-    emby = target_config.emby or EmbyConfig()
-    _set_toml_value(doc["emby"], "time_range", emby.time_range)
-    _set_toml_value(doc["emby"], "interval_days", emby.interval_days)
-    _set_toml_value(doc["emby"], "concurrency", emby.concurrency)
-
-    if target_config.proxy:
-        if "proxy" not in doc or not isinstance(doc["proxy"], MutableMapping):
-            doc["proxy"] = {}
-        proxy = target_config.proxy
-        _set_toml_value(doc["proxy"], "hostname", proxy.hostname)
-        _set_toml_value(doc["proxy"], "port", proxy.port)
-        _set_toml_value(doc["proxy"], "scheme", proxy.scheme)
-    else:
-        doc.pop("proxy", None)
-
-    notifier = target_config.notifier
-    if notifier:
-        if "notifier" not in doc or not isinstance(doc["notifier"], MutableMapping):
-            doc["notifier"] = {}
-        _set_toml_value(doc["notifier"], "enabled", notifier.enabled)
-        _set_toml_value(doc["notifier"], "method", notifier.method)
-        _set_toml_value(doc["notifier"], "apprise_uri", notifier.apprise_uri)
-    else:
-        doc.pop("notifier", None)
-
-    try:
-        _write_text_atomic(config_file, dumps(doc))
-    except OSError as e:
-        raise HTTPException(status_code=500, detail=f"Failed to write config.toml: {e}")
+config_service = ConfigService(config, bridge)
 
 
 @router.get("", response_model=GlobalConfigResponse)
 async def get_config(user: str = Depends(get_current_user)):
-    """Read current global config (sensitive fields masked)."""
-    if not config._cache:
-        return GlobalConfigResponse()
+    """Read current global config."""
+    return config_service.get_global_config()
 
-    emby = config._cache.emby
-    proxy = config._cache.proxy
 
-    return GlobalConfigResponse(
-        emby_time_range=emby.time_range if emby else None,
-        emby_interval_days=emby.interval_days if emby else None,
-        emby_concurrency=emby.concurrency if emby else None,
-        proxy_hostname=proxy.hostname if proxy else None,
-        proxy_port=proxy.port if proxy else None,
-        proxy_scheme=proxy.scheme if proxy else None,
-    )
+@router.put("")
+async def update_config(req: GlobalConfigUpdate, user: str = Depends(get_current_user)):
+    """Update global config settings."""
+    return config_service.update_global_config(req)
+
+
+@router.get("/automation", response_model=AutomationConfigResponse)
+async def get_automation_config(user: str = Depends(get_current_user)):
+    """Read Telegram check-in and timed registrar settings."""
+    return config_service.get_automation_config()
+
+
+@router.put("/automation", response_model=AutomationConfigResponse)
+async def update_automation_config(req: AutomationConfigUpdate, user: str = Depends(get_current_user)):
+    """Update Telegram check-in and timed registrar settings."""
+    return await config_service.update_automation_config(req)
+
+
+@router.get("/notifier", response_model=NotifierConfigResponse)
+async def get_notifier_config(user: str = Depends(get_current_user)):
+    """Read notification settings without exposing secret tokens."""
+    return config_service.get_notifier_config()
+
+
+@router.put("/notifier", response_model=NotifierConfigResponse)
+async def update_notifier_config(req: NotifierConfigUpdate, user: str = Depends(get_current_user)):
+    """Update notification settings."""
+    return await config_service.update_notifier_config(req)
+
+
+@router.post("/notifier/test")
+async def test_notifier(req: NotifierConfigUpdate, user: str = Depends(get_current_user)):
+    """Send a test notification to the provided or currently configured target."""
+    return await config_service.test_notifier(req)
 
 
 @router.get("/export", response_model=ConfigExportResponse)
 async def export_config_bundle(user: str = Depends(get_current_user)):
     """Export a redacted config snapshot for diagnostics."""
-    config_file = _config_file_path()
-    accounts_file = _web_accounts_file_path()
-    config_toml = None
-    if config_file.is_file():
-        try:
-            config_toml = _redact_config_toml(config_file.read_text(encoding="utf-8"))
-        except HTTPException:
-            raise
-        except Exception as e:
-            raise HTTPException(status_code=500, detail=f"Failed to redact config.toml: {e}")
-    web_accounts = {}
-    if bridge.web_accounts:
-        try:
-            web_accounts = _redact_web_accounts(bridge.web_accounts.get_all())
-        except OSError as e:
-            raise HTTPException(status_code=500, detail=f"Failed to read web accounts: {e}")
-    return ConfigExportResponse(
-        generated_at=datetime.now(timezone.utc),
-        config_path=str(config_file),
-        web_accounts_path=str(accounts_file),
-        config_toml=config_toml,
-        web_accounts=web_accounts,
-        redacted=True,
-    )
+    return config_service.export_config_bundle()
 
 
 @router.post("/backup", response_model=ConfigBackupResponse)
 async def create_config_backup(user: str = Depends(get_current_user)):
     """Create a local timestamped backup of config.toml and web_accounts.json."""
-    return _create_backup_snapshot()
+    return config_service.create_backup_snapshot()
 
 
 @router.get("/backups", response_model=List[ConfigBackupItem])
 async def list_config_backups(user: str = Depends(get_current_user)):
     """List local config backups available for restore."""
-    backup_root = _backup_root()
-    if not backup_root.is_dir():
-        return []
-    try:
-        backup_dirs = [
-            path
-            for path in backup_root.iterdir()
-            if path.is_dir() and not path.is_symlink() and BACKUP_ID_PATTERN.fullmatch(path.name)
-        ]
-    except OSError as e:
-        raise HTTPException(status_code=500, detail=f"Failed to list backups: {e}")
-    backup_dirs.sort(key=lambda path: _backup_created_at(path.name) or datetime.min.replace(tzinfo=timezone.utc), reverse=True)
-    return [
-        ConfigBackupItem(
-            id=backup_dir.name,
-            backup_dir=str(backup_dir),
-            created_at=_backup_created_at(backup_dir.name),
-            files=_backup_files(backup_dir),
-        )
-        for backup_dir in backup_dirs
-    ]
+    return config_service.list_config_backups()
 
 
 @router.post("/backups/{backup_id}/restore", response_model=ConfigRestoreResponse)
@@ -552,190 +92,4 @@ async def restore_config_backup(
     user: str = Depends(get_current_user),
 ):
     """Restore config files from a local backup."""
-    if not req.confirm:
-        raise HTTPException(status_code=400, detail="confirm must be true")
-    backup_dir = _backup_dir_from_id(backup_id)
-    targets = (_config_file_path(), _web_accounts_file_path())
-    restored = []
-    for target in targets:
-        source = backup_dir / target.name
-        if source.is_file() and not source.is_symlink():
-            restored.append((source, target))
-    if not restored:
-        raise HTTPException(status_code=404, detail="No restorable files found in backup")
-
-    _validate_restore_sources(restored)
-    safety_backup = _create_backup_snapshot(raise_if_empty=False)
-    try:
-        staged = _stage_restore_files(restored)
-        restored_files = _replace_staged_restore_files(staged)
-    except OSError as e:
-        raise HTTPException(status_code=500, detail=f"Failed to restore {target.name}: {e}")
-
-    await _reload_restored_runtime(restored_files)
-    return ConfigRestoreResponse(
-        status="restored",
-        backup_dir=str(backup_dir),
-        restored_files=restored_files,
-        safety_backup_dir=safety_backup.backup_dir if safety_backup else None,
-    )
-
-
-@router.put("")
-async def update_config(req: GlobalConfigUpdate, user: str = Depends(get_current_user)):
-    """Update global config settings."""
-    if not config._cache:
-        raise HTTPException(status_code=503, detail="Config not loaded")
-
-    new_config = config._cache.model_copy(deep=True)
-    if new_config.emby is None:
-        new_config.emby = EmbyConfig()
-
-    fields_set = _model_fields_set(req)
-
-    if "emby_time_range" in fields_set:
-        new_config.emby.time_range = _normalize_schedule_text("emby_time_range", req.emby_time_range)
-    if "emby_interval_days" in fields_set:
-        new_config.emby.interval_days = _normalize_schedule_text("emby_interval_days", req.emby_interval_days)
-    if "emby_concurrency" in fields_set:
-        new_config.emby.concurrency = _normalize_optional_positive_int(
-            "emby_concurrency", req.emby_concurrency
-        )
-
-    if "proxy" in fields_set:
-        if req.proxy is None:
-            new_config.proxy = None
-        else:
-            existing_proxy = new_config.proxy or ProxyConfig()
-            proxy_fields_set = _model_fields_set(req.proxy)
-            if "hostname" in proxy_fields_set:
-                if req.proxy.hostname is None:
-                    hostname = None
-                elif not isinstance(req.proxy.hostname, str):
-                    raise HTTPException(status_code=400, detail="proxy.hostname must be a string")
-                else:
-                    hostname = req.proxy.hostname.strip()
-                existing_proxy.hostname = hostname or None
-            if "port" in proxy_fields_set:
-                existing_proxy.port = req.proxy.port
-            if "scheme" in proxy_fields_set:
-                existing_proxy.scheme = req.proxy.scheme
-            if (
-                existing_proxy.hostname is not None
-                or existing_proxy.port is not None
-                or existing_proxy.scheme is not None
-            ):
-                new_config.proxy = existing_proxy
-            else:
-                new_config.proxy = None
-
-    if new_config.emby.concurrency is not None and new_config.emby.concurrency <= 0:
-        raise HTTPException(status_code=400, detail="emby_concurrency must be greater than 0")
-    if "emby_time_range" in fields_set or "emby_interval_days" in fields_set:
-        validate_schedule_fields(
-            new_config.emby.interval_days,
-            new_config.emby.time_range,
-            use_defaults=False,
-        )
-    if new_config.proxy is not None:
-        try:
-            new_config.proxy = ProxyConfig.model_validate(new_config.proxy.model_dump(exclude_none=True))
-        except ValidationError as e:
-            raise HTTPException(status_code=400, detail=e.errors()[0]["msg"])
-
-    _persist_global_config(new_config)
-    if not config.set(new_config, preserve_conf_file=True):
-        raise HTTPException(status_code=400, detail="Invalid config")
-
-    return {"status": "updated"}
-
-
-@router.get("/notifier", response_model=NotifierConfigResponse)
-async def get_notifier_config(user: str = Depends(get_current_user)):
-    """Read notification settings without exposing secret tokens."""
-    if not config._cache:
-        return NotifierConfigResponse()
-    return _notifier_response()
-
-
-@router.put("/notifier", response_model=NotifierConfigResponse)
-async def update_notifier_config(req: NotifierConfigUpdate, user: str = Depends(get_current_user)):
-    """Update notification settings. Telegram is stored as an Apprise URI."""
-    if not config._cache:
-        raise HTTPException(status_code=503, detail="Config not loaded")
-
-    fields_set = _model_fields_set(req)
-    new_config = config._cache.model_copy(deep=True)
-    existing = new_config.notifier or NotifierConfig()
-    enabled = existing.enabled if "enabled" not in fields_set else req.enabled
-    if enabled is not None and not isinstance(enabled, bool):
-        raise HTTPException(status_code=400, detail="enabled must be a boolean")
-
-    method = _normalize_optional_text("method", req.method) if "method" in fields_set else existing.method
-    method = (method or "apprise").lower()
-    if method not in {"apprise", "telegram"}:
-        raise HTTPException(status_code=400, detail="method must be 'apprise' or 'telegram'")
-
-    uri = existing.apprise_uri
-    existing_is_telegram = _is_telegram_uri(uri)
-    if req.clear:
-        uri = None
-        existing_is_telegram = False
-
-    bot_token = _normalize_optional_text("telegram_bot_token", req.telegram_bot_token)
-    chat_id = _normalize_optional_text("telegram_chat_id", req.telegram_chat_id)
-    apprise_uri = _normalize_optional_text("apprise_uri", req.apprise_uri)
-
-    if bot_token or chat_id:
-        if not bot_token or not chat_id:
-            raise HTTPException(
-                status_code=400, detail="telegram_bot_token and telegram_chat_id are required"
-            )
-        uri = _telegram_uri(bot_token, chat_id)
-        method = "apprise"
-    elif apprise_uri is not None:
-        uri = apprise_uri
-        method = "apprise"
-    elif "method" in fields_set and enabled:
-        if method == "telegram" and not existing_is_telegram:
-            raise HTTPException(status_code=400, detail="Telegram target is required")
-        if method == "apprise" and existing_is_telegram:
-            raise HTTPException(status_code=400, detail="Apprise URI is required")
-
-    if enabled and not uri:
-        raise HTTPException(status_code=400, detail="Notification target is required when enabled")
-
-    new_config.notifier = NotifierConfig(enabled=bool(enabled), method="apprise", apprise_uri=uri)
-    _persist_global_config(new_config)
-    if not config.set(new_config, preserve_conf_file=True):
-        raise HTTPException(status_code=400, detail="Invalid config")
-    await _refresh_notifier()
-    return _notifier_response()
-
-
-@router.post("/notifier/test")
-async def test_notifier(req: NotifierConfigUpdate, user: str = Depends(get_current_user)):
-    """Send a test notification to the provided or currently configured target."""
-    uri = None
-    bot_token = _normalize_optional_text("telegram_bot_token", req.telegram_bot_token)
-    chat_id = _normalize_optional_text("telegram_chat_id", req.telegram_chat_id)
-    apprise_uri = _normalize_optional_text("apprise_uri", req.apprise_uri)
-    if bot_token or chat_id:
-        if not bot_token or not chat_id:
-            raise HTTPException(
-                status_code=400, detail="telegram_bot_token and telegram_chat_id are required"
-            )
-        uri = _telegram_uri(bot_token, chat_id)
-    elif apprise_uri:
-        uri = apprise_uri
-    elif config._cache and config._cache.notifier:
-        uri = config._cache.notifier.apprise_uri
-    if not uri:
-        raise HTTPException(status_code=400, detail="Notification target is required")
-
-    stream = AppriseStream(uri)
-    if not getattr(stream, "ready", True):
-        raise HTTPException(status_code=400, detail="Notification target is invalid")
-    stream.write("INFO#Emby Keeper notification test")
-    await stream.join()
-    return {"status": "sent"}
+    return await config_service.restore_config_backup(backup_id, req)

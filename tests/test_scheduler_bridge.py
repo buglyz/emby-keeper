@@ -255,6 +255,22 @@ def test_web_account_user_id_is_normalized(tmp_path):
     assert accounts._get_account_user_id({"user_id": True}) == ""
 
 
+def test_web_account_data_falls_back_to_legacy_userid_when_user_id_is_blank(tmp_path):
+    accounts = WebAccountData(tmp_path)
+
+    accounts.add(
+        "alice@example.com",
+        {
+            "url": "https://example.com",
+            "username": "alice",
+            "user_id": " ",
+            "userid": " legacy-user ",
+        },
+    )
+
+    assert accounts.get("alice@example.com")["user_id"] == "legacy-user"
+
+
 def test_cached_account_credentials_use_normalized_user_id(tmp_path):
     cache_key = "emby.credential.example.com.alice"
     cache.delete(cache_key)
@@ -398,11 +414,44 @@ def test_web_account_data_normalizes_added_accounts_before_save(tmp_path):
     }
 
 
+def test_web_account_data_drops_unknown_and_plain_secret_fields(tmp_path):
+    accounts = WebAccountData(tmp_path)
+
+    accounts.add(
+        "alice@example.com",
+        {
+            "url": "https://example.com",
+            "username": "alice",
+            "access_token": "plain-token",
+            "password": "plain-password",
+            "metadata": {"api_key": "nested-secret"},
+            "unknown": "value",
+            "userid": " user-1 ",
+        },
+    )
+
+    expected = {
+        "url": "https://example.com",
+        "username": "alice",
+        "user_id": "user-1",
+    }
+    assert accounts.get("alice@example.com") == expected
+    assert json.loads((tmp_path / "web_accounts.json").read_text(encoding="utf-8")) == {
+        "alice@example.com": expected
+    }
+
+
 def test_web_account_data_rejects_invalid_added_accounts(tmp_path):
     accounts = WebAccountData(tmp_path)
 
     with pytest.raises(ValueError):
         accounts.add("broken", {"url": "", "username": "alice"})
+
+    with pytest.raises(ValueError):
+        accounts.add("missing-url", {"username": "alice"})
+
+    with pytest.raises(ValueError):
+        accounts.add("missing-username", {"url": "https://example.com"})
 
     assert accounts.get_all() == {}
 
@@ -430,6 +479,21 @@ def test_web_account_data_normalizes_updated_accounts_before_save(tmp_path):
         "client": "Infuse",
     }
     assert accounts.get_all() == {"alice2@example.com": expected}
+
+
+def test_web_account_data_rejects_updates_that_remove_required_fields(tmp_path):
+    accounts = WebAccountData(tmp_path)
+    accounts.add("alice@example.com", {"url": "https://example.com", "username": "alice"})
+
+    with pytest.raises(ValueError):
+        accounts.update("alice@example.com", {"url": None})
+
+    with pytest.raises(ValueError):
+        accounts.update("alice@example.com", {"username": " "})
+
+    assert accounts.get_all() == {
+        "alice@example.com": {"url": "https://example.com", "username": "alice"}
+    }
 
 
 def test_web_account_data_filters_non_object_accounts(tmp_path):
@@ -537,6 +601,42 @@ def test_web_account_data_trims_required_fields_from_legacy_file(tmp_path):
             "encrypted_token": "token-1",
         }
     }
+
+
+def test_web_account_data_drops_unknown_fields_from_legacy_file(tmp_path):
+    accounts_file = tmp_path / "web_accounts.json"
+    accounts_file.write_text(
+        json.dumps(
+            {
+                "alice@example.com": {
+                    "url": "https://example.com",
+                    "username": "alice",
+                    "access_token": "plain-token",
+                    "password": "plain-password",
+                    "metadata": {"api_key": "nested-secret"},
+                    "userid": "user-1",
+                }
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    accounts = WebAccountData(tmp_path)
+
+    expected = {
+        "alice@example.com": {
+            "url": "https://example.com",
+            "username": "alice",
+            "user_id": "user-1",
+        }
+    }
+    assert accounts.get_all() == expected
+    assert json.loads(accounts_file.read_text(encoding="utf-8")) == expected
+    backups = list(tmp_path.glob("web_accounts.json.corrupt.*"))
+    assert len(backups) == 1
+    backup_data = json.loads(backups[0].read_text(encoding="utf-8"))
+    assert backup_data["alice@example.com"]["access_token"] == "plain-token"
+    assert backup_data["alice@example.com"]["metadata"]["api_key"] == "nested-secret"
 
 
 def test_web_account_data_normalizes_legacy_encrypted_token_field(tmp_path):
@@ -835,7 +935,7 @@ def test_web_account_data_normalizes_legacy_auth_method(tmp_path):
 
 def test_web_account_data_keeps_memory_unchanged_when_save_fails(tmp_path, monkeypatch):
     accounts = WebAccountData(tmp_path)
-    accounts.add("alice@example.com", {"username": "alice"})
+    accounts.add("alice@example.com", {"url": "https://example.com", "username": "alice"})
 
     def fail_save(_data=None):
         raise OSError("disk full")
@@ -843,21 +943,21 @@ def test_web_account_data_keeps_memory_unchanged_when_save_fails(tmp_path, monke
     monkeypatch.setattr(accounts, "_save", fail_save)
 
     with pytest.raises(OSError):
-        accounts.add("bob@example.com", {"username": "bob"})
-    assert accounts.get_all() == {"alice@example.com": {"username": "alice"}}
+        accounts.add("bob@example.com", {"url": "https://bob.example.com", "username": "bob"})
+    assert accounts.get_all() == {"alice@example.com": {"url": "https://example.com", "username": "alice"}}
 
     with pytest.raises(OSError):
         accounts.update("alice@example.com", {"username": "alice2"})
-    assert accounts.get("alice@example.com") == {"username": "alice"}
+    assert accounts.get("alice@example.com") == {"url": "https://example.com", "username": "alice"}
 
     with pytest.raises(OSError):
         accounts.delete("alice@example.com")
-    assert accounts.get("alice@example.com") == {"username": "alice"}
+    assert accounts.get("alice@example.com") == {"url": "https://example.com", "username": "alice"}
 
 
 def test_web_account_data_file_is_owner_only(tmp_path):
     accounts = WebAccountData(tmp_path)
-    accounts.add("alice@example.com", {"username": "alice"})
+    accounts.add("alice@example.com", {"url": "https://example.com", "username": "alice"})
 
     mode = stat.S_IMODE((tmp_path / "web_accounts.json").stat().st_mode)
 
@@ -895,7 +995,12 @@ def test_web_account_data_save_cleans_temp_file_when_json_dump_fails(tmp_path):
     accounts.add("alice@example.com", {"url": "https://example.com", "username": "alice"})
 
     with pytest.raises(TypeError):
-        accounts.add("bad@example.com", {"url": "https://bad.example.com", "username": "bob", "metadata": object()})
+        accounts._save(
+            {
+                "alice@example.com": {"url": "https://example.com", "username": "alice"},
+                "bad@example.com": {"url": "https://bad.example.com", "username": object()},
+            }
+        )
 
     assert accounts.get_all() == {"alice@example.com": {"url": "https://example.com", "username": "alice"}}
     assert json.loads((tmp_path / "web_accounts.json").read_text(encoding="utf-8")) == {
@@ -907,7 +1012,7 @@ def test_web_account_data_save_cleans_temp_file_when_json_dump_fails(tmp_path):
 
 def test_web_account_data_returns_copies(tmp_path):
     accounts = WebAccountData(tmp_path)
-    accounts.add("alice@example.com", {"username": "alice"})
+    accounts.add("alice@example.com", {"url": "https://example.com", "username": "alice"})
 
     account = accounts.get("alice@example.com")
     account["username"] = "changed"
@@ -915,12 +1020,13 @@ def test_web_account_data_returns_copies(tmp_path):
     all_accounts = accounts.get_all()
     all_accounts["alice@example.com"]["username"] = "changed-again"
 
-    assert accounts.get("alice@example.com") == {"username": "alice"}
+    assert accounts.get("alice@example.com") == {"url": "https://example.com", "username": "alice"}
 
 
 def test_web_account_data_isolates_mutable_account_data(tmp_path):
     accounts = WebAccountData(tmp_path)
     source = {
+        "url": "https://example.com",
         "username": "alice",
         "time": [300, 600],
         "metadata": {"device": "phone"},
@@ -932,22 +1038,23 @@ def test_web_account_data_isolates_mutable_account_data(tmp_path):
 
     account = accounts.get("alice@example.com")
     account["time"][1] = 2
-    account["metadata"]["device"] = "desktop"
 
     all_accounts = accounts.get_all()
     all_accounts["alice@example.com"]["time"][0] = 3
-    all_accounts["alice@example.com"]["metadata"]["device"] = "tv"
 
     assert accounts.get("alice@example.com") == {
+        "url": "https://example.com",
         "username": "alice",
         "time": [300, 600],
-        "metadata": {"device": "phone"},
     }
 
 
 def test_web_account_data_update_isolates_mutable_values(tmp_path):
     accounts = WebAccountData(tmp_path)
-    accounts.add("alice@example.com", {"username": "alice", "time": [300, 600]})
+    accounts.add(
+        "alice@example.com",
+        {"url": "https://example.com", "username": "alice", "time": [300, 600]},
+    )
     update = {"time": [120, 240], "metadata": {"device": "phone"}}
 
     assert accounts.update("alice@example.com", update) == "alice@example.com"
@@ -955,9 +1062,9 @@ def test_web_account_data_update_isolates_mutable_values(tmp_path):
     update["metadata"]["device"] = "tablet"
 
     assert accounts.get("alice@example.com") == {
+        "url": "https://example.com",
         "username": "alice",
         "time": [120, 240],
-        "metadata": {"device": "phone"},
     }
 
 
@@ -965,12 +1072,23 @@ def test_trigger_watch_many_skips_disabled_and_independent_when_requested(tmp_pa
     async def run_test():
         bridge = SchedulerBridge()
         await bridge.initialize(tmp_path)
-        bridge.web_accounts.add("global@example.com", {"enabled": True})
+        bridge.web_accounts.add(
+            "global@example.com",
+            {"url": "https://global.example.com", "username": "global", "enabled": True},
+        )
         bridge.web_accounts.add(
             "independent@example.com",
-            {"enabled": True, "interval_days": "7"},
+            {
+                "url": "https://independent.example.com",
+                "username": "independent",
+                "enabled": True,
+                "interval_days": "7",
+            },
         )
-        bridge.web_accounts.add("disabled@example.com", {"enabled": False})
+        bridge.web_accounts.add(
+            "disabled@example.com",
+            {"url": "https://disabled.example.com", "username": "disabled", "enabled": False},
+        )
 
         triggered = []
 

@@ -2,11 +2,16 @@ FROM python:3.11-slim AS builder
 
 WORKDIR /src
 COPY . .
+ARG EK_EXTRAS=full
 
 RUN python -m venv /opt/venv \
     && . /opt/venv/bin/activate \
     && pip install --no-cache-dir -U pip setuptools wheel \
-    && pip install --no-cache-dir .
+    && if [ -z "$EK_EXTRAS" ] || [ "$EK_EXTRAS" = "none" ]; then \
+        pip install --no-cache-dir .; \
+    else \
+        pip install --no-cache-dir ".[${EK_EXTRAS}]"; \
+    fi
 
 FROM python:3.11-slim
 COPY --from=builder /opt/venv /opt/venv

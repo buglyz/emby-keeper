@@ -1,1 +1,1 @@
-embykeeper==7.6.1
+embykeeper[full]==7.6.1

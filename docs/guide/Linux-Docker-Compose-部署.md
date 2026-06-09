@@ -198,7 +198,7 @@ docker-compose up -d
 
 您可以直接修改 `./embykeeper-src` 中的源码, 重启容器后程序将据此运行.
 
-例如, 只要您有基本的编程能力, 您就可以在 `./embykeeper-src/embykeeper/telechecker/bots` 中按照 [教程](/guide/参与开发#每日签到站点) 提供的方式非常容易地新建一个站点的签到.
+例如, 只要您有基本的编程能力, 您就可以在 `./embykeeper-src/embykeeper/telegram/checkiner` 中按照 [教程](/guide/参与开发#每日签到站点) 提供的方式非常容易地新建一个站点的签到.
 
 ::: tip 如何更新
 

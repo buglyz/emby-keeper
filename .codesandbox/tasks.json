@@ -5,14 +5,14 @@
   "setupTasks": [
     {
       "name": "Installing Dependencies",
-      "command": "pip install -e ."
+      "command": "pip install -e '.[full,dev]'"
     }
   ],
   // These tasks can be run from CodeSandbox. Running one will open a log in the app.
   "tasks": {
     "reinstall": {
       "name": "Retry installing dependencies",
-      "command": "pip install -e ."
+      "command": "pip install -e '.[full,dev]'"
     },
     "embykeeper": {
       "name": "Run embykeeper with config.toml",

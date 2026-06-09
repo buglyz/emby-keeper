@@ -46,8 +46,12 @@ def _run_account_spec(run: RunContext):
     description = run.description or ""
     for prefix in ("Manual watch: ", "Login test: "):
         if description.startswith(prefix):
-            return description.removeprefix(prefix)
+            return _remove_prefix(description, prefix)
     return None
+
+
+def _remove_prefix(value: str, prefix: str) -> str:
+    return value[len(prefix) :] if value.startswith(prefix) else value
 
 
 def _run_to_history_item(run: RunContext) -> RunHistoryItem:
@@ -117,7 +121,7 @@ async def list_schedule(user: str = Depends(get_current_user)):
 async def run_now(schedule_id: str, user: str = Depends(get_current_user)):
     """Force immediate execution of a scheduled task."""
     _require_bridge()
-    account_spec = schedule_id.removeprefix("emby.watch.")
+    account_spec = _remove_prefix(schedule_id, "emby.watch.")
 
     if account_spec in {"global", "unified"}:
         result = await bridge.trigger_watch_many(unified_only=True)
@@ -256,7 +260,7 @@ async def preview_schedule(req: SchedulePreviewRequest, user: str = Depends(get_
 async def cancel_schedule_run(schedule_id: str, user: str = Depends(get_current_user)):
     """Cancel a currently running scheduled/manual watch task."""
     _require_bridge()
-    account_spec = schedule_id.removeprefix("emby.watch.")
+    account_spec = _remove_prefix(schedule_id, "emby.watch.")
     if not bridge.cancel_account_task(account_spec):
         raise HTTPException(status_code=404, detail="No running task found")
     return CancelResponse(status="cancelled", message="Task cancellation requested")

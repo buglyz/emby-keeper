@@ -8,7 +8,7 @@ on:
     paths:
       - "embykeeperapi/**"
       - "embykeeper/**"
-      - "requirements.txt"
+      - "requirements*.txt"
       - "Dockerfile"
 
 env:

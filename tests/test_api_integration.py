@@ -6,6 +6,7 @@ from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
+from fastapi import HTTPException
 
 from embykeeper.cache import cache
 from embykeeper.config import config
@@ -63,7 +64,12 @@ async def _asgi_request(app, method: str, path: str, json_body=None):
 
 
 @pytest.fixture()
-def api_app():
+def api_app(tmp_path):
+    config.basedir = tmp_path
+    config.set(Config())
+    cache._setup_json_cache()
+    _running_runs.clear()
+    cache.delete("runinfo.index")
     app = create_app()
     app.dependency_overrides[get_current_user] = lambda: "tester"
     try:
@@ -71,6 +77,7 @@ def api_app():
     finally:
         app.dependency_overrides.clear()
         _running_runs.clear()
+        cache.delete("runinfo.index")
         config.reset()
         bridge.emby_manager = None
         bridge.web_accounts = None
@@ -165,6 +172,235 @@ def test_health_api_ignores_latest_run_cache_failure(tmp_path, api_app, monkeypa
     assert data["latest_run_id"] is None
 
 
+def test_registrar_accounts_api_returns_masked_telegram_accounts(tmp_path, api_app):
+    config.basedir = tmp_path
+    config.set(
+        Config(
+            telegram={
+                "account": [
+                    {"phone": "+86 138 0000 0000", "enabled": True, "registrar": True},
+                    {"phone": "+86 139 0000 0000", "enabled": False, "registrar": False},
+                ]
+            }
+        )
+    )
+
+    response = asyncio.run(_asgi_request(api_app, "GET", "/api/registrar/accounts"))
+
+    assert response.status_code == 200
+    data = response.json()
+    assert len(data) == 2
+    assert data[0]["phone_masked"] == "+861******0000"
+    assert data[0]["enabled"] is True
+    assert data[0]["registrar"] is True
+    assert data[0]["id"]
+    assert "13800000000" not in json.dumps(data)
+
+
+def test_registrar_quick_run_starts_background_task(tmp_path, api_app, monkeypatch):
+    async def run_test():
+        config.basedir = tmp_path
+        config.set(Config(telegram={"account": [{"phone": "+8613800000000", "enabled": True}]}))
+        accounts_response = await _asgi_request(api_app, "GET", "/api/registrar/accounts")
+        account_id = accounts_response.json()[0]["id"]
+        captured = {}
+
+        async def fake_run_single_bot(self, bot_username, **kwargs):
+            captured["bot_username"] = bot_username
+            captured["accounts"] = kwargs["accounts"]
+            captured["username"] = kwargs["username"]
+            captured["password"] = kwargs["password"]
+            captured["interval_seconds"] = kwargs["interval_seconds"]
+            captured["ctx"] = kwargs["ctx"]
+            return [True]
+
+        class FakeRegisterManager:
+            def __init__(self, register_callbacks=True):
+                captured["register_callbacks"] = register_callbacks
+
+            run_single_bot = fake_run_single_bot
+
+        monkeypatch.setattr(
+            "embykeeperapi.routers.registrar._get_register_manager_class",
+            lambda: FakeRegisterManager,
+        )
+
+        response = await _asgi_request(
+            api_app,
+            "POST",
+            "/api/registrar/quick-run",
+            {
+                "telegram_account_ids": [account_id, account_id],
+                "bot_username": "https://t.me/TestBot/?start=1",
+                "username": "alice",
+                "password": "secret",
+                "interval_seconds": 2,
+                "timeout_minutes": 3,
+            },
+        )
+        await asyncio.sleep(0)
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["run_id"]
+        assert data["status"] == "started"
+        assert captured["bot_username"] == "TestBot"
+        assert len(captured["accounts"]) == 1
+        assert captured["accounts"][0].phone == "+8613800000000"
+        assert captured["username"] == "alice"
+        assert captured["password"] == "secret"
+        assert captured["interval_seconds"] == 2
+        assert captured["register_callbacks"] is False
+        assert "最长运行 3 分钟" in data["message"]
+        run = RunContext.get(data["run_id"])
+        assert run.status == RunStatus.SUCCESS
+        assert run.status_info == "1/1 个 Telegram 账号抢注成功"
+
+    asyncio.run(run_test())
+
+
+def test_registrar_quick_run_marks_timeout(tmp_path, api_app, monkeypatch):
+    async def run_test():
+        from embykeeperapi.routers.registrar import _run_quick_register
+
+        config.basedir = tmp_path
+        config.set(Config(telegram={"account": [{"phone": "+8613800000000", "enabled": True}]}))
+
+        async def slow_run_single_bot(self, bot_username, **kwargs):
+            await asyncio.sleep(60)
+            return [False]
+
+        class SlowRegisterManager:
+            def __init__(self, register_callbacks=True):
+                pass
+
+            run_single_bot = slow_run_single_bot
+
+        ctx = RunContext.prepare("timeout registrar")
+        await _run_quick_register(
+            ctx,
+            bot_username="TestBot",
+            accounts=config.telegram.account,
+            username="alice",
+            password="secret",
+            interval_seconds=1,
+            timeout_minutes=0,
+            register_manager_cls=SlowRegisterManager,
+        )
+
+        assert ctx.status == RunStatus.FAIL
+        assert ctx.status_info == "抢注超过 0 分钟仍未成功"
+
+    asyncio.run(run_test())
+
+
+def test_registrar_quick_run_returns_503_without_telegram_dependencies(tmp_path, api_app, monkeypatch):
+    config.basedir = tmp_path
+    config.set(Config(telegram={"account": [{"phone": "+8613800000000", "enabled": True}]}))
+
+    def missing_register_manager():
+        raise HTTPException(status_code=503, detail="telegram extra missing")
+
+    monkeypatch.setattr(
+        "embykeeperapi.routers.registrar._get_register_manager_class",
+        missing_register_manager,
+    )
+
+    response = asyncio.run(
+        _asgi_request(
+            api_app,
+            "POST",
+            "/api/registrar/quick-run",
+            {
+                "bot_username": "TestBot",
+                "username": "alice",
+                "password": "secret",
+            },
+        )
+    )
+
+    assert response.status_code == 503
+    assert response.json()["detail"] == "telegram extra missing"
+
+
+def test_registrar_quick_run_rejects_unknown_account(tmp_path, api_app):
+    config.basedir = tmp_path
+    config.set(Config(telegram={"account": [{"phone": "+8613800000000", "enabled": True}]}))
+
+    response = asyncio.run(
+        _asgi_request(
+            api_app,
+            "POST",
+            "/api/registrar/quick-run",
+            {
+                "telegram_account_ids": ["missing"],
+                "bot_username": "TestBot",
+                "username": "alice",
+                "password": "secret",
+            },
+        )
+    )
+
+    assert response.status_code == 400
+    assert "Unknown Telegram account" in response.json()["detail"]
+
+
+def test_registrar_quick_run_rejects_whitespace_credentials(tmp_path, api_app):
+    config.basedir = tmp_path
+    config.set(Config(telegram={"account": [{"phone": "+8613800000000", "enabled": True}]}))
+
+    response = asyncio.run(
+        _asgi_request(
+            api_app,
+            "POST",
+            "/api/registrar/quick-run",
+            {
+                "bot_username": "TestBot",
+                "username": "alice user",
+                "password": "secret",
+            },
+        )
+    )
+
+    assert response.status_code == 400
+    assert response.json()["detail"] == "username must not contain whitespace"
+
+
+def test_registrar_shutdown_cancels_running_tasks():
+    async def run_test():
+        from embykeeperapi.routers.registrar import _running_registrar_tasks, shutdown_registrar_tasks
+
+        cancelled = asyncio.Event()
+
+        async def wait_forever():
+            try:
+                await asyncio.sleep(60)
+            except asyncio.CancelledError:
+                cancelled.set()
+                raise
+
+        task = asyncio.create_task(wait_forever())
+        _running_registrar_tasks["RUNREG"] = task
+        await asyncio.sleep(0)
+
+        try:
+            await shutdown_registrar_tasks()
+
+            assert cancelled.is_set()
+            assert task.cancelled()
+            assert _running_registrar_tasks == {}
+        finally:
+            _running_registrar_tasks.clear()
+            if not task.done():
+                task.cancel()
+                try:
+                    await task
+                except asyncio.CancelledError:
+                    pass
+
+    asyncio.run(run_test())
+
+
 def test_config_export_and_backup_api_uses_encrypted_account_data(tmp_path, api_app):
     config.basedir = tmp_path
     config_file = tmp_path / "config.toml"
@@ -219,10 +455,8 @@ def test_config_export_and_backup_api_uses_encrypted_account_data(tmp_path, api_
     assert "query-secret" not in exported["config_toml"]
     assert exported["config_toml"].count("***REDACTED***") >= 4
     assert exported["web_accounts"]["alice@example.com"]["encrypted_token"] == "***REDACTED***"
-    assert exported["web_accounts"]["alice@example.com"]["access_token"] == "***REDACTED***"
-    assert exported["web_accounts"]["alice@example.com"]["metadata"]["api_key"] == "***REDACTED***"
-    assert exported["web_accounts"]["alice@example.com"]["metadata"]["callback_url"] == "***REDACTED***"
-    assert exported["web_accounts"]["alice@example.com"]["metadata"]["label"] == "safe-label"
+    assert "access_token" not in exported["web_accounts"]["alice@example.com"]
+    assert "metadata" not in exported["web_accounts"]["alice@example.com"]
 
     backup_response = asyncio.run(_asgi_request(api_app, "POST", "/api/config/backup"))
 
@@ -283,7 +517,7 @@ def test_config_backup_cleans_partial_backup_on_copy_failure(tmp_path, api_app, 
             raise OSError("copy failed")
         return original_copy2(source, target)
 
-    monkeypatch.setattr("embykeeperapi.routers.config.shutil.copy2", fail_web_accounts_copy)
+    monkeypatch.setattr("embykeeperapi.config_service.shutil.copy2", fail_web_accounts_copy)
 
     response = asyncio.run(_asgi_request(api_app, "POST", "/api/config/backup"))
 
@@ -311,7 +545,7 @@ def test_config_restore_stages_files_before_overwriting_current_config(tmp_path,
             raise OSError("stage failed")
         return original_copy2(source, target)
 
-    monkeypatch.setattr("embykeeperapi.routers.config.shutil.copy2", fail_web_accounts_stage)
+    monkeypatch.setattr("embykeeperapi.config_service.shutil.copy2", fail_web_accounts_stage)
 
     response = asyncio.run(
         _asgi_request(api_app, "POST", f"/api/config/backups/{backup_dir.name}/restore", {"confirm": True})
@@ -335,7 +569,7 @@ def test_config_restore_cleans_current_temp_file_on_stage_failure(tmp_path, api_
     def fail_copy(_source, _target):
         raise OSError("stage failed")
 
-    monkeypatch.setattr("embykeeperapi.routers.config.shutil.copy2", fail_copy)
+    monkeypatch.setattr("embykeeperapi.config_service.shutil.copy2", fail_copy)
 
     response = asyncio.run(
         _asgi_request(api_app, "POST", f"/api/config/backups/{backup_dir.name}/restore", {"confirm": True})

@@ -65,12 +65,39 @@ class ProxyConfig(ConfigModel):
     password: Optional[str] = None
 
 
+class CheckinerConfig(ConfigModel):
+    time_range: Optional[UseStr] = DEFAULT_TIME_RANGE
+    interval_days: Optional[UseStr] = "1"
+    timeout: Optional[StrictInt] = Field(120, gt=0)
+    retries: Optional[StrictInt] = Field(4, ge=0)
+    concurrency: Optional[StrictInt] = Field(1, gt=0)
+    random_start: Optional[StrictInt] = Field(60, ge=0)
+
+    model_config = {"extra": "allow"}
+
+    def get_site_config(self, site: str) -> Dict[str, Any]:
+        return getattr(self, site, {})
+
+
+class SiteConfig(ConfigModel):
+    checkiner: Optional[List[str]] = None
+    monitor: Optional[List[str]] = None
+    messager: Optional[List[str]] = None
+    registrar: Optional[List[str]] = None
+
+
+class RegistrarConfig(ConfigModel):
+    concurrency: Optional[StrictInt] = Field(1, gt=0)
+
+    model_config = {"extra": "allow"}
+
+    def get_site_config(self, site: str) -> Dict[str, Any]:
+        return getattr(self, site, {})
+
+
 class NotifierConfig(ConfigModel):
     enabled: Optional[bool] = False
-    account: Optional[Union[StrictInt, str]] = 1
-    immediately: Optional[bool] = False
-    once: Optional[bool] = False
-    method: Optional[str] = "apprise"
+    method: Optional[str] = Field("apprise", pattern="^apprise$")
     apprise_uri: Optional[str] = None
 
 
@@ -111,6 +138,20 @@ class EmbyAccount(ConfigModel):
     jellyfin: Optional[bool] = None
     continuous: Optional[bool] = False
 
+    @model_validator(mode="before")
+    @classmethod
+    def handle_legacy_account_aliases(cls, values):
+        if not isinstance(values, dict):
+            return values
+        values = values.copy()
+        if values.get("useragent") is None and values.get("ua") is not None:
+            values["useragent"] = values["ua"]
+        if values.get("interval_days") is None and values.get("interval") is not None:
+            values["interval_days"] = values["interval"]
+        if values.get("time_range") is None and values.get("watchtime") is not None:
+            values["time_range"] = values["watchtime"]
+        return values
+
     @model_validator(mode="after")
     def validate_time(self):
         if self.time is None:
@@ -131,30 +172,68 @@ class EmbyConfig(MediaServerBaseConfig):
     account: Optional[List[EmbyAccount]] = Field(default_factory=list)
 
 
+class TelegramAccount(ConfigModel):
+    phone: str = Field(description="Telegram phone number")
+
+    @model_validator(mode="before")
+    @classmethod
+    def clean_phone(cls, values):
+        if isinstance(values, dict) and "phone" in values:
+            values = values.copy()
+            values["phone"] = values["phone"].replace(" ", "")
+        return values
+
+    checkiner: Optional[bool] = True
+    monitor: Optional[bool] = False
+    messager: Optional[bool] = False
+    registrar: Optional[bool] = False
+    api_id: Optional[str] = None
+    api_hash: Optional[str] = None
+    session: Optional[str] = None
+    enabled: Optional[bool] = True
+
+    # 账号单独配置
+    site: Optional[SiteConfig] = None
+    checkiner_config: Optional[CheckinerConfig] = None
+    registrar_config: Optional[RegistrarConfig] = None
+
+    def get_config_key(self):
+        import hashlib
+
+        unique_str = f"{self.phone}:{self.api_id or ''}:{self.api_hash or ''}"
+        hash_value = hashlib.sha256(unique_str.encode()).hexdigest()[:8]
+        return f"{self.phone}/{hash_value}"
+
+    @staticmethod
+    def get_phone_masked(phone: str):
+        phone_len = len(phone)
+        visible_part = max(1, phone_len // 3)
+        return phone[:visible_part] + "*" * (phone_len - visible_part * 2) + phone[-visible_part:]
+
+
+class TelegramConfig(ConfigModel):
+    account: Optional[List[TelegramAccount]] = Field(default_factory=list)
+    use_proxy: Optional[bool] = True
+
+
 class Config(ConfigModel):
     alias_map: ClassVar[Dict[str, str]] = {
         "emby.time_range": "watchtime",
         "emby.concurrency": "watch_concurrent",
+        "checkiner.time_range": "time",
+        "checkiner.timeout": "timeout",
+        "checkiner.retries": "retries",
+        "checkiner.concurrency": "concurrent",
+        "checkiner.random_start": "random",
         "emby.interval_days": "interval",
+        "site": "service",
     }
     ignored_legacy_fields: ClassVar[Set[str]] = {
-        "telegram",
-        "checkiner",
         "monitor",
         "messager",
-        "registrar",
         "subsonic",
-        "site",
-        "service",
         "listentime",
         "listen_concurrent",
-        "notify_immediately",
-        "bot",
-        "time",
-        "timeout",
-        "retries",
-        "concurrent",
-        "random",
     }
 
     mongodb: Optional[str] = None
@@ -164,7 +243,22 @@ class Config(ConfigModel):
     debug_cron: Optional[bool] = False
     proxy: Optional[ProxyConfig] = None
     emby: Optional[EmbyConfig] = Field(default_factory=EmbyConfig)
+    checkiner: Optional[CheckinerConfig] = Field(default_factory=CheckinerConfig)
+    registrar: Optional[RegistrarConfig] = Field(default_factory=RegistrarConfig)
+    telegram: Optional[TelegramConfig] = Field(default_factory=TelegramConfig)
     notifier: Optional[NotifierConfig] = Field(default_factory=NotifierConfig)
+    site: Optional[SiteConfig] = None
+
+    # 向后兼容字段
+    time: Optional[str] = None
+    watchtime: Optional[str] = None
+    interval: Optional[Union[int, str]] = None
+    timeout: Optional[int] = None
+    retries: Optional[int] = None
+    concurrent: Optional[int] = None
+    watch_concurrent: Optional[int] = None
+    random: Optional[int] = None
+    service: Optional[SiteConfig] = None
 
     @model_validator(mode="before")
     @classmethod
@@ -176,33 +270,40 @@ class Config(ConfigModel):
         for field in cls.ignored_legacy_fields:
             values.pop(field, None)
 
-        if "emby" in values and isinstance(values["emby"], list):
+        for service in ["emby", "telegram"]:
+            if service not in values:
+                continue
+            service_value = values[service]
+            if isinstance(service_value, list):
+                account_values = service_value
+                service_dict = {}
+            elif isinstance(service_value, dict) and isinstance(service_value.get("account"), list):
+                service_dict = service_value.copy()
+                account_values = service_dict["account"]
+            else:
+                continue
             accounts = []
-            for account in values["emby"]:
+            for account in account_values:
                 if not isinstance(account, dict):
                     accounts.append(account)
                     continue
                 account = account.copy()
-                if "ua" in account:
+                if service == "emby" and "ua" in account:
                     account["useragent"] = account.pop("ua")
+                if service == "telegram":
+                    if "send" in account:
+                        account["messager"] = account.pop("send")
+                    if "checkin" in account:
+                        account["checkiner"] = account.pop("checkin")
                 accounts.append(account)
-            values["emby"] = {"account": accounts}
+            service_dict["account"] = accounts
+            values[service] = service_dict
 
         if "notifier" in values:
             notifier_value = values["notifier"]
-            if isinstance(notifier_value, str):
-                values["notifier"] = {
-                    "enabled": True,
-                    "account": notifier_value,
-                }
-            elif isinstance(notifier_value, bool):
+            if isinstance(notifier_value, bool):
                 values["notifier"] = {
                     "enabled": notifier_value,
-                }
-            elif isinstance(notifier_value, int):
-                values["notifier"] = {
-                    "enabled": notifier_value > 0,
-                    "account": notifier_value,
                 }
 
         for new_field, old_field in cls.alias_map.items():

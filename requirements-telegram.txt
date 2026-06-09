@@ -1,0 +1,6 @@
+kurigram==2.2.12
+tgcrypto
+telethon
+thefuzz[speedup]
+emoji
+xpinyin

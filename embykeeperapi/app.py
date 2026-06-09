@@ -12,6 +12,7 @@ from loguru import logger
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.requests import Request
 
+from .automation_runtime import automation_runtime
 from .scheduler_bridge import bridge
 
 logger = logger.bind(scheme="embykeeperapi")
@@ -122,6 +123,15 @@ async def _shutdown_bridge(reason: str):
         logger.warning(f"Failed to shutdown scheduler bridge during {reason}: {e}")
 
 
+async def _shutdown_registrar_tasks(reason: str):
+    try:
+        from .routers.registrar import shutdown_registrar_tasks
+
+        await shutdown_registrar_tasks()
+    except Exception as e:
+        logger.warning(f"Failed to shutdown registrar tasks during {reason}: {type(e).__name__}")
+
+
 async def _start_notifier(reason: str):
     try:
         from embykeeper.notify import start_notifier
@@ -135,9 +145,23 @@ async def _stop_notifier(reason: str):
     try:
         from embykeeper.notify import _stop_notifier
 
-        await _stop_notifier()
+        await _stop_notifier(unregister_callback=True)
     except Exception as e:
         logger.warning(f"Failed to stop notifier during {reason}: {type(e).__name__}")
+
+
+async def _start_automation_runtime(reason: str):
+    try:
+        await automation_runtime.start()
+    except Exception as e:
+        logger.warning(f"Failed to start Telegram automation runtime during {reason}: {type(e).__name__}")
+
+
+async def _shutdown_automation_runtime(reason: str):
+    try:
+        await automation_runtime.shutdown()
+    except Exception as e:
+        logger.warning(f"Failed to shutdown Telegram automation runtime during {reason}: {type(e).__name__}")
 
 
 @asynccontextmanager
@@ -167,12 +191,15 @@ async def lifespan(app: FastAPI):
         logger.error(f"Failed to initialize scheduler bridge: {e}")
         await _shutdown_bridge("startup cleanup")
         # Continue anyway - the API can work without the scheduler
+    await _start_automation_runtime("application startup")
     await _start_notifier("application startup")
 
     yield
 
     # Shutdown
     logger.info("Shutting down scheduler bridge...")
+    await _shutdown_registrar_tasks("application shutdown")
+    await _shutdown_automation_runtime("application shutdown")
     await _shutdown_bridge("application shutdown")
     await _stop_notifier("application shutdown")
     logger.info("Shutdown complete.")
@@ -205,11 +232,13 @@ def create_app() -> FastAPI:
     from .routers.servers import router as servers_router
     from .routers.scheduler import router as scheduler_router
     from .routers.config import router as config_router
+    from .routers.registrar import router as registrar_router
 
     app.include_router(auth_router)
     app.include_router(servers_router)
     app.include_router(scheduler_router)
     app.include_router(config_router)
+    app.include_router(registrar_router)
 
     # Serve SPA frontend
     static_dir = Path(__file__).parent / "static"

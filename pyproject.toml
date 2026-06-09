@@ -1,5 +1,5 @@
 [build-system]
-requires = ["setuptools"]
+requires = ["setuptools>=61"]
 build-backend = "setuptools.build_meta"
 
 [project]
@@ -31,7 +31,7 @@ classifiers = [
     "Programming Language :: Python :: 3.13",
 ]
 requires-python = ">=3.8"
-dynamic = ["dependencies"]
+dynamic = ["dependencies", "optional-dependencies"]
 
 [project.urls]
 Homepage = "https://github.com/emby-keeper/emby-keeper"
@@ -52,7 +52,14 @@ include-package-data = true
 embykeeperapi = ["static/*", "static/vendor/*"]
 
 [tool.setuptools.dynamic]
-dependencies = {file = ["requirements.txt"]}
+dependencies = {file = ["requirements-core.txt"]}
+
+[tool.setuptools.dynamic.optional-dependencies]
+telegram = {file = ["requirements-telegram.txt"]}
+ocr = {file = ["requirements-ocr.txt"]}
+mongodb = {file = ["requirements-mongodb.txt"]}
+full = {file = ["requirements-telegram.txt", "requirements-ocr.txt", "requirements-mongodb.txt"]}
+dev = {file = ["requirements_dev.txt"]}
 
 [tool.setuptools.packages]
 find = {namespaces = false}

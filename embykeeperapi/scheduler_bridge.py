@@ -30,6 +30,7 @@ WEB_ACCOUNT_TEXT_FIELDS = {
     "time_range",
 }
 WEB_ACCOUNT_AUTH_METHODS = {"token", "password"}
+WEB_ACCOUNT_REQUIRED_FIELDS = ("url", "username")
 _DROP_FIELD = object()
 
 
@@ -111,14 +112,12 @@ def _sanitize_interval_days(value):
     return value or _DROP_FIELD
 
 
-def _sanitize_account_record(data, *, require_required_fields: bool = True) -> Optional[dict]:
+def _sanitize_account_record(data) -> Optional[dict]:
     if not isinstance(data, dict):
         return None
-    sanitized = deepcopy(data)
-    for field in ("url", "username"):
-        if field not in sanitized and not require_required_fields:
-            continue
-        value = sanitized.get(field)
+    sanitized = {}
+    for field in WEB_ACCOUNT_REQUIRED_FIELDS:
+        value = data.get(field)
         if not isinstance(value, str):
             return None
         value = value.strip()
@@ -126,45 +125,40 @@ def _sanitize_account_record(data, *, require_required_fields: bool = True) -> O
             return None
         sanitized[field] = value
     for field in WEB_ACCOUNT_BOOL_FIELDS:
-        if field not in sanitized:
+        if field not in data:
             continue
-        value = _sanitize_optional_bool(sanitized[field])
-        if value is _DROP_FIELD:
-            sanitized.pop(field, None)
-        else:
+        value = _sanitize_optional_bool(data[field])
+        if value is not _DROP_FIELD:
             sanitized[field] = value
     for field in WEB_ACCOUNT_TEXT_FIELDS:
-        if field not in sanitized:
+        if field not in data:
             continue
-        value = _sanitize_optional_text(sanitized[field])
-        if value is _DROP_FIELD:
-            sanitized.pop(field, None)
-        else:
+        value = _sanitize_optional_text(data[field])
+        if value is not _DROP_FIELD:
             sanitized[field] = value
-    if "time" in sanitized:
-        value = _sanitize_watch_time(sanitized["time"])
-        if value is _DROP_FIELD:
-            sanitized.pop("time", None)
-        else:
+    if "time" in data:
+        value = _sanitize_watch_time(data["time"])
+        if value is not _DROP_FIELD:
             sanitized["time"] = value
-    if "interval_days" in sanitized:
-        value = _sanitize_interval_days(sanitized["interval_days"])
-        if value is _DROP_FIELD:
-            sanitized.pop("interval_days", None)
-        else:
+    if "interval_days" in data:
+        value = _sanitize_interval_days(data["interval_days"])
+        if value is not _DROP_FIELD:
             sanitized["interval_days"] = value
-    if "auth_method" in sanitized:
-        value = _sanitize_auth_method(sanitized["auth_method"])
-        if value is _DROP_FIELD:
-            sanitized.pop("auth_method", None)
-        else:
+    if "auth_method" in data:
+        value = _sanitize_auth_method(data["auth_method"])
+        if value is not _DROP_FIELD:
             sanitized["auth_method"] = value
-    if "encrypted_token" in sanitized:
-        value = _sanitize_optional_text(sanitized["encrypted_token"])
-        if value is _DROP_FIELD:
-            sanitized.pop("encrypted_token", None)
-        else:
+    if "encrypted_token" in data:
+        value = _sanitize_optional_text(data["encrypted_token"])
+        if value is not _DROP_FIELD:
             sanitized["encrypted_token"] = value
+    user_id = _DROP_FIELD
+    if "user_id" in data:
+        user_id = _sanitize_optional_text(data["user_id"])
+    if user_id is _DROP_FIELD and "userid" in data:
+        user_id = _sanitize_optional_text(data["userid"])
+    if user_id is not _DROP_FIELD:
+        sanitized["user_id"] = user_id
     return sanitized
 
 
@@ -271,7 +265,7 @@ class WebAccountData:
         return deepcopy(data) if data is not None else None
 
     def add(self, account_id: str, data: dict):
-        account_data = _sanitize_account_record(data, require_required_fields=False)
+        account_data = _sanitize_account_record(data)
         if account_data is None:
             raise ValueError("invalid web account data")
         next_data = deepcopy(self._data)
@@ -293,7 +287,7 @@ class WebAccountData:
                 account_data.pop(k, None)
             else:
                 account_data[k] = deepcopy(v)
-        account_data = _sanitize_account_record(account_data, require_required_fields=False)
+        account_data = _sanitize_account_record(account_data)
         if account_data is None:
             raise ValueError("invalid web account data")
 

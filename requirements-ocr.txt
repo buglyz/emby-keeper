@@ -1,0 +1,2 @@
+ddddocrfix>=1.5.5
+pillow>10.0.0

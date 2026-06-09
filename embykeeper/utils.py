@@ -101,6 +101,16 @@ def format_exception(e, regular=True):
     return prompt
 
 
+def format_exception_summary(e, limit: int = 240):
+    """Return a short exception summary that is safe for task status and log lines."""
+    message = str(e).strip()
+    summary = f"{get_cls_fullpath(type(e))}: {message}" if message else get_cls_fullpath(type(e))
+    summary = " ".join(summary.split())
+    if len(summary) > limit:
+        return summary[: limit - 3] + "..."
+    return summary
+
+
 def show_exception(e, regular=True):
     """显示异常信息.
 

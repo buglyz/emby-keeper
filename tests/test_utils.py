@@ -8,6 +8,7 @@ from embykeeper.utils import (
     AsyncTaskPool,
     batch,
     distribute_numbers,
+    format_exception_summary,
     format_byte_human,
     get_proxy_str,
     looks_like_time_text,
@@ -48,6 +49,14 @@ def test_format_byte_human_uses_byte_pluralization():
 
 def test_format_byte_human_supports_petabytes():
     assert format_byte_human(1024**5) == "1.00 PB"
+
+
+def test_format_exception_summary_includes_type_and_message_with_limit():
+    summary = format_exception_summary(RuntimeError("x" * 80), limit=40)
+
+    assert summary.startswith("RuntimeError:")
+    assert len(summary) <= 40
+    assert summary.endswith("...")
 
 
 def test_get_proxy_str_quotes_credentials():

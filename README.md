@@ -21,6 +21,9 @@
 # 安装依赖
 pip install -e .
 
+# 如需 Telegram 签到/抢注、OCR、MongoDB 缓存等完整功能
+pip install -e ".[full]"
+
 # 设置认证（至少配置一项）
 export EK_TOKEN="your-pre-shared-token"    # 预共享 Token 登录
 export EK_WEBPASS="your-admin-password"    # 密码登录
@@ -45,6 +48,12 @@ docker run -d \
   -e EK_SECRET="your-secret-key" \
   -v ./data:/app \
   ghcr.io/buglyz/emby-keeper/api:main
+```
+
+Docker 镜像默认安装完整功能依赖（Telegram 签到/抢注、OCR、MongoDB 缓存等）。如果只需要 Web UI 和 Emby 保活，可以自行构建轻量镜像：
+
+```bash
+docker build --build-arg EK_EXTRAS=none -t emby-keeper-api-core .
 ```
 
 ### 方式三：Docker Compose（VPS 推荐）
@@ -94,13 +103,16 @@ docker compose up -d
 - **仪表盘** — 查看所有服务器状态（在线/离线、Token 配置情况）
 - **一键保活** — 点击"保活"按钮触发模拟观看
 - **计划任务** — 查看调度状态，支持立即执行
+- **抢注** — 选择 Telegram 账号、目标 Bot 和注册账号密码，发起一键抢注
 - **运行历史** — 查看手动/自动任务的最近运行结果
 - **全局配置** — 编辑代理、保活间隔等设置
+- **自动化配置** — 管理 Telegram 自动签到站点和定时抢注 Bot
 - **通知配置** — 支持 Apprise URI 和 Telegram 测试通知
 
 ### Telegram 通知
 
 在 Web UI 的"配置 → 通知配置"中选择 Telegram，填写 Bot Token 和 Chat ID 后保存。系统会转换为 Apprise 的 Telegram URI 并加密/持久化在配置目录中。
+项目不会向内置或固定的 Telegram 机器人发送通知；只有用户显式配置的 Apprise URI 或 Telegram Bot Token + Chat ID 会被使用。
 
 也可以在 `config.toml` 中直接配置：
 
@@ -143,6 +155,7 @@ emby-keeper/
 ├── embykeeperapi/       # FastAPI Web UI（图形化管理平台，默认入口）
 │   ├── app.py           # FastAPI 应用入口
 │   ├── auth.py          # JWT 认证
+│   ├── config_service.py # 配置读写、备份、恢复和通知配置服务
 │   ├── crypto.py        # Token 加密
 │   ├── models.py        # API 数据模型
 │   ├── scheduler_bridge.py  # 调度器桥接
@@ -150,14 +163,19 @@ emby-keeper/
 │   │   ├── auth_router.py
 │   │   ├── servers.py   # 服务器 CRUD + 操作
 │   │   ├── scheduler.py # 调度状态
-│   │   └── config.py    # 全局配置
+│   │   ├── registrar.py # WebUI 一键抢注
+│   │   └── config.py    # 全局配置与自动化配置
 │   └── static/
-│       └── index.html   # Vue 3 + Naive UI SPA
+│       ├── index.html   # Vue 3 + Naive UI SPA
+│       ├── app-core.js  # 前端 API 与通用工具
+│       └── app-style.css # 前端基础样式
 ├── deploy/              # 部署配置
 │   └── docker-compose.yml
 ├── hf/                  # HuggingFace Spaces 配置
 ├── Dockerfile           # 多平台 Docker 构建
-└── requirements.txt
+├── requirements.txt     # 完整运行依赖
+├── requirements-core.txt # WebUI/Emby 保活核心依赖
+└── requirements-*.txt   # Telegram/OCR/MongoDB 可选依赖
 ```
 
 ## 运行模式

@@ -29,8 +29,8 @@ def _notifier_stream_ready(stream) -> bool:
     return bool(getattr(stream, "ready", True))
 
 
-async def _stop_notifier():
-    global stream_log, stream_msg, handler_log_id, handler_msg_id
+async def _stop_notifier(*, unregister_callback: bool = False):
+    global stream_log, stream_msg, handler_log_id, handler_msg_id, change_handle_notifier
 
     if handler_log_id is not None:
         try:
@@ -51,6 +51,10 @@ async def _stop_notifier():
     if stream_msg:
         await _close_notifier_stream(stream_msg, "即时")
         stream_msg = None
+
+    if unregister_callback and change_handle_notifier:
+        change_handle_notifier.close()
+        change_handle_notifier = None
 
 
 def _handle_config_change(*args):

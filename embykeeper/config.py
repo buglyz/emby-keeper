@@ -232,6 +232,96 @@ class ConfigManager(ProxyBase):
 
         doc.add(nl())
         doc.add(comment("=" * 80))
+        doc.add(comment("Telegram 机器人签到相关设置"))
+        doc.add(comment(f"详见: https://emby-keeper.github.io/guide/配置文件#checkiner-子项"))
+        doc.add(comment("=" * 80))
+        c = item({})
+        c.add(nl())
+        c.add(
+            comment(
+                '每次进行 Telegram 签到的当日时间范围, 可以为单个时间 ("8:00AM") 或时间范围 ("<8:00AM,10:00AM>"):'
+            )
+        )
+        c["time_range"] = default_config.checkiner.time_range
+        c.add(nl())
+        c.add(comment("每隔几天进行签到:"))
+        c["interval_days"] = default_config.checkiner.interval_days
+        c.add(nl())
+        c.add(comment("每个站点签到的最大超时时间 (秒):"))
+        c["timeout"] = default_config.checkiner.timeout
+        c.add(nl())
+        c.add(comment("各站点最大可重试次数:"))
+        c["retries"] = default_config.checkiner.retries
+        c.add(nl())
+        c.add(comment("最大可同时进行的站点数:"))
+        c["concurrency"] = default_config.checkiner.concurrency
+        c.add(nl())
+        c.add(comment("各个站点签到将在开始后等待随机时间启动, 使各站点错开 (分钟):"))
+        c["random_start"] = default_config.checkiner.random_start
+        doc["checkiner"] = c
+
+        doc.add(nl())
+        doc.add(comment("=" * 80))
+        doc.add(comment("Telegram 账号, 您可以重复该片段多次以增加多个账号."))
+        doc.add(comment(f"详见: https://emby-keeper.github.io/guide/配置文件#telegram-account-子项"))
+        doc.add(comment("=" * 80))
+        c = item({"account": [{}]})
+        a: InlineTable = c["account"][0]
+        a.comment(f"第 1 个账号")
+        a.add(nl())
+        a.add(comment('带国家区号的账户手机号, 一般为 "+86..."'))
+        a["phone"] = f'+861{fake.numerify(text="##########")}'
+        a.add(nl())
+        a.add(comment("启用机器人签到系列功能, 默认启用, 设置为 false 以禁用:"))
+        a["checkiner"] = True
+        a.add(nl())
+        a.add(comment("启用定时抢注系列功能, 默认禁用, 设置为 true 以启用:"))
+        a["registrar"] = False
+        a.add(nl())
+        a.add(comment("取消注释以禁用该账号:"))
+        a.add(comment(item({"enabled": False}).as_string()))
+        doc["telegram"] = c
+
+        doc.add(nl())
+        doc.add(comment("仅启用指定签到站点时, 可取消注释并修改:"))
+        site = item({"site": {"checkiner": ["all"]}})
+        for line in site.as_string().strip().split("\n"):
+            doc.add(comment(line))
+
+        doc.add(nl())
+        doc.add(comment("=" * 80))
+        doc.add(comment("定时抢注相关设置"))
+        doc.add(comment(f"详见: https://emby-keeper.github.io/guide/配置文件#registrar-子项"))
+        doc.add(comment("=" * 80))
+        c = item({})
+        c.add(nl())
+        c.add(comment("最大可同时进行的抢注任务数:"))
+        c["concurrency"] = default_config.registrar.concurrency
+        c.add(nl())
+        c.add(comment("案例: 每天在指定时间抢注指定机器人."))
+        for line in [
+            "[site]",
+            'registrar = ["templ_a<XiguaEmbyBot>"]',
+            "",
+            '[registrar."templ_a<XiguaEmbyBot>"]',
+            'times = ["9:00AM", "9:00PM"]',
+            "timeout = 120",
+            "retries = 1",
+        ]:
+            c.add(comment(line))
+        c.add(nl())
+        c.add(comment("案例: 每隔 5 分钟尝试一次."))
+        for line in [
+            '[registrar."templ_a<TestBot>"]',
+            "interval_minutes = 5",
+            "timeout = 120",
+            "retries = 1",
+        ]:
+            c.add(comment(line))
+        doc["registrar"] = c
+
+        doc.add(nl())
+        doc.add(comment("=" * 80))
         doc.add(comment("代理相关设置"))
         doc.add(comment("代理设置, Emby 请求将通过此代理连接, 服务器位于国内时请配置代理并取消注释"))
         doc.add(comment(f"详见: https://emby-keeper.github.io/guide/配置文件#proxy-子项"))
@@ -403,6 +493,9 @@ class CallbackHandle:
         return self
 
     def __exit__(self, exc_type, exc_val, exc_tb):
+        self.close()
+
+    def close(self):
         if self._callback in self._callback_list:
             self._callback_list.remove(self._callback)
 

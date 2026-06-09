@@ -45,16 +45,18 @@ const API = {
     const opts = { method, headers: this._getHeaders() };
     if (body !== null && body !== undefined) opts.body = JSON.stringify(body);
     const resp = await fetch(`${this.baseUrl}${path}`, opts);
-    if (resp.status === 401) {
-      sessionStorage.removeItem('ek_jwt');
-      window.location.hash = '#/login';
-      throw new Error('Unauthorized');
-    }
     const text = await resp.text();
     let data = null;
     if (text) {
       try { data = JSON.parse(text); }
       catch (e) { data = { detail: text }; }
+    }
+    if (resp.status === 401) {
+      if (!path.startsWith('/api/auth/')) {
+        sessionStorage.removeItem('ek_jwt');
+        window.location.hash = '#/login';
+      }
+      throw new Error(this._formatErrorDetail(data && data.detail) || '登录状态已失效');
     }
     if (!resp.ok) throw new Error(this._formatErrorDetail(data && data.detail) || 'Request failed');
     return data;
@@ -99,6 +101,7 @@ const API = {
     if (status) params.set('status', status);
     return this.get(`/api/runs?${params.toString()}`);
   },
+  getRun(id) { return this.get(`/api/runs/${encodeURIComponent(id)}`); },
   getRunLogs(id) { return this.get(`/api/runs/${encodeURIComponent(id)}/logs`); },
   cleanupRuns(days) { return this.delete(`/api/runs?days=${encodeURIComponent(days)}`); },
   healthz() { return this.get('/healthz'); },
@@ -106,6 +109,8 @@ const API = {
   // Config
   getConfig() { return this.get('/api/config'); },
   updateConfig(data) { return this.put('/api/config', data); },
+  getAutomationConfig() { return this.get('/api/config/automation'); },
+  updateAutomationConfig(data) { return this.put('/api/config/automation', data); },
   exportConfig() { return this.get('/api/config/export'); },
   backupConfig() { return this.post('/api/config/backup'); },
   listBackups() { return this.get('/api/config/backups'); },
@@ -113,6 +118,11 @@ const API = {
   getNotifier() { return this.get('/api/config/notifier'); },
   updateNotifier(data) { return this.put('/api/config/notifier', data); },
   testNotifier(data) { return this.post('/api/config/notifier/test', data); },
+
+  // Registrar
+  listRegistrarAccounts() { return this.get('/api/registrar/accounts'); },
+  quickRegister(data) { return this.post('/api/registrar/quick-run', data); },
+  cancelRegistrarRun(runId) { return this.post(`/api/registrar/runs/${encodeURIComponent(runId)}/cancel`); },
 };
 
 function responseMessage(res, fallback) {

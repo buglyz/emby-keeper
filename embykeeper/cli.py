@@ -37,6 +37,16 @@ async def _run_exit_handlers(handlers):
         await asyncio.wait_for(asyncio.gather(*tasks), timeout=3)
 
 
+async def _shutdown_managers(*managers):
+    for manager in managers:
+        if not manager or not hasattr(manager, "shutdown"):
+            continue
+        try:
+            await manager.shutdown()
+        except Exception as e:
+            logger.warning(f"管理器退出清理失败, 已忽略: {type(e).__name__}.")
+
+
 class AsyncTyper(typer.Typer):
     def async_command(self, *args, **kwargs):
         def decorator(async_func):
@@ -120,7 +130,8 @@ def print_help(ctx: typer.Context, param: typer.CallbackParam, value: bool):
 
 @app.async_command(
     help=(
-        f"欢迎使用 [orange3]{__product__.capitalize()}[/] {__version__} " ":cinema: 无参数默认开启 Emby 保活."
+        f"欢迎使用 [orange3]{__product__.capitalize()}[/] {__version__} "
+        ":cinema: 无参数默认开启 Emby 保活、每日签到和定时抢注."
     )
 )
 async def main(
@@ -141,12 +152,33 @@ async def main(
         rich_help_panel="调试参数",
         help="显示此帮助信息并退出.",
     ),
+    checkiner: bool = typer.Option(
+        False,
+        "--checkin",
+        "-c",
+        rich_help_panel="模块开关",
+        help="仅启用 Telegram 签到功能",
+    ),
     emby: bool = typer.Option(
         False,
         "--emby",
         "-e",
         rich_help_panel="模块开关",
         help="仅启用 Emby 保活功能",
+    ),
+    registrar: bool = typer.Option(
+        False,
+        "--registrar",
+        "-r",
+        rich_help_panel="模块开关",
+        help="仅启用 Telegram 定时抢注功能",
+    ),
+    registrar_bot: str = typer.Option(
+        None,
+        "--registrar-bot",
+        "-R",
+        rich_help_panel="模块开关",
+        help="快速反复尝试注册指定机器人",
     ),
     version: bool = typer.Option(
         None,
@@ -303,12 +335,11 @@ async def main(
         logger.warning("您当前处于计划任务调试模式, 将在 10 秒后运行计划任务.")
     config.noexit = noexit
 
-    if not emby:
+    default_modules = not checkiner and not emby and not registrar and not registrar_bot
+    if default_modules:
+        checkiner = True
         emby = True
-
-    config.on_change(
-        "proxy", lambda x, y: logger.bind(scheme="config").warning("修改代理设置后, 可能需要重启程序以生效.")
-    )
+        registrar = True
 
     if config.mongodb and not var.use_mongodb_config:
         if config.proxy:
@@ -352,8 +383,47 @@ async def main(
 
         return await debug_notifier()
 
+    proxy_change_handle = config.on_change(
+        "proxy", lambda x, y: logger.bind(scheme="config").warning("修改代理设置后, 可能需要重启程序以生效.")
+    )
+    checkin_man = None
+    register_man = None
+    emby_man = None
     try:
-        emby_man = None
+        if checkiner:
+            try:
+                from .telegram.checkin_main import CheckinerManager
+            except ImportError as e:
+                if default_modules and emby:
+                    logger.warning(
+                        "Telegram 签到依赖未安装, 已跳过签到模块; 如需使用请安装 embykeeper[telegram] 或 embykeeper[full]."
+                    )
+                else:
+                    logger.error(
+                        "Telegram 签到依赖未安装; 请安装 embykeeper[telegram] 或 embykeeper[full] 后重试."
+                    )
+                    show_exception(e, regular=False)
+                    raise typer.Exit(1)
+            else:
+                checkin_man = CheckinerManager()
+
+        if registrar or registrar_bot:
+            try:
+                from .telegram.registrar_main import RegisterManager
+            except ImportError as e:
+                if default_modules and emby:
+                    logger.warning(
+                        "Telegram 抢注依赖未安装, 已跳过抢注模块; 如需使用请安装 embykeeper[telegram] 或 embykeeper[full]."
+                    )
+                else:
+                    logger.error(
+                        "Telegram 抢注依赖未安装; 请安装 embykeeper[telegram] 或 embykeeper[full] 后重试."
+                    )
+                    show_exception(e, regular=False)
+                    raise typer.Exit(1)
+            else:
+                register_man = RegisterManager()
+
         if emby:
             from .emby.main import EmbyManager
 
@@ -362,16 +432,32 @@ async def main(
         pool = AsyncTaskPool()
         streams = None
 
+        if registrar_bot:
+            logger.info(f"开始快速注册 @{registrar_bot}")
+            if register_man:
+                await register_man.run_single_bot(registrar_bot, instant=True)
+            else:
+                logger.error("抢注管理器未初始化")
+            return
+
         if instant and not debug_cron:
+            if checkin_man:
+                pool.add(checkin_man.run_all(instant=True), "站点签到")
+            if register_man:
+                pool.add(register_man.run_all(instant=True), "定时抢注")
             if emby_man:
                 pool.add(emby_man.run_all(instant=True), "Emby 保活")
             await pool.wait()
-            logger.debug("启动时立刻执行 Emby 保活: 已完成.")
+            logger.debug("启动时立刻执行签到、抢注和 Emby 保活: 已完成.")
         if (not once) or config.noexit:
             from .notify import start_notifier
 
             streams = await start_notifier()
         if not once:
+            if checkin_man:
+                pool.add(checkin_man.schedule_all(), "站点签到")
+            if register_man:
+                pool.add(register_man.start(), "定时抢注")
             if emby_man:
                 pool.add(emby_man.schedule_all(), "Emby 保活")
         if config.noexit:
@@ -392,8 +478,13 @@ async def main(
                     logger.debug(f"任务 {t.get_name()} 成功结束.")
         finally:
             if streams:
-                await asyncio.gather(*[stream.join() for stream in streams])
+                from .notify import _stop_notifier
+
+                await _stop_notifier(unregister_callback=True)
     finally:
+        if proxy_change_handle:
+            proxy_change_handle.close()
+        await _shutdown_managers(checkin_man, register_man, emby_man)
         from .runinfo import RunContext
 
         RunContext.cancel_all()

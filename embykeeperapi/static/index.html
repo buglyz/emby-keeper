@@ -7,45 +7,35 @@
   <script>
     (function () {
       const path = window.location.pathname.replace(/\/$/, '');
-      const routeSuffix = /(?:\/(?:login|schedule|runs|config)(?:\/.*)?|\/servers(?:\/.*)?)$/;
+      const routeSuffix = /(?:\/(?:login|schedule|runs|config|registrar)(?:\/.*)?|\/servers(?:\/.*)?)$/;
       const basePath = path.replace(routeSuffix, '');
       window.EK_BASE_PATH = basePath === '/' ? '' : basePath;
       window.EK_STATIC_PATH = `${window.EK_BASE_PATH}/static/`;
       window.EK_VENDOR_PATH = `${window.EK_BASE_PATH}/static/vendor/`;
+      window.EK_CDN_ORIGIN = 'https://cdn.jsdelivr.net';
       window.EK_LOAD_STATIC = function (filename) {
         document.write(`<script src="${window.EK_STATIC_PATH}${filename}"><\/script>`);
       };
       window.EK_LOAD_VENDOR = function (filename) {
         document.write(`<script src="${window.EK_VENDOR_PATH}${filename}"><\/script>`);
       };
+      window.EK_LOAD_CDN = function (origin, path) {
+        document.write(`<script src="${origin}${path}"><\/script>`);
+      };
+      window.EK_SYNC_NAIVE = function () {
+        if (typeof naive !== 'undefined' && typeof naiveUI === 'undefined') window.naiveUI = naive;
+      };
     }());
   </script>
   <script>window.EK_LOAD_VENDOR('vue.global.prod.js')</script>
-  <script>if(typeof Vue==='undefined'){document.write('<script src="https://cdn.jsdelivr.net/npm/vue@3/dist/vue.global.prod.js"><\/script>')}</script>
+  <script>if(typeof Vue==='undefined'){window.EK_LOAD_CDN(window.EK_CDN_ORIGIN,'/npm/vue@3/dist/vue.global.prod.js')}</script>
   <script>window.EK_LOAD_VENDOR('naive-ui.prod.js')</script>
-  <script>if(typeof naive!=='undefined'&&typeof naiveUI==='undefined'){window.naiveUI=naive}if(typeof naiveUI==='undefined'){document.write('<script src="https://cdn.jsdelivr.net/npm/naive-ui@2/dist/index.prod.js"><\/script>')}</script>
+  <script>window.EK_SYNC_NAIVE();if(typeof naiveUI==='undefined'){window.EK_LOAD_CDN(window.EK_CDN_ORIGIN,'/npm/naive-ui@2/dist/index.prod.js')}</script>
+  <script>window.EK_SYNC_NAIVE()</script>
   <script>window.EK_LOAD_VENDOR('vue-router.global.prod.js')</script>
-  <script>if(typeof VueRouter==='undefined'){document.write('<script src="https://cdn.jsdelivr.net/npm/vue-router@4/dist/vue-router.global.prod.js"><\/script>')}</script>
+  <script>if(typeof VueRouter==='undefined'){window.EK_LOAD_CDN(window.EK_CDN_ORIGIN,'/npm/vue-router@4/dist/vue-router.global.prod.js')}</script>
+  <script>document.write(`<link rel="stylesheet" href="${window.EK_STATIC_PATH}app-style.css" />`)</script>
   <script>window.EK_LOAD_STATIC('app-core.js')</script>
-  <style>
-    * { margin: 0; padding: 0; box-sizing: border-box; }
-    body { background: #f5f5f5; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; }
-    #app { min-height: 100vh; }
-    .page-container { max-width: 1100px; margin: 0 auto; padding: 24px 16px; }
-    .login-container { min-height: 100vh; display: flex; align-items: center; justify-content: center; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); }
-    .login-card { width: 400px; }
-    .header-bar { background: #fff; padding: 16px 24px; border-bottom: 1px solid #e8e8e8; display: flex; align-items: center; justify-content: space-between; position: sticky; top: 0; z-index: 100; }
-    .header-title { font-size: 20px; font-weight: 600; color: #333; }
-    .header-actions { display: flex; gap: 12px; align-items: center; }
-    .status-dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; }
-    .status-dot.online { background: #52c41a; }
-    .status-dot.offline { background: #ff4d4f; }
-    .status-dot.running { background: #faad14; }
-    .status-dot.unknown { background: #d9d9d9; }
-    .server-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(340px, 1fr)); gap: 16px; }
-    .empty-state { text-align: center; padding: 60px 20px; color: #999; }
-    .form-section-title { font-size: 14px; font-weight: 600; color: #666; margin: 16px 0 8px 0; border-bottom: 1px solid #eee; padding-bottom: 4px; }
-  </style>
 </head>
 <body>
   <noscript>
@@ -112,23 +102,25 @@
               <n-text style="font-size:12px;color:#999">v0.1.0</n-text>
             </template>
             <n-alert v-if="errorMsg" type="error" :bordered="false" style="margin-bottom:16px">{{ errorMsg }}</n-alert>
-            <n-tabs v-model:value="activeTab" type="segment" animated>
-              <n-tab-pane name="token" tab="Token 登录">
-                <n-space vertical :size="16">
-                  <n-input v-model:value="tokenInput" type="password" show-password-on="click" placeholder="请输入预共享 Token" />
-                  <n-button type="primary" block :loading="loading" @click="handleTokenLogin">登录</n-button>
-                </n-space>
-              </n-tab-pane>
-              <n-tab-pane name="password" tab="密码登录">
-                <n-space vertical :size="16">
-                  <n-input v-model:value="passwordInput" type="password" show-password-on="click" placeholder="请输入管理密码" />
-                  <n-button type="primary" block :loading="loading" @click="handlePasswordLogin">登录</n-button>
-                </n-space>
-              </n-tab-pane>
-            </n-tabs>
-            <n-space v-if="!hasToken && !hasPassword" vertical :size="8" style="margin-top:16px">
-              <n-alert type="warning" :bordered="false">未配置认证方式，请设置 EK_TOKEN 或 EK_WEBPASS 环境变量</n-alert>
-            </n-space>
+            <n-spin :show="loadingMethods">
+              <n-alert v-if="authMethodsLoaded && !hasAuthMethod" type="warning" :bordered="false">
+                当前服务未配置 WebUI 登录方式。
+              </n-alert>
+              <n-tabs v-else v-model:value="activeTab" type="segment" animated>
+                <n-tab-pane v-if="hasToken" name="token" tab="Token 登录">
+                  <n-space vertical :size="16">
+                    <n-input v-model:value="tokenInput" type="password" show-password-on="click" placeholder="请输入预共享 Token" @keyup.enter="handleTokenLogin" />
+                    <n-button type="primary" block :loading="loading" :disabled="!tokenInput.trim()" @click="handleTokenLogin">登录</n-button>
+                  </n-space>
+                </n-tab-pane>
+                <n-tab-pane v-if="hasPassword" name="password" tab="密码登录">
+                  <n-space vertical :size="16">
+                    <n-input v-model:value="passwordInput" type="password" show-password-on="click" placeholder="请输入管理密码" @keyup.enter="handlePasswordLogin" />
+                    <n-button type="primary" block :loading="loading" :disabled="!passwordInput.trim()" @click="handlePasswordLogin">登录</n-button>
+                  </n-space>
+                </n-tab-pane>
+              </n-tabs>
+            </n-spin>
           </n-card>
         </div>
       `,
@@ -139,9 +131,12 @@
         const tokenInput = ref('');
         const passwordInput = ref('');
         const loading = ref(false);
+        const loadingMethods = ref(true);
+        const authMethodsLoaded = ref(false);
         const errorMsg = ref('');
         const hasToken = ref(false);
         const hasPassword = ref(false);
+        const hasAuthMethod = computed(() => hasToken.value || hasPassword.value);
 
         onMounted(async () => {
           try {
@@ -150,10 +145,16 @@
             hasPassword.value = methods.password;
             if (methods.token) activeTab.value = 'token';
             else if (methods.password) activeTab.value = 'password';
-          } catch (e) { /* ignore */ }
+          } catch (e) {
+            errorMsg.value = e.message;
+          } finally {
+            authMethodsLoaded.value = true;
+            loadingMethods.value = false;
+          }
         });
 
         async function handleTokenLogin() {
+          if (!tokenInput.value.trim()) return;
           loading.value = true; errorMsg.value = '';
           try {
             const res = await API.tokenExchange(tokenInput.value.trim());
@@ -165,6 +166,7 @@
         }
 
         async function handlePasswordLogin() {
+          if (!passwordInput.value.trim()) return;
           loading.value = true; errorMsg.value = '';
           try {
             const res = await API.passwordLogin(passwordInput.value.trim());
@@ -175,7 +177,10 @@
           finally { loading.value = false; }
         }
 
-        return { activeTab, tokenInput, passwordInput, loading, errorMsg, hasToken, hasPassword, handleTokenLogin, handlePasswordLogin };
+        return {
+          activeTab, tokenInput, passwordInput, loading, loadingMethods, authMethodsLoaded,
+          errorMsg, hasToken, hasPassword, hasAuthMethod, handleTokenLogin, handlePasswordLogin
+        };
       }
     };
 
@@ -184,29 +189,94 @@
       components: { NCard, NButton, NSpace, NGrid, NGi, NStatistic, NTag, NEmpty, NSpin, NPopconfirm, NTooltip, NIcon, NBadge, NAvatar, NText },
       template: `
         <div class="page-container">
-          <n-grid :cols="4" :x-gap="12" :y-gap="12" style="margin-bottom:24px">
-            <n-gi>
-              <n-card size="small"><n-statistic label="服务器总数" :value="status.total_servers" /></n-card>
-            </n-gi>
-            <n-gi>
-              <n-card size="small"><n-statistic label="已启用" :value="status.enabled_servers" /></n-card>
-            </n-gi>
-            <n-gi>
-              <n-card size="small"><n-statistic label="在线" :value="status.online_servers" /></n-card>
-            </n-gi>
-            <n-gi>
-              <n-card size="small"><n-statistic label="运行中" :value="status.running_servers" /></n-card>
-            </n-gi>
-          </n-grid>
-
-          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">
-            <n-text style="font-size:18px;font-weight:600">服务器列表</n-text>
-            <n-space>
+          <div class="page-header">
+            <div>
+              <div class="page-kicker">概览</div>
+              <h1 class="page-title">仪表盘 / 服务器列表</h1>
+              <p class="page-subtitle">服务健康、账号数量、运行任务、最近运行结果和下一次调度集中在这里。</p>
+            </div>
+            <div class="page-actions">
+              <n-button @click="refreshDataAndPoll">刷新</n-button>
               <n-button type="primary" @click="$router.push('/servers/new')">添加服务器</n-button>
               <n-popconfirm @positive-click="handleWatchAll">
                 <template #trigger><n-button :loading="watchAllLoading">全部保活</n-button></template>
                 确定要对所有已启用服务器执行保活吗？
               </n-popconfirm>
+            </div>
+          </div>
+
+          <n-grid cols="1 s:2 m:4" responsive="screen" :x-gap="12" :y-gap="12" style="margin-bottom:16px">
+            <n-gi>
+              <div class="metric-card">
+                <span class="metric-label">服务器总数</span>
+                <strong class="metric-value">{{ status.total_servers }}</strong>
+                <span class="metric-note">启用 {{ status.enabled_servers }}</span>
+              </div>
+            </n-gi>
+            <n-gi>
+              <div class="metric-card">
+                <span class="metric-label">在线账号</span>
+                <strong class="metric-value">{{ status.online_servers }}</strong>
+                <span class="metric-note">{{ onlineRate }}</span>
+              </div>
+            </n-gi>
+            <n-gi>
+              <div class="metric-card">
+                <span class="metric-label">运行任务</span>
+                <strong class="metric-value">{{ status.running_servers }}</strong>
+                <span class="metric-note">{{ runningSummary }}</span>
+              </div>
+            </n-gi>
+            <n-gi>
+              <div class="metric-card">
+                <span class="metric-label">下一次调度</span>
+                <strong class="metric-value" style="font-size:18px">{{ nextScheduleLabel }}</strong>
+                <span class="metric-note">{{ nextScheduleAccount }}</span>
+              </div>
+            </n-gi>
+          </n-grid>
+
+          <div class="panel">
+            <div class="panel-header">
+              <div>
+                <div class="panel-title">运行健康</div>
+                <div class="panel-desc">来自 GET /api/status/health</div>
+              </div>
+              <n-tag :type="healthData && healthData.status === 'ok' ? 'success' : 'warning'" size="small">
+                {{ healthData ? healthData.status : 'loading' }}
+              </n-tag>
+            </div>
+            <div class="health-strip">
+              <div class="health-item">
+                <span class="health-label">调度器</span>
+                <span class="health-value">
+                  <span class="status-dot" :class="healthData && healthData.scheduler_initialized ? 'online' : 'offline'" />
+                  {{ healthData && healthData.scheduler_initialized ? '已初始化' : '未初始化' }}
+                </span>
+              </div>
+              <div class="health-item">
+                <span class="health-label">通知</span>
+                <span class="health-value">
+                  <span class="status-dot" :class="healthData && healthData.notifier_ready ? 'online' : (healthData && healthData.notifier_configured ? 'running' : 'unknown')" />
+                  {{ notifierSummary }}
+                </span>
+              </div>
+              <div class="health-item">
+                <span class="health-label">最近运行</span>
+                <span class="health-value">{{ latestRunSummary }}</span>
+              </div>
+              <div class="health-item">
+                <span class="health-label">最近保活</span>
+                <span class="health-value">{{ formatDate(status.last_global_watch_time) }}</span>
+              </div>
+            </div>
+          </div>
+
+          <div class="dashboard-toolbar">
+            <n-text class="section-title">服务器列表</n-text>
+            <n-space class="dashboard-actions">
+              <n-button size="small" @click="$router.push('/schedule')">查看调度</n-button>
+              <n-button size="small" @click="$router.push('/runs')">运行日志</n-button>
             </n-space>
           </div>
 
@@ -215,31 +285,34 @@
               <n-empty description="暂无服务器，点击添加服务器开始" />
             </div>
             <div v-else class="server-grid">
-              <n-card v-for="s in servers" :key="s.id" size="small" hoverable @click="$router.push('/servers/' + API.encodeId(s.id))">
+              <n-card v-for="s in servers" :key="s.id" class="server-card" size="small" hoverable @click="$router.push('/servers/' + API.encodeId(s.id))">
                 <template #header>
-                  <n-space align="center" :size="8">
-                    <span class="status-dot" :class="s.is_online ? 'online' : (s.is_running ? 'running' : 'offline')" />
-                    <span>{{ s.name || s.id }}</span>
+                  <n-space align="center" :size="8" style="min-width:0">
+                    <span class="status-dot" :class="s.is_running ? 'running' : (s.is_online ? 'online' : (s.is_online === false ? 'offline' : 'unknown'))" />
+                    <span class="truncate-text">{{ s.name || s.id }}</span>
                   </n-space>
                 </template>
                 <template #header-extra>
                   <n-tag :type="s.enabled ? 'success' : 'default'" size="small">{{ s.enabled ? '启用' : '禁用' }}</n-tag>
                 </template>
                 <n-space vertical :size="8">
-                  <n-text depth="3">{{ s.url }}</n-text>
-                  <n-text depth="3">用户: {{ s.username }}</n-text>
-                  <n-space v-if="s.has_token" :size="8">
-                    <n-tag type="info" size="small">Token 已配置</n-tag>
-                  </n-space>
-                  <n-space v-else :size="8">
-                    <n-tag type="warning" size="small">未配置认证</n-tag>
+                  <n-text class="truncate-text" depth="3">{{ s.url }}</n-text>
+                  <div class="server-meta">
+                    <span class="server-meta-item truncate-text">用户: {{ s.username }}</span>
+                    <span class="server-meta-item truncate-text">下次: {{ formatDate(s.next_schedule_time) }}</span>
+                    <span class="server-meta-item truncate-text">上次保活: {{ formatDate(s.last_watch_time) }}</span>
+                    <span class="server-meta-item truncate-text">结果: {{ s.last_watch_status || '-' }}</span>
+                  </div>
+                  <n-space :size="8">
+                    <n-tag :type="s.has_token ? 'info' : 'warning'" size="small">{{ s.has_token ? 'Token 已配置' : '未配置认证' }}</n-tag>
+                    <n-tag v-if="s.is_running" type="warning" size="small">运行中</n-tag>
                   </n-space>
                 </n-space>
                 <template #action>
-                  <n-space justify="end">
+                  <n-space class="card-actions">
                     <n-button size="small" @click.stop="handleLogin(s.id)" :loading="actionLoading[s.id]">登录测试</n-button>
                     <n-button size="small" type="primary" @click.stop="handleWatch(s.id)" :loading="actionLoading[s.id+'-w']">保活</n-button>
-                    <n-button v-if="s.is_running" size="small" type="warning" @click.stop="handleCancel(s.id)" :loading="actionLoading[s.id+'-c']">取消</n-button>
+                    <n-button v-if="s.is_running" size="small" type="warning" @click.stop="handleCancel(s.id)" :loading="actionLoading[s.id+'-c']">取消任务</n-button>
                   </n-space>
                 </template>
               </n-card>
@@ -250,18 +323,57 @@
       setup() {
         const message = useMessage();
         const servers = ref([]);
-        const status = reactive({ total_servers: 0, enabled_servers: 0, online_servers: 0, running_servers: 0 });
+        const schedules = ref([]);
+        const healthData = ref(null);
+        const status = reactive({ total_servers: 0, enabled_servers: 0, online_servers: 0, running_servers: 0, last_global_watch_time: null });
         const loading = ref(true);
         const watchAllLoading = ref(false);
         const actionLoading = reactive({});
         let pollTimer = null;
         let disposed = false;
 
+        const nextSchedule = computed(() => {
+          const candidates = schedules.value
+            .filter((item) => item.enabled !== false && item.next_time)
+            .map((item) => ({ item, time: new Date(item.next_time).getTime() }))
+            .filter((entry) => Number.isFinite(entry.time))
+            .sort((a, b) => a.time - b.time);
+          return candidates.length ? candidates[0].item : null;
+        });
+        const nextScheduleLabel = computed(() => nextSchedule.value ? formatDate(nextSchedule.value.next_time) : '-');
+        const nextScheduleAccount = computed(() => nextSchedule.value ? nextSchedule.value.account_spec : '无计划任务');
+        const onlineRate = computed(() => {
+          if (!status.total_servers) return '暂无账号';
+          return `${Math.round((status.online_servers / status.total_servers) * 100)}% 在线`;
+        });
+        const runningSummary = computed(() => status.running_servers ? '需要关注任务进度' : '当前空闲');
+        const latestRunSummary = computed(() => {
+          if (!healthData.value || !healthData.value.latest_run_id) return '-';
+          return `${healthData.value.latest_run_status || 'unknown'} / ${healthData.value.latest_run_id}`;
+        });
+        const notifierSummary = computed(() => {
+          if (!healthData.value) return '-';
+          if (healthData.value.notifier_ready) return '已就绪';
+          if (healthData.value.notifier_configured) return '已配置';
+          return '未配置';
+        });
+
+        function formatDate(value) {
+          return value ? new Date(value).toLocaleString() : '-';
+        }
+
         async function loadData() {
           try {
-            servers.value = await API.listServers();
-            const s = await API.getStatus();
-            Object.assign(status, s);
+            const [serverList, statusData, health, scheduleList] = await Promise.all([
+              API.listServers(),
+              API.getStatus(),
+              API.getHealth(),
+              API.getSchedule(),
+            ]);
+            servers.value = serverList;
+            schedules.value = scheduleList;
+            healthData.value = health;
+            Object.assign(status, statusData);
           } catch (e) { message.error(e.message); }
           finally { loading.value = false; }
         }
@@ -331,7 +443,11 @@
           if (pollTimer) clearTimeout(pollTimer);
         });
 
-        return { API, servers, status, loading, watchAllLoading, actionLoading, handleLogin, handleWatch, handleCancel, handleWatchAll };
+        return {
+          API, servers, schedules, healthData, status, loading, watchAllLoading, actionLoading,
+          nextScheduleLabel, nextScheduleAccount, onlineRate, runningSummary, latestRunSummary,
+          notifierSummary, formatDate, refreshDataAndPoll, handleLogin, handleWatch, handleCancel, handleWatchAll
+        };
       }
     };
 
@@ -381,8 +497,8 @@
 
             <div class="form-section-title">调度设置</div>
             <n-space vertical :size="12">
-              <n-input v-model:value="form.interval_days" placeholder="保活间隔天数 (如 <7,12> 或 7)" />
-              <n-input v-model:value="form.time_range" placeholder="保活时间范围 (如 <11:00AM,11:00PM>)" />
+              <n-input v-model:value="form.interval_days" placeholder="保活间隔天数 (如 7,12 或 7)" />
+              <n-input v-model:value="form.time_range" placeholder="保活时间范围 (如 11:00AM,11:00PM)" />
             </n-space>
 
             <div class="form-section-title">高级设置</div>
@@ -701,34 +817,55 @@
       components: { NCard, NDataTable, NButton, NSpace, NTag, NEmpty, NSpin, NModal, NText, NSelect, NInputNumber, NPopconfirm },
       template: `
         <div class="page-container">
-          <n-card title="运行历史">
-            <template #header-extra>
-              <n-space align="center">
-                <n-select v-model:value="statusFilter" :options="statusOptions" size="small" style="width:130px" @update:value="loadData(true)" />
-                <n-input-number v-model:value="cleanupDays" :min="1" :precision="0" size="small" style="width:110px" />
-                <n-popconfirm @positive-click="handleCleanup">
-                  <template #trigger>
-                    <n-button size="small" :loading="cleanupLoading">清理旧记录</n-button>
-                  </template>
-                  清理超过 {{ cleanupDays }} 天的运行记录？
-                </n-popconfirm>
-                <n-button size="small" @click="loadData(true)">刷新</n-button>
-              </n-space>
-            </template>
+          <div class="page-header">
+            <div>
+              <div class="page-kicker">运行记录</div>
+              <h1 class="page-title">运行日志</h1>
+              <p class="page-subtitle">按状态筛选运行任务，打开详情后可以复制完整日志或仅复制错误信息。</p>
+            </div>
+            <div class="page-actions">
+              <n-select v-model:value="statusFilter" :options="statusOptions" size="small" style="width:130px" @update:value="loadData(true)" />
+              <n-input-number v-model:value="cleanupDays" :min="1" :precision="0" size="small" style="width:110px" />
+              <n-popconfirm @positive-click="handleCleanup">
+                <template #trigger>
+                  <n-button size="small" :loading="cleanupLoading">清理旧记录</n-button>
+                </template>
+                清理超过 {{ cleanupDays }} 天的运行记录？
+              </n-popconfirm>
+              <n-button size="small" @click="loadData(true)">刷新</n-button>
+            </div>
+          </div>
+
+          <div class="panel">
+            <div class="panel-header">
+              <div>
+                <div class="panel-title">运行列表</div>
+                <div class="panel-desc">最近任务默认加载 50 条，可继续加载更多。</div>
+              </div>
+            </div>
             <n-spin :show="loading">
-              <n-data-table v-if="runs.length" :columns="columns" :data="runs" :bordered="false" />
+              <div v-if="runs.length" class="data-table-wrap">
+                <n-data-table :columns="columns" :data="runs" :bordered="false" />
+              </div>
               <n-empty v-else description="暂无运行记录" />
               <n-space v-if="runs.length && hasMore" justify="center" style="margin-top:12px">
                 <n-button size="small" :loading="loadingMore" @click="loadMore">加载更多</n-button>
               </n-space>
             </n-spin>
-          </n-card>
+          </div>
           <n-modal v-model:show="logModalVisible" preset="card" style="width:min(900px, 92vw)" title="运行日志">
             <n-spin :show="logLoading">
               <n-space vertical :size="8">
-                <n-text depth="3">Run ID: {{ selectedRunId || '-' }}</n-text>
-                <div v-if="runLogs.length" style="max-height:60vh;overflow:auto;border:1px solid #eee;border-radius:4px;background:#0f172a;color:#e2e8f0;padding:12px;font-family:monospace;font-size:12px;white-space:pre-wrap">
-                  <div v-for="(log, index) in runLogs" :key="index">[{{ formatDate(log.time) }}] {{ log.level }} {{ log.message }}</div>
+                <n-space justify="space-between" align="center">
+                  <n-text depth="3">Run ID: {{ selectedRunId || '-' }}</n-text>
+                  <n-space :size="8">
+                    <n-select v-model:value="logLevelFilter" :options="logLevelOptions" size="small" style="width:110px" />
+                    <n-button size="small" @click="copyRunLogs" :disabled="!filteredRunLogs.length">复制日志</n-button>
+                    <n-button size="small" @click="copyErrorLogs" :disabled="!errorLogs.length">复制错误信息</n-button>
+                  </n-space>
+                </n-space>
+                <div v-if="filteredRunLogs.length" class="log-viewer">
+                  <div v-for="(log, index) in filteredRunLogs" :key="index" class="log-line">[{{ formatDate(log.time) }}] {{ log.level }} {{ log.message }}</div>
                 </div>
                 <n-empty v-else description="暂无日志" />
               </n-space>
@@ -750,6 +887,23 @@
         const logLoading = ref(false);
         const selectedRunId = ref('');
         const runLogs = ref([]);
+        const logLevelFilter = ref(null);
+
+        const logLevelOptions = [
+          { label: '全部级别', value: null },
+          { label: 'ERROR', value: 'ERROR' },
+          { label: 'WARNING', value: 'WARNING' },
+          { label: 'INFO', value: 'INFO' },
+          { label: 'DEBUG', value: 'DEBUG' },
+        ];
+        const filteredRunLogs = computed(() => {
+          if (!logLevelFilter.value) return runLogs.value;
+          return runLogs.value.filter((log) => String(log.level || '').toUpperCase() === logLevelFilter.value);
+        });
+        const errorLogs = computed(() => runLogs.value.filter((log) => {
+          const level = String(log.level || '').toUpperCase();
+          return level === 'ERROR' || level === 'FAIL' || /error|exception|traceback|失败|异常/i.test(log.message || '');
+        }));
 
         function statusType(status) {
           if (status === 'success') return 'success';
@@ -820,6 +974,7 @@
         async function openRunLogs(runId) {
           selectedRunId.value = runId;
           runLogs.value = [];
+          logLevelFilter.value = null;
           logModalVisible.value = true;
           logLoading.value = true;
           try {
@@ -829,8 +984,41 @@
           finally { logLoading.value = false; }
         }
 
+        async function copyText(text, successText) {
+          try {
+            if (navigator.clipboard && window.isSecureContext) {
+              await navigator.clipboard.writeText(text);
+            } else {
+              const textarea = document.createElement('textarea');
+              textarea.value = text;
+              textarea.setAttribute('readonly', '');
+              textarea.style.position = 'fixed';
+              textarea.style.left = '-9999px';
+              document.body.appendChild(textarea);
+              textarea.select();
+              document.execCommand('copy');
+              textarea.remove();
+            }
+            message.success(successText);
+          } catch (e) {
+            message.error('复制失败');
+          }
+        }
+
+        function logsToText(logs) {
+          return logs.map((log) => `[${formatDate(log.time)}] ${log.level} ${log.message}`).join('\n');
+        }
+
+        async function copyRunLogs() {
+          await copyText(logsToText(filteredRunLogs.value), '日志已复制');
+        }
+
+        async function copyErrorLogs() {
+          await copyText(logsToText(errorLogs.value), '错误信息已复制');
+        }
+
         onMounted(loadData);
-        return { runs, loading, loadingMore, cleanupLoading, statusFilter, statusOptions, cleanupDays, hasMore, columns, logModalVisible, logLoading, selectedRunId, runLogs, loadData, loadMore, handleCleanup, openRunLogs, formatDate };
+        return { runs, loading, loadingMore, cleanupLoading, statusFilter, statusOptions, cleanupDays, hasMore, columns, logModalVisible, logLoading, selectedRunId, runLogs, logLevelFilter, logLevelOptions, filteredRunLogs, errorLogs, loadData, loadMore, handleCleanup, openRunLogs, copyRunLogs, copyErrorLogs, formatDate };
       }
     };
 
@@ -839,24 +1027,52 @@
       components: { NCard, NDataTable, NButton, NSpace, NTag, NEmpty, NSpin, NInput, NAlert },
       template: `
         <div class="page-container">
-          <n-card title="计划任务" style="margin-bottom:16px">
+          <div class="page-header">
+            <div>
+              <div class="page-kicker">任务调度</div>
+              <h1 class="page-title">调度</h1>
+              <p class="page-subtitle">查看所有保活计划、运行状态和下一次执行时间，也可以即时触发或取消正在运行的任务。</p>
+            </div>
+            <div class="page-actions">
+              <n-button @click="loadData">刷新</n-button>
+            </div>
+          </div>
+
+          <div class="panel">
+            <div class="panel-header">
+              <div>
+                <div class="panel-title">计划任务</div>
+                <div class="panel-desc">来自 GET /api/schedule</div>
+              </div>
+            </div>
             <n-spin :show="loading">
-              <n-data-table v-if="schedules.length" :columns="columns" :data="schedules" :bordered="false" />
+              <div v-if="schedules.length" class="data-table-wrap">
+                <n-data-table :columns="columns" :data="schedules" :bordered="false" />
+              </div>
               <n-empty v-else description="暂无计划任务" />
             </n-spin>
-          </n-card>
-          <n-card title="调度预览">
+          </div>
+
+          <div class="panel">
+            <div class="panel-header">
+              <div>
+                <div class="panel-title">调度预览</div>
+                <div class="panel-desc">输入间隔和时间范围后预览下次运行时间。</div>
+              </div>
+            </div>
             <n-space vertical :size="12">
+              <div class="form-grid">
+                <n-input v-model:value="previewForm.interval_days" placeholder="间隔天数，如 7,12" />
+                <n-input v-model:value="previewForm.time_range" placeholder="时间范围，如 11:00AM,11:00PM" />
+              </div>
               <n-space>
-                <n-input v-model:value="previewForm.interval_days" placeholder="间隔天数，如 <7,12>" style="width:180px" />
-                <n-input v-model:value="previewForm.time_range" placeholder="时间范围，如 <11:00AM,11:00PM>" style="width:260px" />
                 <n-button :loading="previewLoading" @click="handlePreview">预览</n-button>
               </n-space>
               <n-alert v-if="previewResult" type="success" :bordered="false">
                 下次运行：{{ formatDate(previewResult.next_time) }}
               </n-alert>
             </n-space>
-          </n-card>
+          </div>
         </div>
       `,
       setup() {
@@ -929,18 +1145,359 @@
         }
 
         onMounted(loadData);
-        return { schedules, loading, columns, previewForm, previewLoading, previewResult, handlePreview, formatDate };
+        return { schedules, loading, columns, previewForm, previewLoading, previewResult, loadData, handlePreview, formatDate };
+      }
+    };
+
+    // ============ Registrar Page ============
+    const RegistrarPage = {
+      components: { NCard, NButton, NSpace, NInput, NInputNumber, NForm, NFormItem, NSelect, NSpin, NAlert, NText, NTag },
+      template: `
+        <div class="page-container">
+          <div class="page-header">
+            <div>
+              <div class="page-kicker">Telegram</div>
+              <h1 class="page-title">一键抢注</h1>
+              <p class="page-subtitle">选择 Bot、Telegram 账号、注册账号和运行限制后启动任务，任务状态会自动轮询。</p>
+            </div>
+            <div class="page-actions">
+              <n-button text @click="loadAccounts">刷新账号</n-button>
+              <n-button @click="$router.push('/runs')">查看运行日志</n-button>
+            </div>
+          </div>
+
+          <div class="panel registrar-card">
+            <n-spin :show="loading">
+              <n-alert v-if="accounts.length === 0" type="warning" :bordered="false" style="margin-bottom:16px">
+                当前配置中没有 Telegram 账号
+              </n-alert>
+              <n-alert v-else-if="enabledAccountCount === 0" type="warning" :bordered="false" style="margin-bottom:16px">
+                当前配置中没有已启用的 Telegram 账号
+              </n-alert>
+              <div class="registrar-meta">
+                <div class="meta-chip">
+                  <span>可用账号</span>
+                  <strong>{{ enabledAccountCount }}/{{ accounts.length }}</strong>
+                </div>
+                <div class="meta-chip">
+                  <span>已选择</span>
+                  <strong>{{ selectedAccountCount }}</strong>
+                </div>
+                <div class="meta-chip">
+                  <span>Bot</span>
+                  <strong>{{ botPreview || '-' }}</strong>
+                </div>
+              </div>
+              <n-form :label-placement="isCompact ? 'top' : 'left'" :label-width="isCompact ? undefined : 110">
+                <n-form-item label="Telegram 账号">
+                  <n-space vertical style="width:100%">
+                    <n-select
+                      v-model:value="form.telegram_account_ids"
+                      :options="accountOptions"
+                      multiple
+                      filterable
+                      :max-tag-count="isCompact ? 1 : 3"
+                      placeholder="选择用于抢注的 Telegram 账号"
+                    />
+                    <n-space :size="8">
+                      <n-button size="small" text @click="selectAllEnabledAccounts">选择全部启用账号</n-button>
+                      <n-button size="small" text @click="clearSelectedAccounts">清空选择</n-button>
+                    </n-space>
+                    <n-text depth="3" style="font-size:12px">已选择 {{ selectedAccountCount }} 个 / 可用 {{ enabledAccountCount }} 个</n-text>
+                  </n-space>
+                </n-form-item>
+                <n-form-item label="Bot">
+                  <n-input v-model:value="form.bot_username" placeholder="@ExampleBot 或 https://t.me/ExampleBot" />
+                </n-form-item>
+                <n-form-item label="注册账号">
+                  <n-input v-model:value="form.username" placeholder="要注册到目标站点的用户名，不允许空格" />
+                </n-form-item>
+                <n-form-item label="注册密码">
+                  <div class="field-row">
+                    <n-input v-model:value="form.password" type="password" show-password-on="click" placeholder="要注册到目标站点的密码，不允许空格" />
+                    <n-button @click="generatePassword">生成</n-button>
+                  </div>
+                </n-form-item>
+                <n-form-item label="重试间隔">
+                  <n-space align="center">
+                    <n-input-number class="number-input" v-model:value="form.interval_seconds" :min="1" :max="60" :precision="0" />
+                    <n-text>秒</n-text>
+                  </n-space>
+                </n-form-item>
+                <n-form-item label="最长运行">
+                  <n-space align="center">
+                    <n-input-number class="number-input" v-model:value="form.timeout_minutes" :min="1" :max="1440" :precision="0" />
+                    <n-text>分钟</n-text>
+                  </n-space>
+                </n-form-item>
+              </n-form>
+              <n-space justify="end">
+                <n-button :loading="submitting" :disabled="!canSubmit" type="primary" @click="handleSubmit">开始抢注</n-button>
+              </n-space>
+              <n-alert v-if="lastRun" :type="runAlertType" :bordered="false" style="margin-top:16px">
+                <n-space align="center" justify="space-between">
+                  <div class="run-line">
+                    <span class="run-id">任务：{{ lastRun.run_id }}</span>
+                    <n-text v-if="runStatusInfo" depth="3" style="font-size:12px">{{ runStatusInfo }}</n-text>
+                  </div>
+                  <n-space align="center">
+                    <n-tag size="small" :type="runStatusType">{{ runStatusLabel }}</n-tag>
+                    <n-button size="small" text @click="$router.push('/runs')">查看日志</n-button>
+                    <n-button v-if="canCancelLastRun" size="small" text type="warning" :loading="canceling" @click="handleCancelLastRun">取消</n-button>
+                  </n-space>
+                </n-space>
+              </n-alert>
+            </n-spin>
+          </div>
+        </div>
+      `,
+      setup() {
+        const message = useMessage();
+        const accounts = ref([]);
+        const loading = ref(true);
+        const submitting = ref(false);
+        const canceling = ref(false);
+        const lastRun = ref(null);
+        const runStatus = ref('');
+        const runStatusInfo = ref('');
+        const isCompact = ref(window.innerWidth < 760);
+        let pollTimer = null;
+        const botUsernamePattern = /^[A-Za-z][A-Za-z0-9_]{4,31}$/;
+        const form = reactive({
+          telegram_account_ids: [],
+          bot_username: '',
+          username: '',
+          password: '',
+          interval_seconds: 1,
+          timeout_minutes: 30,
+        });
+
+        const enabledAccountCount = computed(() => accounts.value.filter((account) => account.enabled).length);
+        const selectedAccountCount = computed(() => form.telegram_account_ids.length);
+        const botPreview = computed(() => normalizeBot(form.bot_username));
+        const accountOptions = computed(() => accounts.value.map((account) => ({
+          label: `${account.phone_masked}${account.enabled ? '' : '（禁用）'}${account.registrar ? '' : ' / 未设定时抢注'}`,
+          value: account.id,
+          disabled: !account.enabled,
+        })));
+        const canSubmit = computed(() => {
+          const username = trimText(form.username);
+          const password = trimText(form.password);
+          return (
+            selectedAccountCount.value > 0
+            && isValidBotUsername(botPreview.value)
+            && !!username
+            && !!password
+            && !hasWhitespace(username)
+            && !hasWhitespace(password)
+            && isIntegerInRange(form.interval_seconds, 1, 60)
+            && isIntegerInRange(form.timeout_minutes, 1, 1440)
+          );
+        });
+        const canCancelLastRun = computed(() => ['pending', 'initializing', 'running'].includes(runStatus.value));
+        const statusLabels = {
+          pending: '等待',
+          initializing: '初始化',
+          running: '运行中',
+          success: '成功',
+          fail: '失败',
+          error: '错误',
+          cancelled: '已取消',
+        };
+        const runStatusLabel = computed(() => statusLabels[runStatus.value] || runStatus.value || '已启动');
+        const runStatusType = computed(() => {
+          if (runStatus.value === 'success') return 'success';
+          if (runStatus.value === 'fail' || runStatus.value === 'error') return 'error';
+          if (runStatus.value === 'cancelled') return 'default';
+          return 'warning';
+        });
+        const runAlertType = computed(() => {
+          if (runStatus.value === 'success') return 'success';
+          if (runStatus.value === 'fail' || runStatus.value === 'error') return 'error';
+          if (canCancelLastRun.value) return 'warning';
+          return 'info';
+        });
+
+        async function loadAccounts() {
+          loading.value = true;
+          try {
+            accounts.value = await API.listRegistrarAccounts();
+            if (!form.telegram_account_ids.length) {
+              form.telegram_account_ids = accounts.value.filter((account) => account.enabled).map((account) => account.id);
+            }
+          } catch (e) { message.error(e.message); }
+          finally { loading.value = false; }
+        }
+
+        function trimText(value) {
+          return typeof value === 'string' ? value.trim() : value;
+        }
+
+        function normalizeBot(value) {
+          let bot = trimText(value) || '';
+          bot = bot.replace(/^https?:\/\/t\.me\//i, '').split('?', 1)[0].replace(/^@/, '').replace(/\/+$/, '').trim();
+          return bot;
+        }
+
+        function hasWhitespace(value) {
+          return /\s/.test(value || '');
+        }
+
+        function isIntegerInRange(value, min, max) {
+          return Number.isInteger(value) && value >= min && value <= max;
+        }
+
+        function isValidBotUsername(value) {
+          return botUsernamePattern.test(value || '');
+        }
+
+        function updateCompactState() {
+          isCompact.value = window.innerWidth < 760;
+        }
+
+        function enabledAccountIds() {
+          return accounts.value.filter((account) => account.enabled).map((account) => account.id);
+        }
+
+        function selectAllEnabledAccounts() {
+          form.telegram_account_ids = enabledAccountIds();
+        }
+
+        function clearSelectedAccounts() {
+          form.telegram_account_ids = [];
+        }
+
+        function generatePassword() {
+          const alphabet = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789';
+          form.password = Array.from({ length: 12 }, () => alphabet[Math.floor(Math.random() * alphabet.length)]).join('');
+        }
+
+        function stopRunPolling() {
+          if (pollTimer) clearTimeout(pollTimer);
+          pollTimer = null;
+        }
+
+        async function pollRunStatus() {
+          if (!lastRun.value || !lastRun.value.run_id) return;
+          stopRunPolling();
+          try {
+            const run = await API.getRun(lastRun.value.run_id);
+            runStatus.value = run.status || '';
+            runStatusInfo.value = run.status_info || '';
+            if (canCancelLastRun.value) {
+              pollTimer = setTimeout(pollRunStatus, 3000);
+            } else {
+              stopRunPolling();
+            }
+          } catch (e) {
+            stopRunPolling();
+          }
+        }
+
+        function startRunPolling(initialInfo = '') {
+          stopRunPolling();
+          runStatus.value = 'running';
+          runStatusInfo.value = initialInfo;
+          pollTimer = setTimeout(pollRunStatus, 1000);
+        }
+
+        async function handleSubmit() {
+          const botUsername = normalizeBot(form.bot_username);
+          const username = trimText(form.username);
+          const password = trimText(form.password);
+          if (!form.telegram_account_ids.length) {
+            message.error('请选择 Telegram 账号');
+            return;
+          }
+          if (!botUsername || !username || !password) {
+            message.error('Bot、注册账号和注册密码不能为空');
+            return;
+          }
+          if (!isValidBotUsername(botUsername)) {
+            message.error('Bot 用户名格式不正确');
+            return;
+          }
+          if (hasWhitespace(username) || hasWhitespace(password)) {
+            message.error('注册账号和注册密码不能包含空白字符');
+            return;
+          }
+          if (!isIntegerInRange(form.interval_seconds, 1, 60)) {
+            message.error('重试间隔必须是 1 到 60 秒之间的整数');
+            return;
+          }
+          if (!isIntegerInRange(form.timeout_minutes, 1, 1440)) {
+            message.error('最长运行时间必须是 1 到 1440 分钟之间的整数');
+            return;
+          }
+          submitting.value = true;
+          try {
+            const res = await API.quickRegister({
+              telegram_account_ids: form.telegram_account_ids,
+              bot_username: botUsername,
+              username,
+              password,
+              interval_seconds: form.interval_seconds,
+              timeout_minutes: form.timeout_minutes,
+            });
+            lastRun.value = res;
+            form.password = '';
+            startRunPolling(res && res.message ? res.message : '');
+            message.success(res && res.message ? res.message : '抢注任务已启动');
+          } catch (e) { message.error(e.message); }
+          finally { submitting.value = false; }
+        }
+
+        async function handleCancelLastRun() {
+          if (!lastRun.value || !lastRun.value.run_id) return;
+          canceling.value = true;
+          try {
+            await API.cancelRegistrarRun(lastRun.value.run_id);
+            runStatusInfo.value = '正在取消抢注任务';
+            message.success('已请求取消抢注任务');
+            await pollRunStatus();
+          } catch (e) { message.error(e.message); }
+          finally { canceling.value = false; }
+        }
+
+        onMounted(() => {
+          updateCompactState();
+          window.addEventListener('resize', updateCompactState);
+          loadAccounts();
+        });
+        onUnmounted(() => {
+          stopRunPolling();
+          window.removeEventListener('resize', updateCompactState);
+        });
+        return { accounts, loading, submitting, canceling, lastRun, form, accountOptions, enabledAccountCount, selectedAccountCount, botPreview, isCompact, canSubmit, canCancelLastRun, runStatusInfo, runStatusLabel, runStatusType, runAlertType, loadAccounts, selectAllEnabledAccounts, clearSelectedAccounts, generatePassword, handleSubmit, handleCancelLastRun };
       }
     };
 
     // ============ Config Page ============
     const ConfigPage = {
-      components: { NCard, NButton, NSpace, NInput, NInputNumber, NSelect, NDescriptions, NDescriptionsItem, NSpin, NText, NSwitch, NTag, NAlert, NDataTable, NEmpty, NPopconfirm },
+      components: { NCard, NButton, NSpace, NInput, NInputNumber, NSelect, NDescriptions, NDescriptionsItem, NSpin, NText, NSwitch, NTag, NAlert, NDataTable, NEmpty, NPopconfirm, NDivider },
       template: `
         <div class="page-container">
+          <div class="page-header">
+            <div>
+              <div class="page-kicker">系统配置</div>
+              <h1 class="page-title">配置</h1>
+              <p class="page-subtitle">集中管理 Emby 保活、Telegram 签到、定时抢注、通知以及备份 / 恢复。</p>
+            </div>
+            <div class="page-actions">
+              <n-button @click="loadData">刷新</n-button>
+              <n-button :loading="exportingBackup" @click="handleExportConfig">下载脱敏快照</n-button>
+              <n-button :loading="creatingBackup" type="primary" @click="handleCreateBackup">创建本地备份</n-button>
+            </div>
+          </div>
           <n-spin :show="loading">
-            <n-card title="运行健康" style="margin-bottom:16px">
-              <n-descriptions v-if="healthData" label-placement="left" :column="3" bordered>
+            <div class="panel">
+              <div class="panel-header">
+                <div>
+                  <div class="panel-title">运行健康</div>
+                  <div class="panel-desc">配置加载、调度器、文件可写性、通知状态和最近运行。</div>
+                </div>
+              </div>
+              <n-descriptions v-if="healthData" label-placement="left" :column="descriptionColumns(3)" bordered>
                 <n-descriptions-item label="状态">
                   <n-tag :type="healthData.status === 'ok' ? 'success' : 'warning'">{{ healthData.status }}</n-tag>
                 </n-descriptions-item>
@@ -958,10 +1515,16 @@
                 <n-descriptions-item label="配置路径">{{ healthData.config_path || '-' }}</n-descriptions-item>
                 <n-descriptions-item label="账号路径">{{ healthData.web_accounts_path || '-' }}</n-descriptions-item>
               </n-descriptions>
-            </n-card>
+            </div>
 
-            <n-card title="全局配置" style="margin-bottom:16px">
-              <n-descriptions v-if="configData" label-placement="left" :column="2" bordered>
+            <div class="panel">
+              <div class="panel-header">
+                <div>
+                  <div class="panel-title">Emby 保活</div>
+                  <div class="panel-desc">全局保活时间、间隔、并发和代理设置。</div>
+                </div>
+              </div>
+              <n-descriptions v-if="configData" label-placement="left" :column="descriptionColumns(2)" bordered>
                 <n-descriptions-item label="Emby 时间范围">
                   <n-input v-model:value="editConfig.emby_time_range" size="small" />
                 </n-descriptions-item>
@@ -985,22 +1548,112 @@
               <n-space justify="end">
                 <n-button :loading="saving" type="primary" @click="handleSave">保存配置</n-button>
               </n-space>
-            </n-card>
+            </div>
 
-            <n-card title="备份与导出" style="margin-bottom:16px">
-              <n-space justify="end" style="margin-bottom:12px">
-                <n-button :loading="exportingBackup" @click="handleExportConfig">下载脱敏快照</n-button>
-                <n-button :loading="creatingBackup" type="primary" @click="handleCreateBackup">创建本地备份</n-button>
+            <div class="panel">
+              <div class="panel-header">
+                <div>
+                  <div class="panel-title">自动化配置</div>
+                  <div class="panel-desc">Telegram 签到和定时抢注共用 Telegram 账号配置，保存后会重新拉取并刷新运行时。</div>
+                </div>
+              </div>
+              <div class="form-section-title">Telegram 签到</div>
+              <n-descriptions label-placement="left" :column="descriptionColumns(2)" bordered>
+                <n-descriptions-item label="签到站点">
+                  <n-select v-model:value="automationForm.checkiner_sites" multiple filterable tag :options="checkinerSiteOptions" size="small" placeholder="all 或站点名" />
+                </n-descriptions-item>
+                <n-descriptions-item label="签到时间范围">
+                  <n-input v-model:value="automationForm.checkiner_time_range" size="small" />
+                </n-descriptions-item>
+                <n-descriptions-item label="签到间隔天数">
+                  <n-input v-model:value="automationForm.checkiner_interval_days" size="small" />
+                </n-descriptions-item>
+                <n-descriptions-item label="签到超时秒数">
+                  <n-input-number v-model:value="automationForm.checkiner_timeout" :min="1" :max="3600" :precision="0" size="small" />
+                </n-descriptions-item>
+                <n-descriptions-item label="签到重试次数">
+                  <n-input-number v-model:value="automationForm.checkiner_retries" :min="0" :max="20" :precision="0" size="small" />
+                </n-descriptions-item>
+                <n-descriptions-item label="签到并发数">
+                  <n-input-number v-model:value="automationForm.checkiner_concurrency" :min="1" :max="50" :precision="0" size="small" />
+                </n-descriptions-item>
+                <n-descriptions-item label="随机延迟分钟">
+                  <n-input-number v-model:value="automationForm.checkiner_random_start" :min="0" :max="1440" :precision="0" size="small" />
+                </n-descriptions-item>
+                <n-descriptions-item label="抢注并发数">
+                  <n-input-number v-model:value="automationForm.registrar_concurrency" :min="1" :max="50" :precision="0" size="small" />
+                </n-descriptions-item>
+              </n-descriptions>
+              <n-divider />
+              <div class="form-section-title">定时抢注</div>
+              <n-space justify="space-between" align="center" style="margin-bottom:12px">
+                <n-text strong>定时抢注 Bot</n-text>
+                <n-button size="small" @click="addRegistrarSchedule">添加 Bot</n-button>
               </n-space>
-              <n-data-table v-if="backups.length" :columns="backupColumns" :data="backups" :bordered="false" size="small" />
-              <n-empty v-else description="暂无本地备份" />
-            </n-card>
+              <n-alert v-if="automationForm.preserved_registrar_sites.length" type="info" :bordered="false" style="margin-bottom:12px">
+                已保留 {{ automationForm.preserved_registrar_sites.length }} 个非模板抢注站点。
+              </n-alert>
+              <div v-if="automationForm.registrar_schedules.length">
+                <div v-for="(item, index) in automationForm.registrar_schedules" :key="index" class="automation-row">
+                  <div class="automation-grid">
+                    <div>
+                      <n-text depth="3" style="font-size:12px">Bot</n-text>
+                      <n-input v-model:value="item.bot_username" size="small" placeholder="@ExampleBot" />
+                    </div>
+                    <div>
+                      <n-text depth="3" style="font-size:12px">模式</n-text>
+                      <n-select v-model:value="item.mode" :options="registrarModeOptions" size="small" />
+                    </div>
+                    <div v-if="item.mode === 'times'">
+                      <n-text depth="3" style="font-size:12px">时间</n-text>
+                      <n-input v-model:value="item.times_text" size="small" placeholder="9:00AM, 9:00PM" />
+                    </div>
+                    <div v-else>
+                      <n-text depth="3" style="font-size:12px">间隔分钟</n-text>
+                      <n-input-number v-model:value="item.interval_minutes" :min="1" :max="1440" :precision="0" size="small" />
+                    </div>
+                    <div>
+                      <n-text depth="3" style="font-size:12px">超时/重试</n-text>
+                      <n-space :size="6">
+                        <n-input-number v-model:value="item.timeout" :min="1" :max="3600" :precision="0" size="small" placeholder="超时" />
+                        <n-input-number v-model:value="item.retries" :min="0" :max="20" :precision="0" size="small" placeholder="重试" />
+                        <n-button size="small" text type="error" @click="removeRegistrarSchedule(index)">删除</n-button>
+                      </n-space>
+                    </div>
+                  </div>
+                </div>
+              </div>
+              <n-empty v-else description="暂无定时抢注 Bot" />
+              <n-divider />
+              <n-space justify="end">
+                <n-button :loading="savingAutomation" type="primary" @click="handleSaveAutomation">保存自动化配置</n-button>
+              </n-space>
+            </div>
 
-            <n-card title="通知配置">
+            <div class="panel">
+              <div class="panel-header">
+                <div>
+                  <div class="panel-title">备份 / 恢复</div>
+                  <div class="panel-desc">下载脱敏诊断快照，或从本地备份恢复配置文件。</div>
+                </div>
+              </div>
+              <div v-if="backups.length" class="data-table-wrap">
+                <n-data-table :columns="backupColumns" :data="backups" :bordered="false" size="small" />
+              </div>
+              <n-empty v-else description="暂无本地备份" />
+            </div>
+
+            <div class="panel">
+              <div class="panel-header">
+                <div>
+                  <div class="panel-title">通知</div>
+                  <div class="panel-desc">仅使用用户手动配置的 Apprise URI 或 Telegram Bot Token + Chat ID。</div>
+                </div>
+              </div>
               <n-alert v-if="notifierData && notifierData.configured" type="success" :bordered="false" style="margin-bottom:12px">
                 当前目标：{{ notifierData.target_label }}
               </n-alert>
-              <n-descriptions label-placement="left" :column="2" bordered>
+              <n-descriptions label-placement="left" :column="descriptionColumns(2)" bordered>
                 <n-descriptions-item label="启用通知">
                   <n-switch v-model:value="notifierForm.enabled" />
                 </n-descriptions-item>
@@ -1022,18 +1675,21 @@
                 <n-button :loading="testingNotifier" @click="handleTestNotifier">测试发送</n-button>
                 <n-button :loading="savingNotifier" type="primary" @click="handleSaveNotifier">保存通知</n-button>
               </n-space>
-            </n-card>
+            </div>
           </n-spin>
         </div>
       `,
       setup() {
         const message = useMessage();
         const configData = ref(null);
+        const automationData = ref(null);
         const healthData = ref(null);
         const notifierData = ref(null);
         const backups = ref([]);
         const loading = ref(true);
+        const isCompact = ref(window.innerWidth < 760);
         const saving = ref(false);
+        const savingAutomation = ref(false);
         const savingNotifier = ref(false);
         const testingNotifier = ref(false);
         const exportingBackup = ref(false);
@@ -1043,10 +1699,37 @@
           emby_time_range: '', emby_interval_days: '', emby_concurrency: 1,
           proxy_hostname: '', proxy_port: null, proxy_scheme: null,
         });
+        const automationForm = reactive({
+          checkiner_sites: [],
+          checkiner_time_range: '',
+          checkiner_interval_days: '',
+          checkiner_timeout: 120,
+          checkiner_retries: 4,
+          checkiner_concurrency: 1,
+          checkiner_random_start: 60,
+          registrar_concurrency: 1,
+          registrar_schedules: [],
+          preserved_registrar_sites: [],
+        });
         const notifierForm = reactive({
-          enabled: false, method: 'telegram', apprise_uri: '',
+          enabled: false, method: 'apprise', apprise_uri: '',
           telegram_bot_token: '', telegram_chat_id: '',
         });
+        const checkinerSiteOptions = [
+          { label: '全部站点', value: 'all' },
+        ];
+        const registrarModeOptions = [
+          { label: '指定时间', value: 'times' },
+          { label: '固定间隔', value: 'interval' },
+        ];
+
+        function updateCompactState() {
+          isCompact.value = window.innerWidth < 760;
+        }
+
+        function descriptionColumns(count) {
+          return isCompact.value ? 1 : count;
+        }
 
         function formatDate(value) {
           return value ? new Date(value).toLocaleString() : '-';
@@ -1068,6 +1751,8 @@
           try {
             configData.value = await API.getConfig();
             Object.assign(editConfig, configData.value);
+            automationData.value = await API.getAutomationConfig();
+            assignAutomationForm(automationData.value);
             healthData.value = await API.getHealth();
             notifierData.value = await API.getNotifier();
             backups.value = await API.listBackups();
@@ -1083,6 +1768,52 @@
           return trimmed || null;
         }
 
+        function splitListText(value) {
+          if (!value) return [];
+          return String(value).split(/[\n,，]+/).map((item) => item.trim()).filter(Boolean);
+        }
+
+        function normalizeBotForConfig(value) {
+          let bot = optionalText(value) || '';
+          bot = bot.replace(/^https?:\/\/t\.me\//i, '').split('?', 1)[0].replace(/^@/, '').replace(/\/+$/, '').trim();
+          return bot;
+        }
+
+        function assignAutomationForm(data) {
+          automationForm.checkiner_sites = [...(data.checkiner_sites || [])];
+          automationForm.checkiner_time_range = data.checkiner_time_range || '';
+          automationForm.checkiner_interval_days = data.checkiner_interval_days || '';
+          automationForm.checkiner_timeout = data.checkiner_timeout || 120;
+          automationForm.checkiner_retries = data.checkiner_retries ?? 4;
+          automationForm.checkiner_concurrency = data.checkiner_concurrency || 1;
+          automationForm.checkiner_random_start = data.checkiner_random_start ?? 60;
+          automationForm.registrar_concurrency = data.registrar_concurrency || 1;
+          automationForm.preserved_registrar_sites = [...(data.preserved_registrar_sites || [])];
+          automationForm.registrar_schedules = (data.registrar_schedules || []).map((item) => ({
+            bot_username: item.bot_username || '',
+            mode: item.mode || (item.interval_minutes ? 'interval' : 'times'),
+            times_text: (item.times || []).join(', '),
+            interval_minutes: item.interval_minutes || 5,
+            timeout: item.timeout || 120,
+            retries: item.retries ?? 1,
+          }));
+        }
+
+        function addRegistrarSchedule() {
+          automationForm.registrar_schedules.push({
+            bot_username: '',
+            mode: 'times',
+            times_text: '9:00AM',
+            interval_minutes: 5,
+            timeout: 120,
+            retries: 1,
+          });
+        }
+
+        function removeRegistrarSchedule(index) {
+          automationForm.registrar_schedules.splice(index, 1);
+        }
+
         function addScheduleText(data, key, value, label) {
           const normalized = optionalText(value);
           if (normalized === null && configData.value && configData.value[key] != null) {
@@ -1095,6 +1826,14 @@
           if (value == null) return null;
           if (!Number.isInteger(value) || value <= 0) {
             throw new Error(`${label}必须是正整数`);
+          }
+          return value;
+        }
+
+        function optionalNonNegativeInteger(value, label) {
+          if (value == null) return null;
+          if (!Number.isInteger(value) || value < 0) {
+            throw new Error(`${label}必须是非负整数`);
           }
           return value;
         }
@@ -1119,6 +1858,44 @@
           finally { saving.value = false; }
         }
 
+        async function handleSaveAutomation() {
+          savingAutomation.value = true;
+          try {
+            const schedules = automationForm.registrar_schedules.map((item, index) => {
+              const bot = normalizeBotForConfig(item.bot_username);
+              if (!bot) throw new Error(`第 ${index + 1} 个抢注 Bot 不能为空`);
+              const schedule = {
+                bot_username: bot,
+                mode: item.mode || 'times',
+                timeout: optionalPositiveInteger(item.timeout, '抢注超时秒数'),
+                retries: optionalNonNegativeInteger(item.retries, '抢注重试次数'),
+              };
+              if (schedule.mode === 'interval') {
+                schedule.interval_minutes = optionalPositiveInteger(item.interval_minutes, '抢注间隔分钟');
+              } else {
+                const times = splitListText(item.times_text);
+                if (!times.length) throw new Error(`第 ${index + 1} 个抢注 Bot 缺少时间`);
+                schedule.times = times;
+              }
+              return schedule;
+            });
+            await API.updateAutomationConfig({
+              checkiner_sites: automationForm.checkiner_sites || [],
+              checkiner_time_range: optionalText(automationForm.checkiner_time_range),
+              checkiner_interval_days: optionalText(automationForm.checkiner_interval_days),
+              checkiner_timeout: optionalPositiveInteger(automationForm.checkiner_timeout, '签到超时秒数'),
+              checkiner_retries: optionalNonNegativeInteger(automationForm.checkiner_retries, '签到重试次数'),
+              checkiner_concurrency: optionalPositiveInteger(automationForm.checkiner_concurrency, '签到并发数'),
+              checkiner_random_start: optionalNonNegativeInteger(automationForm.checkiner_random_start, '随机延迟分钟'),
+              registrar_concurrency: optionalPositiveInteger(automationForm.registrar_concurrency, '抢注并发数'),
+              registrar_schedules: schedules,
+            });
+            message.success('自动化配置已保存');
+            await loadData();
+          } catch (e) { message.error(e.message); }
+          finally { savingAutomation.value = false; }
+        }
+
         function notifierPayload() {
           const data = {
             enabled: notifierForm.enabled,
@@ -1127,12 +1904,15 @@
           if (notifierForm.method === 'telegram') {
             const botToken = optionalText(notifierForm.telegram_bot_token);
             const chatId = optionalText(notifierForm.telegram_chat_id);
-            const existingChatId = notifierData.value ? notifierData.value.telegram_chat_id : null;
+            const existing = notifierData.value || {};
+            const existingChatId = existing.telegram_chat_id || null;
+            const existingTelegram = existing.configured && existing.method === 'telegram';
             if (botToken) {
+              if (!chatId) throw new Error('Telegram Chat ID 不能为空');
               data.telegram_bot_token = botToken;
               data.telegram_chat_id = chatId;
-            } else if (!notifierData.value || !notifierData.value.configured) {
-              data.telegram_chat_id = chatId;
+            } else if (!existingTelegram) {
+              throw new Error('配置 Telegram 通知时必须输入 Bot Token 和 Chat ID');
             } else if (chatId && chatId !== existingChatId) {
               throw new Error('修改 Telegram Chat ID 时必须重新输入 Bot Token');
             }
@@ -1192,38 +1972,84 @@
           finally { restoringBackup.value = ''; }
         }
 
-        onMounted(loadData);
-        return { configData, healthData, notifierData, backups, backupColumns, loading, saving, savingNotifier, testingNotifier, exportingBackup, creatingBackup, restoringBackup, editConfig, notifierForm, handleSave, handleSaveNotifier, handleTestNotifier, handleExportConfig, handleCreateBackup, handleRestoreBackup };
+        onMounted(() => {
+          loadData();
+          window.addEventListener('resize', updateCompactState);
+        });
+        onUnmounted(() => {
+          window.removeEventListener('resize', updateCompactState);
+        });
+        return { configData, automationData, healthData, notifierData, backups, backupColumns, loading, saving, savingAutomation, savingNotifier, testingNotifier, exportingBackup, creatingBackup, restoringBackup, editConfig, automationForm, notifierForm, checkinerSiteOptions, registrarModeOptions, descriptionColumns, loadData, handleSave, handleSaveAutomation, addRegistrarSchedule, removeRegistrarSchedule, handleSaveNotifier, handleTestNotifier, handleExportConfig, handleCreateBackup, handleRestoreBackup };
       }
     };
 
     // ============ Main App Layout ============
     const AppLayout = {
-      components: { NLayout, NLayoutHeader, NLayoutContent, NButton, NSpace, NText },
+      components: { NButton, NText },
       template: `
-        <n-layout>
-          <n-layout-header class="header-bar" bordered>
-            <n-text class="header-title">Emby Keeper</n-text>
-            <n-space class="header-actions" :size="8">
-              <n-button text @click="$router.push('/')">仪表盘</n-button>
-              <n-button text @click="$router.push('/schedule')">计划任务</n-button>
-              <n-button text @click="$router.push('/runs')">运行历史</n-button>
-              <n-button text @click="$router.push('/config')">配置</n-button>
-              <n-button text type="error" @click="handleLogout">退出</n-button>
-            </n-space>
-          </n-layout-header>
-          <n-layout-content style="padding:0">
+        <div class="app-shell">
+          <aside class="sidebar">
+            <div class="sidebar-brand">
+              <div class="brand-block">
+                <span class="header-title">Emby Keeper</span>
+                <span class="header-subtitle">运维控制台</span>
+              </div>
+            </div>
+            <nav class="sidebar-nav">
+              <n-button text class="nav-button" :class="{ active: isActiveRoute('/') }" @click="$router.push('/')">仪表盘</n-button>
+              <n-button text class="nav-button" :class="{ active: isActiveRoute('/schedule') }" @click="$router.push('/schedule')">调度</n-button>
+              <n-button text class="nav-button" :class="{ active: isActiveRoute('/runs') }" @click="$router.push('/runs')">运行历史</n-button>
+              <n-button text class="nav-button" :class="{ active: isActiveRoute('/registrar') }" @click="$router.push('/registrar')">一键抢注</n-button>
+              <n-button text class="nav-button" :class="{ active: isActiveRoute('/config') }" @click="$router.push('/config')">配置</n-button>
+            </nav>
+            <div class="sidebar-footer">
+              <n-button block secondary type="error" @click="handleLogout">退出登录</n-button>
+            </div>
+          </aside>
+          <main class="main-shell">
+            <header class="header-bar">
+              <div class="mobile-nav">
+                <n-button text class="nav-button" :class="{ active: isActiveRoute('/') }" @click="$router.push('/')">仪表盘</n-button>
+                <n-button text class="nav-button" :class="{ active: isActiveRoute('/schedule') }" @click="$router.push('/schedule')">调度</n-button>
+                <n-button text class="nav-button" :class="{ active: isActiveRoute('/runs') }" @click="$router.push('/runs')">日志</n-button>
+                <n-button text class="nav-button" :class="{ active: isActiveRoute('/registrar') }" @click="$router.push('/registrar')">抢注</n-button>
+                <n-button text class="nav-button" :class="{ active: isActiveRoute('/config') }" @click="$router.push('/config')">配置</n-button>
+              </div>
+              <div class="brand-block">
+                <n-text class="page-kicker">当前页面</n-text>
+                <n-text class="section-title">{{ activeTitle }}</n-text>
+              </div>
+              <div class="header-actions">
+                <n-button size="small" @click="$router.push('/servers/new')">新增服务器</n-button>
+                <n-button size="small" secondary type="error" @click="handleLogout">退出</n-button>
+              </div>
+            </header>
             <router-view />
-          </n-layout-content>
-        </n-layout>
+          </main>
+        </div>
       `,
       setup() {
         const router = VueRouter.useRouter();
+        const route = VueRouter.useRoute();
+        const activeTitle = computed(() => {
+          const current = route.path;
+          if (current === '/' || current.startsWith('/servers')) return '仪表盘 / 服务器';
+          if (current.startsWith('/schedule')) return '调度';
+          if (current.startsWith('/runs')) return '运行日志';
+          if (current.startsWith('/registrar')) return '一键抢注';
+          if (current.startsWith('/config')) return '配置';
+          return '控制台';
+        });
+        function isActiveRoute(path) {
+          const current = route.path;
+          if (path === '/') return current === '/' || current.startsWith('/servers');
+          return current === path || current.startsWith(`${path}/`);
+        }
         function handleLogout() {
           sessionStorage.removeItem('ek_jwt');
           router.replace('/login');
         }
-        return { handleLogout };
+        return { activeTitle, isActiveRoute, handleLogout };
       }
     };
 
@@ -1235,18 +2061,48 @@
         component: AppLayout,
         children: [
           { path: '', component: DashboardPage },
+          { path: 'servers', component: DashboardPage },
           { path: 'servers/new', component: ServerFormPage },
           { path: 'servers/:id', component: ServerDetailPage },
           { path: 'servers/:id/edit', component: ServerFormPage },
           { path: 'schedule', component: SchedulePage },
+          { path: 'registrar', component: RegistrarPage },
           { path: 'runs', component: RunHistoryPage },
           { path: 'config', component: ConfigPage },
         ],
       },
     ];
 
+    function directRouteFromPathname() {
+      const basePath = typeof window.EK_BASE_PATH === 'string' ? window.EK_BASE_PATH : '';
+      let path = window.location.pathname || '/';
+      if (basePath && path.startsWith(basePath)) {
+        path = path.slice(basePath.length) || '/';
+      }
+      path = path.replace(/\/$/, '') || '/';
+      if (path === '/' || path === '/login' || path === '/schedule' || path === '/runs' || path === '/config' || path === '/registrar') {
+        return path;
+      }
+      if (path === '/servers' || path.startsWith('/servers/')) {
+        return path;
+      }
+      return null;
+    }
+
+    function directRouteHashUrl(route) {
+      const basePath = typeof window.EK_BASE_PATH === 'string' ? window.EK_BASE_PATH : '';
+      const base = basePath || '/';
+      return `${base}#${route}`;
+    }
+
+    // Capture direct SPA routes before hash history normalizes an empty hash to #/.
+    const directRoute = !window.location.hash ? directRouteFromPathname() : null;
+    if (directRoute && directRoute !== '/') {
+      window.history.replaceState(window.history.state, '', directRouteHashUrl(directRoute));
+    }
+
     const router = VueRouter.createRouter({
-      history: VueRouter.createWebHashHistory(),
+      history: VueRouter.createWebHashHistory(window.EK_BASE_PATH || '/'),
       routes,
     });
 
@@ -1261,6 +2117,10 @@
         next();
       }
     });
+
+    if (directRoute && directRoute !== '/') {
+      router.replace(directRoute);
+    }
 
     const app = createApp({
       setup() {

@@ -2,6 +2,14 @@ name: Docker API (arm64)
 
 on:
   workflow_dispatch:
+  push:
+    branches:
+      - 'main'
+    paths:
+      - "embykeeperapi/**"
+      - "embykeeper/**"
+      - "requirements*.txt"
+      - "Dockerfile"
 
 env:
   REGISTRY_IMAGE: ghcr.io/${{ github.repository }}/api

@@ -7,7 +7,12 @@ if [ -d "/src" ]; then
         cp -rT /build /src
     fi
     echo ">> 正在根据源码配置程序, 请稍候."
-    pip install --no-cache-dir -e /src
+    EK_EXTRAS="${EK_EXTRAS:-full}"
+    if [ -z "$EK_EXTRAS" ] || [ "$EK_EXTRAS" = "none" ]; then
+        pip install --no-cache-dir -e /src
+    else
+        pip install --no-cache-dir -e "/src[${EK_EXTRAS}]"
+    fi
     echo ">> 已配置完成."
     echo
 else

@@ -130,6 +130,22 @@ class CancelResponse(BaseModel):
     message: str
 
 
+class RegistrarTelegramAccountResponse(BaseModel):
+    id: str
+    phone_masked: str
+    enabled: bool = True
+    registrar: bool = False
+
+
+class RegistrarQuickRunRequest(BaseModel):
+    bot_username: str = Field(description="Telegram bot username, with or without @")
+    username: str = Field(description="Username to register")
+    password: str = Field(description="Password to register")
+    telegram_account_ids: Optional[List[str]] = Field(default=None, description="Selected Telegram account IDs")
+    interval_seconds: Optional[StrictInt] = Field(default=1, ge=1, le=60)
+    timeout_minutes: Optional[StrictInt] = Field(default=30, ge=1, le=1440)
+
+
 # ============ Schedule Models ============
 
 
@@ -178,6 +194,40 @@ class GlobalConfigResponse(BaseModel):
     proxy_hostname: Optional[str] = None
     proxy_port: Optional[int] = None
     proxy_scheme: Optional[str] = None
+
+
+class AutomationRegistrarSchedule(BaseModel):
+    bot_username: str = Field(description="Telegram bot username, with or without @")
+    mode: str = Field(default="times", pattern="^(times|interval)$")
+    times: Optional[List[str]] = Field(default=None, description="Scheduled times such as 9:00AM")
+    interval_minutes: Optional[StrictInt] = Field(default=None, ge=1, le=1440)
+    timeout: Optional[StrictInt] = Field(default=None, gt=0, le=3600)
+    retries: Optional[StrictInt] = Field(default=None, ge=0, le=20)
+
+
+class AutomationConfigUpdate(BaseModel):
+    checkiner_sites: Optional[List[str]] = None
+    checkiner_time_range: Optional[str] = None
+    checkiner_interval_days: Optional[str] = None
+    checkiner_timeout: Optional[StrictInt] = Field(default=None, gt=0, le=3600)
+    checkiner_retries: Optional[StrictInt] = Field(default=None, ge=0, le=20)
+    checkiner_concurrency: Optional[StrictInt] = Field(default=None, gt=0, le=50)
+    checkiner_random_start: Optional[StrictInt] = Field(default=None, ge=0, le=1440)
+    registrar_concurrency: Optional[StrictInt] = Field(default=None, gt=0, le=50)
+    registrar_schedules: Optional[List[AutomationRegistrarSchedule]] = None
+
+
+class AutomationConfigResponse(BaseModel):
+    checkiner_sites: List[str] = Field(default_factory=list)
+    checkiner_time_range: Optional[str] = None
+    checkiner_interval_days: Optional[str] = None
+    checkiner_timeout: Optional[int] = None
+    checkiner_retries: Optional[int] = None
+    checkiner_concurrency: Optional[int] = None
+    checkiner_random_start: Optional[int] = None
+    registrar_concurrency: Optional[int] = None
+    registrar_schedules: List[AutomationRegistrarSchedule] = Field(default_factory=list)
+    preserved_registrar_sites: List[str] = Field(default_factory=list)
 
 
 class NotifierConfigUpdate(BaseModel):

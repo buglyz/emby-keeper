@@ -8,12 +8,21 @@ from pydantic import ValidationError
 
 from embykeeper.config import config
 from embykeeper.schema import Config
-from embykeeperapi.models import GlobalConfigUpdate, NotifierConfigUpdate, ProxyConfigUpdate
+import embykeeperapi.config_service as config_service_module
+from embykeeperapi.models import (
+    AutomationConfigUpdate,
+    AutomationRegistrarSchedule,
+    GlobalConfigUpdate,
+    NotifierConfigUpdate,
+    ProxyConfigUpdate,
+)
 from embykeeperapi.routers import config as config_router
 from embykeeperapi.routers.config import (
     get_config,
+    get_automation_config,
     get_notifier_config,
     test_notifier as send_test_notifier,
+    update_automation_config,
     update_config,
     update_notifier_config,
 )
@@ -102,6 +111,261 @@ def test_get_config_handles_missing_emby_section(tmp_path):
     config.reset()
 
 
+def test_update_automation_config_persists_checkiner_and_registrar_without_removing_accounts(tmp_path):
+    async def run_test():
+        config_file = tmp_path / "config.toml"
+        config_file.write_text(
+            """
+[emby]
+concurrency = 1
+
+[[emby.account]]
+url = "https://example.com"
+username = "alice"
+password = "secret"
+
+[site]
+registrar = ["custom_registrar"]
+
+[registrar]
+concurrency = 1
+
+[registrar.custom_registrar]
+times = ["8:00AM"]
+""".strip(),
+            encoding="utf-8",
+        )
+        config.basedir = tmp_path
+        config.set(
+            Config(
+                emby={
+                    "concurrency": 1,
+                    "account": [
+                        {
+                            "url": "https://example.com",
+                            "username": "alice",
+                            "password": "secret",
+                        }
+                    ],
+                },
+                site={"registrar": ["custom_registrar"]},
+                registrar={"concurrency": 1, "custom_registrar": {"times": ["8:00AM"]}},
+            )
+        )
+
+        response = await update_automation_config(
+            AutomationConfigUpdate(
+                checkiner_sites=["all", "misty"],
+                checkiner_time_range="<10:00AM,11:00AM>",
+                checkiner_interval_days="2",
+                checkiner_timeout=180,
+                checkiner_retries=2,
+                checkiner_concurrency=3,
+                checkiner_random_start=15,
+                registrar_concurrency=2,
+                registrar_schedules=[
+                    AutomationRegistrarSchedule(
+                        bot_username="https://t.me/TestBot/?start=1",
+                        mode="times",
+                        times=["9:00AM", "9:00PM"],
+                        timeout=120,
+                        retries=1,
+                    ),
+                    AutomationRegistrarSchedule(
+                        bot_username="@IntervalBot",
+                        mode="interval",
+                        interval_minutes=5,
+                    ),
+                ],
+            ),
+            user="tester",
+        )
+
+        assert response.checkiner_sites == ["all", "misty"]
+        assert [item.bot_username for item in response.registrar_schedules] == ["TestBot", "IntervalBot"]
+        assert response.preserved_registrar_sites == ["custom_registrar"]
+        assert config._cache.site.registrar == [
+            "custom_registrar",
+            "templ_a<TestBot>",
+            "templ_a<IntervalBot>",
+        ]
+        data = tomllib.loads(config_file.read_text(encoding="utf-8"))
+        assert data["emby"]["account"][0]["username"] == "alice"
+        assert data["site"]["checkiner"] == ["all", "misty"]
+        assert data["site"]["registrar"] == [
+            "custom_registrar",
+            "templ_a<TestBot>",
+            "templ_a<IntervalBot>",
+        ]
+        assert data["checkiner"]["time_range"] == "<10:00AM,11:00AM>"
+        assert data["checkiner"]["interval_days"] == "2"
+        assert data["checkiner"]["timeout"] == 180
+        assert data["registrar"]["concurrency"] == 2
+        assert data["registrar"]["custom_registrar"]["times"] == ["8:00AM"]
+        assert data["registrar"]["templ_a<TestBot>"]["times"] == ["9:00AM", "9:00PM"]
+        assert data["registrar"]["templ_a<IntervalBot>"]["interval_minutes"] == 5
+
+    asyncio.run(run_test())
+    config.reset()
+
+
+def test_update_automation_config_refreshes_started_automation_runtime(tmp_path):
+    async def run_test():
+        class FakeAutomationRuntime:
+            def __init__(self):
+                self.refreshes = 0
+
+            async def restart_if_started(self):
+                self.refreshes += 1
+
+        runtime = FakeAutomationRuntime()
+        config_file = tmp_path / "config.toml"
+        config_file.write_text("", encoding="utf-8")
+        config.basedir = tmp_path
+        config.set(Config())
+
+        service = config_service_module.ConfigService(config, automation_runtime=runtime)
+        response = await service.update_automation_config(
+            AutomationConfigUpdate(
+                checkiner_sites=["all"],
+                checkiner_time_range="<10:00AM,11:00AM>",
+                checkiner_interval_days="1",
+            )
+        )
+
+        assert response.checkiner_sites == ["all"]
+        assert runtime.refreshes == 1
+
+    asyncio.run(run_test())
+    config.reset()
+
+
+def test_get_automation_config_handles_missing_sections(tmp_path):
+    async def run_test():
+        config.basedir = tmp_path
+        config.set(Config(checkiner=None, registrar=None, site=None))
+
+        response = await get_automation_config(user="tester")
+
+        assert response.checkiner_sites == []
+        assert response.registrar_schedules == []
+        assert response.checkiner_timeout == 120
+        assert response.registrar_concurrency == 1
+
+    asyncio.run(run_test())
+    config.reset()
+
+
+def test_update_automation_config_rejects_duplicate_registrar_bots(tmp_path):
+    async def run_test():
+        config.basedir = tmp_path
+        config.set(Config())
+
+        with pytest.raises(HTTPException) as exc:
+            await update_automation_config(
+                AutomationConfigUpdate(
+                    registrar_schedules=[
+                        AutomationRegistrarSchedule(
+                            bot_username="TestBot",
+                            mode="times",
+                            times=["9:00AM"],
+                        ),
+                        AutomationRegistrarSchedule(
+                            bot_username="@TestBot",
+                            mode="interval",
+                            interval_minutes=5,
+                        ),
+                    ]
+                ),
+                user="tester",
+            )
+
+        assert exc.value.status_code == 400
+        assert "Duplicate registrar bot" in exc.value.detail
+
+    asyncio.run(run_test())
+    config.reset()
+
+
+def test_update_automation_config_rejects_case_insensitive_duplicate_registrar_bots(tmp_path):
+    async def run_test():
+        config.basedir = tmp_path
+        config.set(Config())
+
+        with pytest.raises(HTTPException) as exc:
+            await update_automation_config(
+                AutomationConfigUpdate(
+                    registrar_schedules=[
+                        AutomationRegistrarSchedule(
+                            bot_username="TestBot",
+                            mode="times",
+                            times=["9:00AM"],
+                        ),
+                        AutomationRegistrarSchedule(
+                            bot_username="testbot",
+                            mode="interval",
+                            interval_minutes=5,
+                        ),
+                    ]
+                ),
+                user="tester",
+            )
+
+        assert exc.value.status_code == 400
+        assert "Duplicate registrar bot" in exc.value.detail
+
+    asyncio.run(run_test())
+    config.reset()
+
+
+def test_update_automation_config_rejects_invalid_registrar_mode_when_validation_is_bypassed(tmp_path):
+    async def run_test():
+        config.basedir = tmp_path
+        config.set(Config())
+
+        invalid_schedule = AutomationRegistrarSchedule.model_construct(
+            bot_username="TestBot",
+            mode="bad",
+            times=["9:00AM"],
+        )
+        invalid_req = AutomationConfigUpdate.model_construct(
+            registrar_schedules=[invalid_schedule],
+            _fields_set={"registrar_schedules"},
+        )
+
+        with pytest.raises(HTTPException) as exc:
+            await update_automation_config(invalid_req, user="tester")
+
+        assert exc.value.status_code == 400
+        assert "mode is invalid" in exc.value.detail
+        assert config._cache.site is None or not config._cache.site.registrar
+
+    asyncio.run(run_test())
+    config.reset()
+
+
+def test_persist_global_config_uses_explicit_next_config_even_if_falsey(tmp_path):
+    class FalsyConfig:
+        emby = None
+        proxy = None
+        notifier = None
+
+        def __bool__(self):
+            return False
+
+    config_file = tmp_path / "config.toml"
+    config_file.write_text("[emby]\nconcurrency = 9\n", encoding="utf-8")
+    config.basedir = tmp_path
+    config.set(Config(emby={"concurrency": 9}))
+
+    config_service_module.ConfigService(config).persist_global_config(FalsyConfig())
+
+    data = tomllib.loads(config_file.read_text(encoding="utf-8"))
+    assert data["emby"]["concurrency"] == 1
+
+    config.reset()
+
+
 def test_update_config_creates_missing_emby_section(tmp_path):
     async def run_test():
         config_file = tmp_path / "config.toml"
@@ -172,7 +436,7 @@ def test_write_text_atomic_preserves_existing_file_when_replace_fails(tmp_path, 
     monkeypatch.setattr(type(config_file), "replace", fail_replace)
 
     with pytest.raises(OSError):
-        config_router._write_text_atomic(config_file, "new-content")
+        config_service_module.write_text_atomic(config_file, "new-content")
 
     assert config_file.read_text(encoding="utf-8") == "old-content"
     assert not config_file.with_suffix(".toml.tmp").exists()
@@ -182,7 +446,7 @@ def test_write_text_atomic_preserves_existing_file_when_replace_fails(tmp_path, 
 def test_write_text_atomic_creates_missing_parent(tmp_path):
     config_file = tmp_path / "missing" / "config.toml"
 
-    config_router._write_text_atomic(config_file, "[emby]\nconcurrency = 1\n")
+    config_service_module.write_text_atomic(config_file, "[emby]\nconcurrency = 1\n")
 
     assert tomllib.loads(config_file.read_text(encoding="utf-8"))["emby"]["concurrency"] == 1
     assert stat.S_IMODE(config_file.stat().st_mode) == 0o600
@@ -192,7 +456,7 @@ def test_write_text_atomic_cleans_temp_file_on_type_error(tmp_path):
     config_file = tmp_path / "config.toml"
 
     with pytest.raises(TypeError):
-        config_router._write_text_atomic(config_file, object())
+        config_service_module.write_text_atomic(config_file, object())
 
     assert not config_file.exists()
     assert not list(tmp_path.glob(".config.toml.*.tmp"))
@@ -542,7 +806,7 @@ def test_update_notifier_config_saves_telegram_as_apprise_uri(tmp_path, monkeypa
             refresh_calls += 1
             return None
 
-        monkeypatch.setattr(config_router, "_refresh_notifier", noop_refresh)
+        monkeypatch.setattr(config_router.config_service, "refresh_notifier", noop_refresh)
         config_file = tmp_path / "config.toml"
         config_file.write_text("", encoding="utf-8")
         config.basedir = tmp_path
@@ -640,7 +904,7 @@ def test_update_notifier_config_preserves_existing_telegram_target(tmp_path, mon
         async def noop_refresh():
             return None
 
-        monkeypatch.setattr(config_router, "_refresh_notifier", noop_refresh)
+        monkeypatch.setattr(config_router.config_service, "refresh_notifier", noop_refresh)
         config_file = tmp_path / "config.toml"
         config_file.write_text("", encoding="utf-8")
         config.basedir = tmp_path
@@ -685,7 +949,7 @@ def test_notifier_test_sends_to_telegram_target(tmp_path, monkeypatch):
     async def run_test():
         config.basedir = tmp_path
         config.set(Config())
-        monkeypatch.setattr(config_router, "AppriseStream", FakeStream)
+        monkeypatch.setattr(config_service_module, "AppriseStream", FakeStream)
 
         response = await send_test_notifier(
             NotifierConfigUpdate(

@@ -1,6 +1,6 @@
 # A script to download and install dependencies listed in a requirements file from pip
 # Usage: .\download_deps.ps1 [-RequirementsFile <RequirementsFile>] [-PipPath <PipPath>]
-# Example: .\download_deps.ps1 requirements.txt C:\Python\3.8.0\Scripts\pip.exe
+# Example: .\download_deps.ps1 requirements.txt C:\Python\3.11.9\Scripts\pip.exe
 
 param(
     [Parameter()]
@@ -16,9 +16,9 @@ param(
 Write-Host "Installing dependencies"
 if ($Update) {
     if ($NoMirror) {
-        & $PythonPath -m pip install -U embykeeper --no-warn-script-location
+        & $PythonPath -m pip install -U "embykeeper[full]" --no-warn-script-location
     } else {
-        & $PythonPath -m pip install -i "https://mirrors.aliyun.com/pypi/simple" -U embykeeper --no-warn-script-location
+        & $PythonPath -m pip install -i "https://mirrors.aliyun.com/pypi/simple" -U "embykeeper[full]" --no-warn-script-location
     }
 } else {
     if ($NoMirror) {

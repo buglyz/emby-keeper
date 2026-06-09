@@ -1,7 +1,7 @@
 # A script to download the embeddable Python of a given version
 # Also configures the embeddable Python to allow pip (it's not allowed by default)
 # Usage: .\download_python.ps1 -Version <Version> [-TargetDirectory <TargetDirectory>]
-# Example: .\download_python.ps1 3.8.0 -TargetDirectory C:\Python\3.8.0
+# Example: .\download_python.ps1 3.11.9 -TargetDirectory C:\Python\3.11.9
 
 param(
     [Parameter(Mandatory=$true)]
@@ -13,7 +13,7 @@ $PythonDirName = "python-$Version-embed-amd64"
 $PythonDir = "$TargetDirectory\$PythonDirName"
 $PythonUrl = "https://www.python.org/ftp/python/$Version/$PythonDirName.zip"
 $PythonZip = "$TargetDirectory\$PythonDirName.zip"
-$PythonExe = "$PythonDirName\python.exe"
+$PythonExe = "$PythonDir\python.exe"
 
 if (Test-Path $PythonExe) {
     Write-Host "Python $version already downloaded"

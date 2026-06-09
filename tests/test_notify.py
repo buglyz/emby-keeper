@@ -140,6 +140,26 @@ def test_stop_notifier_ignores_missing_logger_handlers():
     asyncio.run(run_test())
 
 
+def test_stop_notifier_unregisters_change_callback_when_requested(tmp_path):
+    async def run_test():
+        config.basedir = tmp_path
+        config.set(Config())
+        notify.change_handle_notifier = config.on_change("notifier", notify._handle_config_change)
+
+        await notify._stop_notifier()
+
+        assert notify.change_handle_notifier is not None
+        assert notify._handle_config_change in config._callbacks["change"]["notifier"]
+
+        await notify._stop_notifier(unregister_callback=True)
+
+        assert notify.change_handle_notifier is None
+        assert notify._handle_config_change not in config._callbacks["change"]["notifier"]
+        config.reset()
+
+    asyncio.run(run_test())
+
+
 def test_stop_notifier_continues_after_stream_close_failure():
     class FailingStream:
         def close(self):

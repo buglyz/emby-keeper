@@ -3,6 +3,7 @@
 .PHONY: help help/simple help/all install develop venv venv/require venv/clean python/venv conda/venv conda/install run run/debug run/web systemd systemd/install systemd/uninstall lint lint/node lint/python test debugpy debugpy/cli debugpy/web version version/patch version/minor version/major config/generate push clean clean/build clean/pyc clean/test node/require docs/dev docs/build docs/preview
 
 USE_MIRROR ?= True
+EK_EXTRAS ?= full
 
 ifeq ($(USE_MIRROR), True)
     CONDA_URL := "https://mirrors.tuna.tsinghua.edu.cn/anaconda/miniconda/Miniconda3-latest-Linux-$$(uname -i).sh"
@@ -15,7 +16,14 @@ else
 endif
 
 PYTHON ?= python
-PYTHON_COMPATIBLE := $(shell "$(PYTHON)" -c "import sys; print((sys.version_info >= (3, 8)) and (sys.version_info < (3, 10)))" 2>/dev/null || echo False)
+PYTHON_COMPATIBLE := $(shell "$(PYTHON)" -c "import sys; print(sys.version_info >= (3, 8))" 2>/dev/null || echo False)
+ifeq ($(strip $(EK_EXTRAS)),)
+    PACKAGE_SPEC := .
+else ifeq ($(EK_EXTRAS), none)
+    PACKAGE_SPEC := .
+else
+    PACKAGE_SPEC := .[$(EK_EXTRAS)]
+endif
 CONDA_ROOT ?= conda
 VENV := venv
 
@@ -27,6 +35,7 @@ help/simple:
 >   @echo "子命令:"
 >   @echo "  install - 创建一个 Python 环境并在其中安装 Embykeeper"
 >   @echo "  develop - 创建一个 Python 环境并在其中安装 Embykeeper, 同时安装开发相关工具"
+>   @echo "  EK_EXTRAS=none make install - 仅安装 WebUI/Emby 保活核心依赖"
 >   @echo "  run - 运行 Embykeeper (使用默认配置文件 config.toml)"
 >   @echo "  run/debug - 运行 Embykeeper (使用默认配置文件 config.toml), 并启用调试日志输出"
 >   @echo "  run/web - 运行 Embykeeper 的在线网页服务器"
@@ -43,6 +52,7 @@ help/all:
 >   @echo "子命令:"
 >   @echo "  install - 创建一个 Python 环境并在其中安装 Embykeeper"
 >   @echo "  develop - 创建一个 Python 环境并在其中安装 Embykeeper, 同时安装开发相关工具"
+>   @echo "  EK_EXTRAS=none make install - 仅安装 WebUI/Emby 保活核心依赖"
 >   @echo "  venv - 创建一个 Python 环境 (若未检测到可用 Python 将会通过 Conda 安装)"
 >   @echo "  venv/clean - 删除所有创建的 Python 环境"
 >   @echo '  python/venv - 使用可用 Python 在 "<CWD>/venv" 创建 Virtualvenv 虚拟环境'
@@ -76,7 +86,7 @@ help/all:
 
 install: venv
 >   @"$(VENV)/bin/python" -m pip install -i "$(PYPI_URL)" -U pip && \
->   "$(VENV)/bin/python" -m pip install -i "$(PYPI_URL)" -e . \
+>   "$(VENV)/bin/python" -m pip install -i "$(PYPI_URL)" -e "$(PACKAGE_SPEC)" \
 >   && echo "Info: 已经成功在 "$(VENV)" 安装了 Embykeeper." \
 >   && echo 'Info: 运行 "make run" 以启动 Embykeeper.' \
 >   && echo 'Info: 运行 "make systemd" 以设置自动启动.' \
@@ -100,19 +110,19 @@ venv/clean:
 python/venv:
 >   @[ ! -d "$(VENV)" ] && echo "Info: 正在创建 Venv 环境 ..." && "$(PYTHON)" -m venv "$(VENV)" && echo "Info: Venv 环境创建完成" && \
 >   echo "Info: 正在安装 Embykeeper ..." && \
->   "$(VENV)/bin/python" -m pip install -e . && \
+>   "$(VENV)/bin/python" -m pip install -e "$(PACKAGE_SPEC)" && \
 >   echo "Info: Embykeeper 安装完成!" || :
 
 conda/venv: conda/install
->   @[ ! -d "$(VENV)" ] && echo "Info: 正在创建 Conda 环境 ..." && "$(CONDA_ROOT)/condabin/conda" create -y --prefix venv --override-channels -c $(CONDA_CHANNEL_URL) python~=3.9.0 && echo "Info: Conda 环境创建完成" && \
+>   @[ ! -d "$(VENV)" ] && echo "Info: 正在创建 Conda 环境 ..." && "$(CONDA_ROOT)/condabin/conda" create -y --prefix venv --override-channels -c $(CONDA_CHANNEL_URL) python~=3.11.0 && echo "Info: Conda 环境创建完成" && \
 >   echo "Info: 正在安装 Embykeeper ..." && \
->   "$(VENV)/bin/python" -m pip install -e . && \
+>   "$(VENV)/bin/python" -m pip install -e "$(PACKAGE_SPEC)" && \
 >   echo "Info: Embykeeper 安装完成!" || :
 
 conda/install:
 >   @if [ ! -d "$(CONDA_ROOT)" ]; then \
 >       while :; do \
->           read -p "请注意: 您当前的 Python 环境不符合要求 (python >=3.8, <3.11), 是否在当前目录安装一个新的 Conda Python 环境? [y/N]:" yn; \
+>           read -p "请注意: 您当前的 Python 环境不符合要求 (python >=3.8), 是否在当前目录安装一个新的 Conda Python 环境? [y/N]:" yn; \
 >           case $$yn in \
 >               [Yy]* ) break;; \
 >               [Nn]* ) exit 1;; \
