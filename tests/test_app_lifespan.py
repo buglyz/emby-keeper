@@ -198,6 +198,66 @@ def test_proxy_fix_middleware_ignores_unknown_forwarded_clients(monkeypatch):
     asyncio.run(run_test())
 
 
+def test_proxy_fix_middleware_uses_real_ip_when_forwarded_for_has_no_valid_ip(monkeypatch):
+    monkeypatch.setenv("EK_TRUST_PROXY", "1")
+
+    async def run_test():
+        middleware = ProxyFixMiddleware(app=lambda *_args: None)
+        scope = {
+            "type": "http",
+            "method": "GET",
+            "path": "/client",
+            "headers": [
+                (b"x-forwarded-for", b"not-an-ip, also-bad"),
+                (b"x-real-ip", b"198.51.100.8"),
+            ],
+            "client": ("original", 12345),
+            "scheme": "http",
+        }
+        request = Request(scope)
+        seen = {}
+
+        async def call_next(next_request):
+            seen["client"] = next_request.client.host
+            return Response("ok")
+
+        await middleware.dispatch(request, call_next)
+
+        assert seen["client"] == "198.51.100.8"
+
+    asyncio.run(run_test())
+
+
+def test_proxy_fix_middleware_keeps_client_when_forwarded_clients_are_invalid(monkeypatch):
+    monkeypatch.setenv("EK_TRUST_PROXY", "1")
+
+    async def run_test():
+        middleware = ProxyFixMiddleware(app=lambda *_args: None)
+        scope = {
+            "type": "http",
+            "method": "GET",
+            "path": "/client",
+            "headers": [
+                (b"x-forwarded-for", b"not-an-ip, unknown"),
+                (b"x-real-ip", b"also-bad"),
+            ],
+            "client": ("original", 12345),
+            "scheme": "http",
+        }
+        request = Request(scope)
+        seen = {}
+
+        async def call_next(next_request):
+            seen["client"] = next_request.client.host
+            return Response("ok")
+
+        await middleware.dispatch(request, call_next)
+
+        assert seen["client"] == "original"
+
+    asyncio.run(run_test())
+
+
 def test_proxy_fix_middleware_keeps_client_when_forwarded_for_is_unknown(monkeypatch):
     monkeypatch.setenv("EK_TRUST_PROXY", "1")
 

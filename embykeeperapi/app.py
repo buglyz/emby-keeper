@@ -64,8 +64,12 @@ class ProxyFixMiddleware(BaseHTTPMiddleware):
     def _first_forwarded_value(value: str):
         for item in value.split(","):
             item = item.strip()
-            if item and item.lower() != "unknown":
-                return item
+            if not item or item.lower() == "unknown":
+                continue
+            try:
+                return str(ip_address(item))
+            except ValueError:
+                continue
         return None
 
     async def dispatch(self, request: Request, call_next):
@@ -84,14 +88,11 @@ class ProxyFixMiddleware(BaseHTTPMiddleware):
 
         # Handle X-Forwarded-For / X-Real-Ip for client IP
         forwarded_for = request.headers.get("X-Forwarded-For")
-        if forwarded_for:
-            forwarded_host = self._first_forwarded_value(forwarded_for)
-            if forwarded_host:
-                request.scope["client"] = (forwarded_host, 0)
-        else:
-            real_ip = (request.headers.get("X-Real-Ip") or "").strip()
-            if real_ip and real_ip.lower() != "unknown":
-                request.scope["client"] = (real_ip, 0)
+        forwarded_host = self._first_forwarded_value(forwarded_for or "")
+        if not forwarded_host:
+            forwarded_host = self._first_forwarded_value(request.headers.get("X-Real-Ip") or "")
+        if forwarded_host:
+            request.scope["client"] = (forwarded_host, 0)
 
         response = await call_next(request)
         return response
