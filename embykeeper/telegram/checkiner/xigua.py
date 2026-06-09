@@ -42,13 +42,13 @@ class XiguaCheckin(TemplateACheckin):
                     if not token:
                         self.log.warning("签到失败: 验证码解析失败, 正在重试.")
                         return await self.retry()
-                    scheme = urlparse(url)
+                    scheme = urlparse(url_auth)
                     url_submit = scheme._replace(path="/api/checkin/verify", query="", fragment="").geturl()
                     origin = scheme._replace(path="/", query="", fragment="").geturl()
                     useragent = Faker().safari()
                     headers = {
                         "Content-Type": "application/json",
-                        "Referer": url,
+                        "Referer": url_auth,
                         "Origin": origin,
                         "User-Agent": useragent,
                     }

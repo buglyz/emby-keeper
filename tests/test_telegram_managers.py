@@ -9,6 +9,7 @@ from embykeeper.config import config
 from embykeeper.runinfo import RunContext, RunStatus, _running_runs
 from embykeeper.schema import Config, TelegramAccount
 import embykeeper.telegram.checkin_main as checkin_main
+import embykeeper.telegram.checkiner.xigua as xigua_module
 import embykeeper.telegram.registrar_main as registrar_main
 from embykeeper.telegram.checkiner._base import BaseBotCheckin, BotCheckin
 from embykeeper.telegram.registrar._base import BaseBotRegister
@@ -168,6 +169,82 @@ def test_base_checkin_and_register_keep_zero_retries():
     bot_checkin = BotCheckin(DummyClient(), retries=5)
     bot_checkin.max_retries = 0
     assert bot_checkin.valid_retries == 0
+
+
+def test_xigua_checkin_posts_to_authorized_webview_url(monkeypatch):
+    async def run_test():
+        posts = []
+
+        class FakeClient:
+            me = SimpleNamespace(id=123, full_name="Tester")
+
+            async def resolve_peer(self, username):
+                assert username == "XiguaEmbyBot"
+                return "bot-peer"
+
+            async def invoke(self, request):
+                assert request.url == "https://raw.example/app"
+                return SimpleNamespace(url="https://auth.example/app#tgWebAppData=secret")
+
+        class FakeLink:
+            def __init__(self, client):
+                assert isinstance(client, FakeClient)
+
+            async def captcha(self, name):
+                assert name == "xigua"
+                return "captcha-token"
+
+        class FakeAsyncClient:
+            def __init__(self, **kwargs):
+                assert kwargs["http2"] is True
+
+            async def __aenter__(self):
+                return self
+
+            async def __aexit__(self, exc_type, exc, tb):
+                return False
+
+            async def post(self, url, headers, json):
+                posts.append({"url": url, "headers": headers, "json": json})
+                return SimpleNamespace(status_code=200, text="ok")
+
+        message = SimpleNamespace(
+            caption=None,
+            text="冰镇西瓜",
+            reply_markup=SimpleNamespace(
+                inline_keyboard=[
+                    [
+                        SimpleNamespace(
+                            text="签到",
+                            web_app=SimpleNamespace(url="https://raw.example/app"),
+                        )
+                    ]
+                ]
+            ),
+        )
+        checkin = xigua_module.XiguaCheckin.__new__(xigua_module.XiguaCheckin)
+        checkin.client = FakeClient()
+        checkin.log = DummyLogger()
+
+        monkeypatch.setattr(xigua_module, "Link", FakeLink)
+        monkeypatch.setattr(xigua_module.httpx, "AsyncClient", FakeAsyncClient)
+
+        await xigua_module.XiguaCheckin.message_handler(checkin, checkin.client, message)
+
+        assert posts == [
+            {
+                "url": "https://auth.example/api/checkin/verify",
+                "headers": {
+                    "Content-Type": "application/json",
+                    "Referer": "https://auth.example/app#tgWebAppData=secret",
+                    "Origin": "https://auth.example/",
+                    "User-Agent": posts[0]["headers"]["User-Agent"],
+                },
+                "json": {"user_id": "123", "token": "captcha-token"},
+            }
+        ]
+
+    asyncio.run(run_test())
 
 
 def test_embyboss_register_handles_empty_callback_answer_message(monkeypatch):
