@@ -401,7 +401,16 @@ def test_registrar_shutdown_cancels_running_tasks():
     asyncio.run(run_test())
 
 
-def test_config_export_and_backup_api_uses_encrypted_account_data(tmp_path, api_app):
+def test_config_export_and_backup_api_uses_encrypted_account_data(tmp_path, api_app, monkeypatch):
+    notifier_refreshes = 0
+
+    async def fake_refresh_notifier():
+        nonlocal notifier_refreshes
+        notifier_refreshes += 1
+
+    from embykeeperapi.routers import config as config_router
+
+    monkeypatch.setattr(config_router.config_service, "refresh_notifier", fake_refresh_notifier)
     config.basedir = tmp_path
     config_file = tmp_path / "config.toml"
     config_file.write_text(
@@ -494,6 +503,7 @@ def test_config_export_and_backup_api_uses_encrypted_account_data(tmp_path, api_
     assert restored["safety_backup_dir"]
     assert 'interval_days = "7"' in config_file.read_text(encoding="utf-8")
     assert set(bridge.web_accounts.get_all()) == {"alice@example.com"}
+    assert notifier_refreshes == 1
 
     second_backup_response = asyncio.run(_asgi_request(api_app, "POST", "/api/config/backup"))
 

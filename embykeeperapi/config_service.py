@@ -691,6 +691,7 @@ class ConfigService:
 
         await self.reload_restored_runtime(restored_files)
         await self.refresh_automation_runtime()
+        await self.refresh_notifier()
         return ConfigRestoreResponse(
             status="restored",
             backup_dir=str(backup_dir),

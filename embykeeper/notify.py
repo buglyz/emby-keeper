@@ -121,8 +121,20 @@ async def start_notifier():
             return None
 
         logger.info("关键消息将通过 Apprise 推送.")
-        next_stream_log = AppriseStream(uri=notifier.apprise_uri)
-        next_stream_msg = AppriseStream(uri=notifier.apprise_uri)
+        next_stream_log = None
+        next_stream_msg = None
+        try:
+            next_stream_log = AppriseStream(uri=notifier.apprise_uri)
+            next_stream_msg = AppriseStream(uri=notifier.apprise_uri)
+        except Exception as e:
+            logger.warning(f"Apprise 消息通知流初始化失败, 已忽略: {type(e).__name__}")
+            if next_stream_log is not None:
+                await _close_notifier_stream(next_stream_log, "日志")
+            if next_stream_msg is not None:
+                await _close_notifier_stream(next_stream_msg, "即时")
+            if not change_handle_notifier:
+                change_handle_notifier = config.on_change("notifier", _handle_config_change)
+            return None
         if not _notifier_stream_ready(next_stream_log) or not _notifier_stream_ready(next_stream_msg):
             await _close_notifier_stream(next_stream_log, "日志")
             await _close_notifier_stream(next_stream_msg, "即时")

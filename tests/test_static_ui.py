@@ -352,6 +352,13 @@ def test_frontend_exposes_registrar_quick_run_page():
     assert "选择全部启用账号" in html
     assert "清空选择" in html
     assert "已选择 {{ selectedAccountCount }} 个 / 可用 {{ enabledAccountCount }} 个" in html
+    assert '@update:value="handleAccountSelectionChange"' in html
+    assert "const accountSelectionTouched = ref(false)" in html
+    assert "normalizeSelectedAccountIds();" in html
+    assert "if (!accountSelectionTouched.value && !form.telegram_account_ids.length)" in html
+    assert "function handleAccountSelectionChange(value)" in html
+    assert "accountSelectionTouched.value = true" in html
+    assert "form.telegram_account_ids = form.telegram_account_ids.filter((accountId) => enabledIds.has(accountId))" in html
     assert "generatePassword" in html
     assert "重试间隔" in html
     assert "最长运行" in html

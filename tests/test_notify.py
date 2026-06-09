@@ -127,6 +127,57 @@ def test_start_notifier_returns_none_when_apprise_stream_is_not_ready(tmp_path, 
     asyncio.run(run_test())
 
 
+def test_start_notifier_cleans_partial_streams_when_apprise_init_fails(tmp_path, monkeypatch):
+    class FakeStream:
+        def __init__(self, uri):
+            if streams:
+                raise RuntimeError("stream init failed")
+            self.uri = uri
+            self.closed = False
+            self.joined = False
+            streams.append(self)
+
+        def write(self, message):
+            pass
+
+        def close(self):
+            self.closed = True
+
+        async def join(self):
+            self.joined = True
+
+    streams = []
+
+    async def run_test():
+        config.basedir = tmp_path
+        config.set(
+            Config(
+                notifier={
+                    "enabled": True,
+                    "method": "apprise",
+                    "apprise_uri": "broken://notifier",
+                }
+            )
+        )
+        notify.change_handle_notifier = None
+        monkeypatch.setattr(notify, "AppriseStream", FakeStream)
+
+        try:
+            assert await notify.start_notifier() is None
+            assert notify.stream_log is None
+            assert notify.stream_msg is None
+            assert len(streams) == 1
+            assert streams[0].closed is True
+            assert streams[0].joined is True
+            assert notify.change_handle_notifier is not None
+        finally:
+            _cleanup_change_handle()
+            await notify._stop_notifier()
+            config.reset()
+
+    asyncio.run(run_test())
+
+
 def test_stop_notifier_ignores_missing_logger_handlers():
     async def run_test():
         notify.handler_log_id = 999999
