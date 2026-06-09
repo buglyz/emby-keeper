@@ -1,5 +1,6 @@
 import asyncio
 from datetime import datetime, timezone
+from types import SimpleNamespace
 
 import pytest
 from fastapi import HTTPException
@@ -220,12 +221,11 @@ def test_run_history_supports_offset_and_status_filter(tmp_path):
             third.start()
             third.finish(RunStatus.SUCCESS)
 
-            assert [item.run_id for item in await list_runs(limit=1, offset=1, user="tester")] == [
-                "RUN002"
+            assert [item.run_id for item in await list_runs(limit=1, offset=1, user="tester")] == ["RUN002"]
+            assert [item.run_id for item in await list_runs(limit=10, status="success", user="tester")] == [
+                "RUN003",
+                "RUN001",
             ]
-            assert [
-                item.run_id for item in await list_runs(limit=10, status="success", user="tester")
-            ] == ["RUN003", "RUN001"]
         finally:
             _running_runs.clear()
             config.reset()
@@ -345,6 +345,36 @@ def test_health_status_reports_runtime_state(tmp_path, monkeypatch):
         assert response.notifier_configured is True
         assert response.notifier_last_status == "error"
         assert response.notifier_last_error == "SendFailed"
+
+    asyncio.run(run_test())
+    config.reset()
+
+
+def test_health_status_reports_dynamic_scheduler_tasks(tmp_path):
+    async def run_test():
+        class WebAccounts:
+            def get_all(self):
+                return {}
+
+        config.basedir = tmp_path
+        config.set(Config())
+        bridge.web_accounts = WebAccounts()
+        scheduler_task = asyncio.create_task(asyncio.sleep(60))
+        bridge._scheduler_task = None
+        bridge.emby_manager = SimpleNamespace(
+            _schedulers={},
+            _scheduler_tasks={"unified": scheduler_task},
+            _running=set(),
+            _tasks={},
+        )
+
+        try:
+            response = await get_health_status(user="tester")
+
+            assert response.scheduler_task_running is True
+        finally:
+            scheduler_task.cancel()
+            await asyncio.gather(scheduler_task, return_exceptions=True)
 
     asyncio.run(run_test())
     config.reset()

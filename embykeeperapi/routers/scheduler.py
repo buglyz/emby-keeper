@@ -77,6 +77,16 @@ def _latest_run():
     return runs[0] if runs else None
 
 
+def _scheduler_task_running() -> bool:
+    scheduler_task = getattr(bridge, "_scheduler_task", None)
+    if scheduler_task and not scheduler_task.done():
+        return True
+
+    emby_manager = getattr(bridge, "emby_manager", None)
+    scheduler_tasks = getattr(emby_manager, "_scheduler_tasks", {}) if emby_manager else {}
+    return any(task and not task.done() for task in scheduler_tasks.values())
+
+
 def _normalize_run_status_filter(status: str):
     if status is None:
         return None
@@ -190,7 +200,6 @@ async def get_health_status(user: str = Depends(get_current_user)):
     )
     writable_target = config_file if config_file.exists() else config_file.parent
     notifier = config._cache.notifier if config._cache and config._cache.notifier else None
-    scheduler_task = getattr(bridge, "_scheduler_task", None)
     latest_run = _latest_run()
 
     config_writable = writable_target.exists() and os.access(writable_target, os.W_OK)
@@ -215,7 +224,7 @@ async def get_health_status(user: str = Depends(get_current_user)):
         status="ok" if healthy else "degraded",
         config_loaded=bool(config._cache),
         scheduler_initialized=bridge.web_accounts is not None and bridge.emby_manager is not None,
-        scheduler_task_running=bool(scheduler_task and not scheduler_task.done()),
+        scheduler_task_running=_scheduler_task_running(),
         account_count=len(accounts),
         schedule_count=len(schedules),
         config_writable=config_writable,
@@ -278,8 +287,7 @@ async def list_runs(
     offset = max(offset, 0)
     status = _normalize_run_status_filter(status)
     return [
-        _run_to_history_item(run)
-        for run in RunContext.list_recent(limit=limit, offset=offset, status=status)
+        _run_to_history_item(run) for run in RunContext.list_recent(limit=limit, offset=offset, status=status)
     ]
 
 

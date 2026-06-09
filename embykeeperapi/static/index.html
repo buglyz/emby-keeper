@@ -497,8 +497,8 @@
 
             <div class="form-section-title">调度设置</div>
             <n-space vertical :size="12">
-              <n-input v-model:value="form.interval_days" placeholder="保活间隔天数 (如 7,12 或 7)" />
-              <n-input v-model:value="form.time_range" placeholder="保活时间范围 (如 11:00AM,11:00PM)" />
+              <n-input v-model:value="form.interval_days" placeholder="保活间隔天数 (如 &lt;7,12&gt; 或 7)" />
+              <n-input v-model:value="form.time_range" placeholder="保活时间范围 (如 &lt;11:00AM,11:00PM&gt;)" />
             </n-space>
 
             <div class="form-section-title">高级设置</div>
@@ -1062,8 +1062,8 @@
             </div>
             <n-space vertical :size="12">
               <div class="form-grid">
-                <n-input v-model:value="previewForm.interval_days" placeholder="间隔天数，如 7,12" />
-                <n-input v-model:value="previewForm.time_range" placeholder="时间范围，如 11:00AM,11:00PM" />
+                <n-input v-model:value="previewForm.interval_days" placeholder="间隔天数，如 &lt;7,12&gt;" />
+                <n-input v-model:value="previewForm.time_range" placeholder="时间范围，如 &lt;11:00AM,11:00PM&gt;" />
               </div>
               <n-space>
                 <n-button :loading="previewLoading" @click="handlePreview">预览</n-button>

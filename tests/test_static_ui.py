@@ -139,10 +139,10 @@ def test_login_form_trims_credentials_before_exchange():
 def test_runtime_template_placeholders_avoid_raw_angle_brackets():
     html = read_static_source()
 
-    assert 'placeholder="保活间隔天数 (如 7,12 或 7)"' in html
-    assert 'placeholder="保活时间范围 (如 11:00AM,11:00PM)"' in html
-    assert 'placeholder="间隔天数，如 7,12"' in html
-    assert 'placeholder="时间范围，如 11:00AM,11:00PM"' in html
+    assert 'placeholder="保活间隔天数 (如 &lt;7,12&gt; 或 7)"' in html
+    assert 'placeholder="保活时间范围 (如 &lt;11:00AM,11:00PM&gt;)"' in html
+    assert 'placeholder="间隔天数，如 &lt;7,12&gt;"' in html
+    assert 'placeholder="时间范围，如 &lt;11:00AM,11:00PM&gt;"' in html
     assert 'placeholder="保活间隔天数 (如 <7,12> 或 7)"' not in html
     assert 'placeholder="保活时间范围 (如 <11:00AM,11:00PM>)"' not in html
     assert 'placeholder="间隔天数，如 <7,12>"' not in html
@@ -233,8 +233,7 @@ def test_frontend_remote_cdn_uses_jsdelivr_fallback():
     assert "window.EK_LOAD_CDN(window.EK_CDN_ORIGIN,'/npm/vue@3/dist/vue.global.prod.js')" in html
     assert "window.EK_LOAD_CDN(window.EK_CDN_ORIGIN,'/npm/naive-ui@2/dist/index.prod.js')" in html
     assert (
-        "window.EK_LOAD_CDN(window.EK_CDN_ORIGIN,'/npm/vue-router@4/dist/vue-router.global.prod.js')"
-        in html
+        "window.EK_LOAD_CDN(window.EK_CDN_ORIGIN,'/npm/vue-router@4/dist/vue-router.global.prod.js')" in html
     )
 
 
@@ -358,7 +357,10 @@ def test_frontend_exposes_registrar_quick_run_page():
     assert "if (!accountSelectionTouched.value && !form.telegram_account_ids.length)" in html
     assert "function handleAccountSelectionChange(value)" in html
     assert "accountSelectionTouched.value = true" in html
-    assert "form.telegram_account_ids = form.telegram_account_ids.filter((accountId) => enabledIds.has(accountId))" in html
+    assert (
+        "form.telegram_account_ids = form.telegram_account_ids.filter((accountId) => enabledIds.has(accountId))"
+        in html
+    )
     assert "generatePassword" in html
     assert "重试间隔" in html
     assert "最长运行" in html
@@ -371,7 +373,7 @@ def test_frontend_exposes_registrar_quick_run_page():
     assert "isIntegerInRange(form.interval_seconds, 1, 60)" in html
     assert "Bot 用户名格式不正确" in html
     assert "replace(/\\/+$/, '')" in html
-    assert ":type=\"runAlertType\"" in html
+    assert ':type="runAlertType"' in html
     assert "runStatusInfo.value = '正在取消抢注任务'" in html
     assert "const isCompact = ref(window.innerWidth < 760)" in html
     assert "window.addEventListener('resize', updateCompactState)" in html
@@ -382,7 +384,7 @@ def test_frontend_exposes_registrar_quick_run_page():
     assert "stopRunPolling();" in html
     assert "canCancelLastRun" in html
     assert "注册账号和注册密码不能包含空白字符" in html
-    assert "show-password-on=\"click\"" in html
+    assert 'show-password-on="click"' in html
     assert "form.password = ''" in html
     assert "{ path: 'registrar', component: RegistrarPage }" in html
     assert "$router.push('/registrar')" in html
@@ -474,9 +476,9 @@ def test_frontend_uses_console_shell_and_direct_spa_route_mapping():
     assert "function directRouteHashUrl(route)" in html
     assert "window.history.replaceState(window.history.state, '', directRouteHashUrl(directRoute))" in html
     assert "Capture direct SPA routes before hash history normalizes an empty hash to #/." in html
-    assert html.index("const directRoute = !window.location.hash ? directRouteFromPathname() : null") < html.index(
-        "VueRouter.createRouter"
-    )
+    assert html.index(
+        "const directRoute = !window.location.hash ? directRouteFromPathname() : null"
+    ) < html.index("VueRouter.createRouter")
     assert "VueRouter.createWebHashHistory(window.EK_BASE_PATH || '/')" in html
     assert "router.replace(directRoute)" in html
 

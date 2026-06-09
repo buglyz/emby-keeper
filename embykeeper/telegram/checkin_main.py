@@ -284,9 +284,20 @@ class CheckinerManager:
 
     async def run_account(self, ctx: RunContext, account: TelegramAccount, instant: bool = False):
         """Run checkin for a single account"""
-        async with ClientsSession([account]) as clients:
-            async for a, client in clients:
-                await self._run_account(ctx, a, client, instant)
+        ctx = ctx or RunContext.prepare(f"{account.phone} 账号签到")
+        if ctx.status == RunStatus.PENDING:
+            ctx.start(RunStatus.RUNNING)
+        try:
+            async with ClientsSession([account]) as clients:
+                async for a, client in clients:
+                    return await self._run_account(ctx, a, client, instant)
+        except asyncio.CancelledError:
+            if not ctx._finished.is_set():
+                ctx.finish(RunStatus.CANCELLED, "任务被取消")
+            raise
+        if not ctx._finished.is_set():
+            return ctx.finish(RunStatus.FAIL, "无法连接 Telegram 账号")
+        return ctx
 
     def schedule_site(
         self, ctx: RunContext, at: datetime, account: TelegramAccount, site: str, reschedule: bool = False
@@ -370,6 +381,9 @@ class CheckinerManager:
         self, ctx: RunContext, account: TelegramAccount, client: Client, instant: bool = False
     ):
         """Run checkins for a single user"""
+        ctx = ctx or RunContext.prepare(f"{account.phone} 账号签到")
+        if ctx.status == RunStatus.PENDING:
+            ctx.start(RunStatus.RUNNING)
         log = logger.bind(username=client.me.full_name)
 
         # Get checkin classes based on account config or global config
@@ -386,7 +400,7 @@ class CheckinerManager:
         if not clses:
             if site is not None:  # Only show warning if sites were specified but none were valid
                 log.warning("没有任何有效签到站点, 签到将跳过.")
-            return
+            return ctx.finish(RunStatus.NONEED, "没有任何有效签到站点")
 
         config_to_use = account.checkiner_config or config.checkiner or CheckinerConfig()
         sem = asyncio.Semaphore(config_to_use.concurrency or 1)
@@ -424,7 +438,15 @@ class CheckinerManager:
         if names:
             log.info(f'已启用签到器: {", ".join(names)}')
 
-        results: List[Tuple[BaseBotCheckin, RunContext]] = await asyncio.gather(*tasks)
+        if not tasks:
+            return ctx.finish(RunStatus.NONEED, "没有需要执行的签到站点")
+
+        try:
+            results: List[Tuple[BaseBotCheckin, RunContext]] = await asyncio.gather(*tasks)
+        except asyncio.CancelledError:
+            if not ctx._finished.is_set():
+                ctx.finish(RunStatus.CANCELLED, "任务被取消")
+            raise
 
         failed = []
         ignored = []
@@ -462,8 +484,16 @@ class CheckinerManager:
         if failed:
             msg = "签到部分失败" if successful else "签到失败"
             log.bind(log=True).error(f"{msg} ({spec}): {', '.join(failed)}")
+            return ctx.finish(RunStatus.FAIL, msg)
         else:
             log.bind(log=True).info(f"签到成功 ({spec}).")
+            if successful:
+                return ctx.finish(RunStatus.SUCCESS, "签到成功")
+            if checked:
+                return ctx.finish(RunStatus.NONEED, "今日已签到")
+            if ignored:
+                return ctx.finish(RunStatus.IGNORE, "签到已跳过")
+            return ctx.finish(RunStatus.NONEED, "没有需要执行的签到站点")
 
     def new_ctx(self):
         now = datetime.now()

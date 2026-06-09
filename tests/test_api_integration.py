@@ -459,7 +459,7 @@ def test_config_export_and_backup_api_uses_encrypted_account_data(tmp_path, api_
     config.basedir = tmp_path
     config_file = tmp_path / "config.toml"
     config_file.write_text(
-        '\n'.join(
+        "\n".join(
             [
                 'mongodb = "mongodb://user:password@example.com/db"',
                 "",
@@ -531,7 +531,7 @@ def test_config_export_and_backup_api_uses_encrypted_account_data(tmp_path, api_
     assert backups[0]["id"] == backup_dir.name
     assert sorted(backups[0]["files"]) == ["config.toml", "web_accounts.json"]
 
-    config_file.write_text("[emby]\ninterval_days = \"99\"\n", encoding="utf-8")
+    config_file.write_text('[emby]\ninterval_days = "99"\n', encoding="utf-8")
     bridge.web_accounts.add(
         "bob@example.com",
         {"url": "https://example.org", "username": "bob"},
@@ -604,7 +604,7 @@ def test_config_backup_rejects_symlink_backup_root(tmp_path, api_app):
 def test_config_restore_stages_files_before_overwriting_current_config(tmp_path, api_app, monkeypatch):
     config.basedir = tmp_path
     config_file = tmp_path / "config.toml"
-    config_file.write_text("[emby]\ninterval_days = \"7\"\n", encoding="utf-8")
+    config_file.write_text('[emby]\ninterval_days = "7"\n', encoding="utf-8")
     config._conf_file = config_file
     config.set(Config())
     bridge.web_accounts = WebAccountData(tmp_path)
@@ -613,7 +613,7 @@ def test_config_restore_stages_files_before_overwriting_current_config(tmp_path,
     backup_response = asyncio.run(_asgi_request(api_app, "POST", "/api/config/backup"))
     backup_dir = Path(backup_response.json()["backup_dir"])
 
-    config_file.write_text("[emby]\ninterval_days = \"99\"\n", encoding="utf-8")
+    config_file.write_text('[emby]\ninterval_days = "99"\n', encoding="utf-8")
     original_copy2 = __import__("shutil").copy2
 
     def fail_web_accounts_stage(source, target):
@@ -634,7 +634,7 @@ def test_config_restore_stages_files_before_overwriting_current_config(tmp_path,
 def test_config_restore_cleans_current_temp_file_on_stage_failure(tmp_path, api_app, monkeypatch):
     config.basedir = tmp_path
     config_file = tmp_path / "config.toml"
-    config_file.write_text("[emby]\ninterval_days = \"7\"\n", encoding="utf-8")
+    config_file.write_text('[emby]\ninterval_days = "7"\n', encoding="utf-8")
     config._conf_file = config_file
     config.set(Config())
     bridge.web_accounts = WebAccountData(tmp_path)
@@ -675,3 +675,47 @@ def test_config_backup_list_ignores_symlink_entries(tmp_path, api_app):
 
     assert response.status_code == 200
     assert [item["id"] for item in response.json()] == ["20260101T080000Z"]
+
+
+def test_config_backup_list_rejects_symlink_backup_root(tmp_path, api_app):
+    config.basedir = tmp_path
+    outside = tmp_path / "outside-backups"
+    outside.mkdir()
+    backup_dir = outside / "20260101T080000Z"
+    backup_dir.mkdir()
+    (backup_dir / "config.toml").write_text("[emby]\n", encoding="utf-8")
+    backup_root = tmp_path / "backups"
+    try:
+        backup_root.symlink_to(outside, target_is_directory=True)
+    except OSError:
+        return
+
+    response = asyncio.run(_asgi_request(api_app, "GET", "/api/config/backups"))
+
+    assert response.status_code == 500
+    assert "symlink" in response.json()["detail"]
+
+
+def test_config_restore_rejects_symlink_backup_root(tmp_path, api_app):
+    config.basedir = tmp_path
+    config_file = tmp_path / "config.toml"
+    config_file.write_text('[emby]\ninterval_days = "7"\n', encoding="utf-8")
+    config._conf_file = config_file
+    config.set(Config())
+    outside = tmp_path / "outside-backups"
+    backup_dir = outside / "20260101T080000Z"
+    backup_dir.mkdir(parents=True)
+    (backup_dir / "config.toml").write_text('[emby]\ninterval_days = "99"\n', encoding="utf-8")
+    backup_root = tmp_path / "backups"
+    try:
+        backup_root.symlink_to(outside, target_is_directory=True)
+    except OSError:
+        return
+
+    response = asyncio.run(
+        _asgi_request(api_app, "POST", "/api/config/backups/20260101T080000Z/restore", {"confirm": True})
+    )
+
+    assert response.status_code == 500
+    assert "symlink" in response.json()["detail"]
+    assert 'interval_days = "7"' in config_file.read_text(encoding="utf-8")

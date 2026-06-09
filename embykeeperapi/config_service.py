@@ -18,7 +18,14 @@ from tomlkit import document, dumps, parse
 
 from embykeeper.apprise import AppriseStream
 from embykeeper.config import config as default_config
-from embykeeper.schema import CheckinerConfig, EmbyConfig, NotifierConfig, ProxyConfig, RegistrarConfig, SiteConfig
+from embykeeper.schema import (
+    CheckinerConfig,
+    EmbyConfig,
+    NotifierConfig,
+    ProxyConfig,
+    RegistrarConfig,
+    SiteConfig,
+)
 
 from .automation_runtime import automation_runtime as default_automation_runtime
 from .models import (
@@ -40,7 +47,15 @@ from .validation import validate_schedule_fields
 
 logger = logger.bind(scheme="embykeeperapi")
 REDACTED_VALUE = "***REDACTED***"
-SECRET_CONFIG_KEYS = {"password", "apprise_uri", "mongodb", "token", "access_token", "encrypted_token", "secret"}
+SECRET_CONFIG_KEYS = {
+    "password",
+    "apprise_uri",
+    "mongodb",
+    "token",
+    "access_token",
+    "encrypted_token",
+    "secret",
+}
 SECRET_CONFIG_KEY_PARTS = ("token", "secret", "password", "credential", "apikey", "api_key")
 BACKUP_ID_PATTERN = re.compile(r"^\d{8}T\d{6}Z(?:-\d+)?$")
 BOT_USERNAME_PATTERN = re.compile(r"^[A-Za-z][A-Za-z0-9_]{4,31}$")
@@ -251,9 +266,7 @@ def redact_plain_mapping(value):
         redacted = {}
         for key, item in value.items():
             redacted[key] = (
-                REDACTED_VALUE
-                if is_secret_key(key)
-                else redact_plain_mapping(redact_scalar_value(item))
+                REDACTED_VALUE if is_secret_key(key) else redact_plain_mapping(redact_scalar_value(item))
             )
         return redacted
     if isinstance(value, list):
@@ -322,7 +335,11 @@ class ConfigService:
         )
 
     def config_file_path(self) -> Path:
-        return Path(self.config._conf_file) if self.config._conf_file else Path(self.config.basedir) / "config.toml"
+        return (
+            Path(self.config._conf_file)
+            if self.config._conf_file
+            else Path(self.config.basedir) / "config.toml"
+        )
 
     def web_accounts_file_path(self) -> Path:
         basedir = getattr(self.bridge.web_accounts, "basedir", None)
@@ -335,14 +352,18 @@ class ConfigService:
 
     def prepare_backup_root(self) -> Path:
         backup_root = self.backup_root()
-        if backup_root.is_symlink():
-            raise HTTPException(status_code=500, detail="Backup directory must not be a symlink")
+        self.ensure_backup_root_safe(backup_root)
         try:
             backup_root.mkdir(parents=True, exist_ok=True)
             backup_root.chmod(0o700)
         except OSError as e:
             raise HTTPException(status_code=500, detail=f"Failed to prepare backup directory: {e}")
         return backup_root
+
+    @staticmethod
+    def ensure_backup_root_safe(backup_root: Path):
+        if backup_root.is_symlink():
+            raise HTTPException(status_code=500, detail="Backup directory must not be a symlink")
 
     @staticmethod
     def backup_created_at(backup_id: str):
@@ -355,9 +376,11 @@ class ConfigService:
     def backup_dir_from_id(self, backup_id: str) -> Path:
         if not isinstance(backup_id, str) or not BACKUP_ID_PATTERN.fullmatch(backup_id):
             raise HTTPException(status_code=404, detail="Backup not found")
-        backup_dir = self.backup_root() / backup_id
+        backup_root = self.backup_root()
+        self.ensure_backup_root_safe(backup_root)
+        backup_dir = backup_root / backup_id
         try:
-            backup_dir.relative_to(self.backup_root())
+            backup_dir.relative_to(backup_root)
         except ValueError:
             raise HTTPException(status_code=404, detail="Backup not found")
         if backup_dir.is_symlink() or not backup_dir.is_dir():
@@ -367,7 +390,9 @@ class ConfigService:
     @staticmethod
     def backup_files(backup_dir: Path) -> List[str]:
         try:
-            return sorted(path.name for path in backup_dir.iterdir() if path.is_file() and not path.is_symlink())
+            return sorted(
+                path.name for path in backup_dir.iterdir() if path.is_file() and not path.is_symlink()
+            )
         except OSError as e:
             raise HTTPException(status_code=500, detail=f"Failed to read backup directory: {e}")
 
@@ -457,7 +482,9 @@ class ConfigService:
                 from .scheduler_bridge import _sanitize_account_record
 
                 if any(_sanitize_account_record(value) is None for value in data.values()):
-                    raise HTTPException(status_code=400, detail="Backup web_accounts.json has invalid accounts")
+                    raise HTTPException(
+                        status_code=400, detail="Backup web_accounts.json has invalid accounts"
+                    )
 
     @staticmethod
     def stage_restore_files(restored):
@@ -646,6 +673,7 @@ class ConfigService:
 
     def list_config_backups(self) -> List[ConfigBackupItem]:
         backup_root = self.backup_root()
+        self.ensure_backup_root_safe(backup_root)
         if not backup_root.is_dir():
             return []
         try:
@@ -714,7 +742,9 @@ class ConfigService:
         if "emby_time_range" in fields_set:
             new_config.emby.time_range = normalize_schedule_text("emby_time_range", req.emby_time_range)
         if "emby_interval_days" in fields_set:
-            new_config.emby.interval_days = normalize_schedule_text("emby_interval_days", req.emby_interval_days)
+            new_config.emby.interval_days = normalize_schedule_text(
+                "emby_interval_days", req.emby_interval_days
+            )
         if "emby_concurrency" in fields_set:
             new_config.emby.concurrency = normalize_optional_positive_int(
                 "emby_concurrency", req.emby_concurrency
@@ -845,9 +875,7 @@ class ConfigService:
             else new_config.registrar.dict(exclude_none=True)
         )
         generated_registrar_sites = [
-            site_name
-            for site_name in (new_config.site.registrar or [])
-            if templ_a_bot(site_name)
+            site_name for site_name in (new_config.site.registrar or []) if templ_a_bot(site_name)
         ]
         if "registrar_schedules" in fields_set:
             registrar_schedules = normalize_registrar_schedules(req.registrar_schedules)
@@ -858,9 +886,7 @@ class ConfigService:
             for site_name, site_config in registrar_schedules:
                 existing_registrar_data[site_name] = site_config
             preserved_sites = [
-                site_name
-                for site_name in (new_config.site.registrar or [])
-                if not templ_a_bot(site_name)
+                site_name for site_name in (new_config.site.registrar or []) if not templ_a_bot(site_name)
             ]
             new_config.site.registrar = preserved_sites + generated_registrar_sites
 
@@ -883,7 +909,11 @@ class ConfigService:
     def get_notifier_config(self) -> NotifierConfigResponse:
         if not self.config._cache:
             return NotifierConfigResponse()
-        notifier = self.config._cache.notifier if self.config._cache and self.config._cache.notifier else NotifierConfig()
+        notifier = (
+            self.config._cache.notifier
+            if self.config._cache and self.config._cache.notifier
+            else NotifierConfig()
+        )
         uri = notifier.apprise_uri
         telegram_chat_id = telegram_chat_id_from_uri(uri)
         if telegram_chat_id:

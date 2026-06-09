@@ -6,7 +6,7 @@ from types import SimpleNamespace
 import pytest
 
 from embykeeper.config import config
-from embykeeper.runinfo import RunContext, RunStatus
+from embykeeper.runinfo import RunContext, RunStatus, _running_runs
 from embykeeper.schema import Config, TelegramAccount
 import embykeeper.telegram.checkin_main as checkin_main
 from embykeeper.telegram.checkiner._base import BaseBotCheckin, BotCheckin
@@ -184,9 +184,7 @@ def test_embyboss_register_handles_empty_callback_answer_message(monkeypatch):
 
         class FakePanel:
             chat = SimpleNamespace(id=100)
-            reply_markup = SimpleNamespace(
-                inline_keyboard=[[SimpleNamespace(text="创建账户")]]
-            )
+            reply_markup = SimpleNamespace(inline_keyboard=[[SimpleNamespace(text="创建账户")]])
 
             async def click(self, button_text):
                 return SimpleNamespace(message=None, alert=False)
@@ -240,6 +238,35 @@ def test_checkiner_reschedule_uses_current_site_name(monkeypatch):
         await manager._run_account(RunContext.prepare("test"), account, client, instant=True)
 
         assert scheduled == [("first", True)]
+
+    asyncio.run(run_test())
+
+
+def test_checkiner_run_account_finishes_parent_context(monkeypatch):
+    async def run_test():
+        manager = CheckinerManager()
+        account = TelegramAccount(phone="+8613800000000", checkiner=True)
+        client = DummyClient()
+        site_cls = type(
+            "SuccessfulCheckin",
+            (DummyCheckin,),
+            {"name": "Successful", "__module__": "embykeeper.telegram.checkiner.successful"},
+        )
+        ctx = RunContext.prepare("checkiner parent")
+
+        try:
+            monkeypatch.setattr(checkin_main, "get_cls", lambda *_args, **_kwargs: [site_cls])
+
+            result = await manager._run_account(ctx, account, client, instant=True)
+
+            assert result is ctx
+            assert ctx.status == RunStatus.SUCCESS
+            assert ctx.status_info == "签到成功"
+            assert ctx.id not in _running_runs
+        finally:
+            if ctx.id in _running_runs:
+                _running_runs.pop(ctx.id, None)
+            await manager.shutdown()
 
     asyncio.run(run_test())
 
