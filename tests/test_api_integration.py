@@ -535,6 +535,27 @@ def test_config_backup_cleans_partial_backup_on_copy_failure(tmp_path, api_app, 
     assert not list((tmp_path / "backups").glob("*"))
 
 
+def test_config_backup_rejects_symlink_backup_root(tmp_path, api_app):
+    config.basedir = tmp_path
+    config_file = tmp_path / "config.toml"
+    config_file.write_text("[emby]\n", encoding="utf-8")
+    config._conf_file = config_file
+    config.set(Config())
+    outside = tmp_path / "outside-backups"
+    outside.mkdir()
+    backup_root = tmp_path / "backups"
+    try:
+        backup_root.symlink_to(outside, target_is_directory=True)
+    except OSError:
+        return
+
+    response = asyncio.run(_asgi_request(api_app, "POST", "/api/config/backup"))
+
+    assert response.status_code == 500
+    assert "symlink" in response.json()["detail"]
+    assert not list(outside.iterdir())
+
+
 def test_config_restore_stages_files_before_overwriting_current_config(tmp_path, api_app, monkeypatch):
     config.basedir = tmp_path
     config_file = tmp_path / "config.toml"

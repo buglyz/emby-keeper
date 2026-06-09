@@ -104,7 +104,7 @@
             <n-alert v-if="errorMsg" type="error" :bordered="false" style="margin-bottom:16px">{{ errorMsg }}</n-alert>
             <n-spin :show="loadingMethods">
               <n-alert v-if="authMethodsLoaded && !hasAuthMethod" type="warning" :bordered="false">
-                当前服务未配置 WebUI 登录方式。
+                当前服务未配置 WebUI 登录方式。请设置 EK_TOKEN 或 EK_WEBPASS 后重启服务。
               </n-alert>
               <n-tabs v-else v-model:value="activeTab" type="segment" animated>
                 <n-tab-pane v-if="hasToken" name="token" tab="Token 登录">

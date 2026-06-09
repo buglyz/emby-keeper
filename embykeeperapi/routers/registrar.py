@@ -127,8 +127,10 @@ async def shutdown_registrar_tasks():
     for task in tasks:
         try:
             await task
-        except (asyncio.CancelledError, Exception):
+        except asyncio.CancelledError:
             pass
+        except Exception as e:
+            logger.warning(f"Registrar task failed during shutdown: {format_exception_summary(e)}")
 
 
 async def _run_quick_register(

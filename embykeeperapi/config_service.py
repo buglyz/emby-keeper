@@ -335,6 +335,8 @@ class ConfigService:
 
     def prepare_backup_root(self) -> Path:
         backup_root = self.backup_root()
+        if backup_root.is_symlink():
+            raise HTTPException(status_code=500, detail="Backup directory must not be a symlink")
         try:
             backup_root.mkdir(parents=True, exist_ok=True)
             backup_root.chmod(0o700)

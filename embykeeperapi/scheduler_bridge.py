@@ -803,8 +803,10 @@ class SchedulerBridge:
             self._scheduler_task.cancel()
             try:
                 await self._scheduler_task
-            except (asyncio.CancelledError, Exception):
+            except asyncio.CancelledError:
                 pass
+            except Exception as e:
+                logger.warning(f"Scheduler task failed during shutdown: {type(e).__name__}")
 
         tasks = list(self._running_tasks.values())
         for task in tasks:
@@ -812,13 +814,15 @@ class SchedulerBridge:
         for task in tasks:
             try:
                 await task
-            except (asyncio.CancelledError, Exception):
+            except asyncio.CancelledError:
                 pass
+            except Exception as e:
+                logger.warning(f"Watch task failed during shutdown: {type(e).__name__}")
         if self.emby_manager:
             try:
                 await self.emby_manager.shutdown()
-            except Exception:
-                pass
+            except Exception as e:
+                logger.warning(f"Emby manager failed during shutdown: {type(e).__name__}")
 
         self.emby_manager = None
         self.web_accounts = None

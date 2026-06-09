@@ -5,7 +5,6 @@ import tomli as tomllib
 from loguru import logger
 
 from embykeeper.telegram.session import ClientsSession
-from embykeeper.telegram.link import Link
 from embykeeper.cli import AsyncTyper
 from embykeeper.notify import start_notifier
 from embykeeper.config import config
@@ -27,7 +26,7 @@ async def disconnect(config_file: Path):
     print("Sending Test1")
     async with ClientsSession(config.telegram.account[:1]) as clients:
         async for _, client in clients:
-            await Link(client).send_msg("ERROR#Test1")
+            await client.send_message("me", "ERROR#Test1")
             break
     print("Wait for 40 seconds")
     await asyncio.sleep(40)
@@ -36,7 +35,7 @@ async def disconnect(config_file: Path):
     await asyncio.sleep(20)
     async with ClientsSession(config.telegram.account[:1]) as clients:
         async for _, client in clients:
-            await Link(client).send_msg("ERROR#Test1")
+            await client.send_message("me", "ERROR#Test1")
             break
     print("Sent Test2")
 
