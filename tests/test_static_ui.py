@@ -206,6 +206,17 @@ def test_notifier_payload_preserves_existing_telegram_target_without_token():
     assert "修改 Telegram Chat ID 时必须重新输入 Bot Token" in html
 
 
+def test_notifier_secret_fields_are_cleared_after_config_load():
+    html = read_static_source()
+
+    assert (
+        "notifierForm.method = notifierData.value.method === 'telegram' ? 'telegram' : 'apprise';\n"
+        "          notifierForm.apprise_uri = '';\n"
+        "          notifierForm.telegram_bot_token = '';\n"
+        "          notifierForm.telegram_chat_id = notifierData.value.telegram_chat_id || '';"
+    ) in html
+
+
 def test_frontend_fallback_checks_actual_naive_ui_global():
     html = read_static_source()
 

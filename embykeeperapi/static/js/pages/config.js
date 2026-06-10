@@ -287,6 +287,8 @@
           backups.value = await EK.API.listBackups();
           notifierForm.enabled = notifierData.value.enabled;
           notifierForm.method = notifierData.value.method === 'telegram' ? 'telegram' : 'apprise';
+          notifierForm.apprise_uri = '';
+          notifierForm.telegram_bot_token = '';
           notifierForm.telegram_chat_id = notifierData.value.telegram_chat_id || '';
         } catch (e) { message.error(e.message); }
         finally { loading.value = false; }
