@@ -1,7 +1,7 @@
 from datetime import datetime
 from typing import List, Optional, Union
 
-from pydantic import BaseModel, Field, StrictInt
+from pydantic import BaseModel, Field, StrictBool, StrictInt
 
 WatchTime = Union[StrictInt, List[StrictInt]]
 
@@ -42,11 +42,13 @@ class EmbyServerCreate(BaseModel):
     time: Optional[WatchTime] = Field(
         default_factory=lambda: [300, 600], description="Watch duration range (seconds)"
     )
-    allow_multiple: Optional[bool] = Field(default=True, description="Allow playing multiple videos")
-    allow_stream: Optional[bool] = Field(default=False, description="Allow streaming when no length info")
-    use_proxy: Optional[bool] = Field(default=True, description="Use configured proxy")
+    allow_multiple: Optional[StrictBool] = Field(default=True, description="Allow playing multiple videos")
+    allow_stream: Optional[StrictBool] = Field(
+        default=False, description="Allow streaming when no length info"
+    )
+    use_proxy: Optional[StrictBool] = Field(default=True, description="Use configured proxy")
     play_id: Optional[str] = Field(default=None, description="Specific video ID to play")
-    enabled: Optional[bool] = Field(default=True, description="Whether this account is enabled")
+    enabled: Optional[StrictBool] = Field(default=True, description="Whether this account is enabled")
     interval_days: Optional[str] = Field(default=None, description="Per-account interval override")
     time_range: Optional[str] = Field(default=None, description="Per-account time range override")
     # Advanced settings
@@ -67,11 +69,11 @@ class EmbyServerUpdate(BaseModel):
     password: Optional[str] = None
     name: Optional[str] = None
     time: Optional[WatchTime] = None
-    allow_multiple: Optional[bool] = None
-    allow_stream: Optional[bool] = None
-    use_proxy: Optional[bool] = None
+    allow_multiple: Optional[StrictBool] = None
+    allow_stream: Optional[StrictBool] = None
+    use_proxy: Optional[StrictBool] = None
     play_id: Optional[str] = None
-    enabled: Optional[bool] = None
+    enabled: Optional[StrictBool] = None
     interval_days: Optional[str] = None
     time_range: Optional[str] = None
     useragent: Optional[str] = None
@@ -113,7 +115,7 @@ class EmbyServerResponse(BaseModel):
 
 
 class EmbyServerToggle(BaseModel):
-    enabled: bool
+    enabled: StrictBool
 
 
 # ============ Action Models ============
@@ -231,12 +233,12 @@ class AutomationConfigResponse(BaseModel):
 
 
 class NotifierConfigUpdate(BaseModel):
-    enabled: Optional[bool] = None
+    enabled: Optional[StrictBool] = None
     method: Optional[str] = "apprise"
     apprise_uri: Optional[str] = None
     telegram_bot_token: Optional[str] = None
     telegram_chat_id: Optional[str] = None
-    clear: Optional[bool] = False
+    clear: Optional[StrictBool] = False
 
 
 class NotifierConfigResponse(BaseModel):
@@ -333,7 +335,7 @@ class ConfigBackupItem(BaseModel):
 
 
 class ConfigRestoreRequest(BaseModel):
-    confirm: bool = False
+    confirm: StrictBool = False
 
 
 class ConfigRestoreResponse(BaseModel):
