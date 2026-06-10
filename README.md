@@ -165,10 +165,15 @@ emby-keeper/
 │   │   ├── scheduler.py # 调度状态
 │   │   ├── registrar.py # WebUI 一键抢注
 │   │   └── config.py    # 全局配置与自动化配置
-│   └── static/
-│       ├── index.html   # Vue 3 + Naive UI SPA
-│       ├── app-core.js  # 前端 API 与通用工具
-│       └── app-style.css # 前端基础样式
+│   └── static/          # Vue 3 + Naive UI SPA（免构建，模块化）
+│       ├── index.html   # 精简骨架：加载 vendor 运行时与应用模块
+│       ├── css/app.css  # 前端样式
+│       ├── js/
+│       │   ├── util.js   # 通用工具（EK.util）
+│       │   ├── api.js    # 前端 API 客户端（EK.API）
+│       │   ├── router.js # AppLayout + 路由 + 启动
+│       │   └── pages/    # 各页面组件（EK.pages.*）
+│       └── vendor/      # Vue / Naive UI / Vue Router 本地包
 ├── deploy/              # 部署配置
 │   └── docker-compose.yml
 ├── hf/                  # HuggingFace Spaces 配置

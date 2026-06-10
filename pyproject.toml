@@ -49,7 +49,7 @@ zip-safe = false
 include-package-data = true
 
 [tool.setuptools.package-data]
-embykeeperapi = ["static/*", "static/vendor/*"]
+embykeeperapi = ["static/*", "static/vendor/*", "static/css/*", "static/js/*", "static/js/pages/*"]
 
 [tool.setuptools.dynamic]
 dependencies = {file = ["requirements-core.txt"]}
