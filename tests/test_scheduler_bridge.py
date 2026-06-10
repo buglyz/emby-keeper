@@ -1201,6 +1201,47 @@ def test_trigger_watch_many_skips_disabled_and_independent_when_requested(tmp_pa
     asyncio.run(run_test())
 
 
+def test_cancel_global_account_cancels_unified_manager_task(tmp_path):
+    async def run_test():
+        bridge = SchedulerBridge()
+        bridge.web_accounts = WebAccountData(tmp_path)
+        bridge.web_accounts.add("alice@example.com", {"url": "https://a.example.com", "username": "alice"})
+        bridge.web_accounts.add("bob@example.com", {"url": "https://b.example.com", "username": "bob"})
+        bridge.web_accounts.add(
+            "carol@example.com",
+            {
+                "url": "https://c.example.com",
+                "username": "carol",
+                "interval_days": "7",
+            },
+        )
+
+        unified_task = asyncio.create_task(asyncio.sleep(60))
+        bridge.emby_manager = SimpleNamespace(
+            _tasks={"unified": unified_task},
+            _running={"alice@example.com", "bob@example.com", "carol@example.com"},
+            _schedulers={},
+        )
+
+        try:
+            assert bridge.cancel_account_task("alice@example.com") is True
+            assert unified_task.cancelled() or unified_task.cancelling()
+            assert bridge.emby_manager._tasks == {}
+            assert "alice@example.com" not in bridge.emby_manager._running
+            assert "bob@example.com" not in bridge.emby_manager._running
+            assert "carol@example.com" in bridge.emby_manager._running
+            assert bridge.get_account_status("alice@example.com")["is_running"] is False
+            assert bridge.get_account_status("bob@example.com")["last_watch_status"] == "cancelled"
+            assert bridge.get_account_status("carol@example.com")["last_watch_status"] is None
+        finally:
+            try:
+                await unified_task
+            except asyncio.CancelledError:
+                pass
+
+    asyncio.run(run_test())
+
+
 def test_global_schedule_change_reschedules_running_tasks(tmp_path):
     async def run_test():
         bridge = SchedulerBridge()

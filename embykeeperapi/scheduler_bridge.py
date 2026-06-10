@@ -416,16 +416,27 @@ class SchedulerBridge:
         """Cancel a currently running manual or scheduled watch task."""
         cancelled = False
 
+        global_account_ids = [
+            aid
+            for aid, data in (self.web_accounts.get_all() if self.web_accounts else {}).items()
+            if not (data.get("time_range") or data.get("interval_days"))
+        ]
+        cancel_unified_manager_task = account_id in {"global", "unified"}
         if account_id in {"global", "unified"}:
-            account_ids = [
-                aid
-                for aid, data in (self.web_accounts.get_all() if self.web_accounts else {}).items()
-                if not (data.get("time_range") or data.get("interval_days"))
-            ]
+            bridge_account_ids = global_account_ids
+            status_account_ids = global_account_ids
         else:
-            account_ids = [account_id]
+            bridge_account_ids = [account_id]
+            status_account_ids = [account_id]
 
-        for target_account_id in account_ids:
+            if account_id in global_account_ids and self.emby_manager:
+                manager_tasks = getattr(self.emby_manager, "_tasks", {})
+                unified_task = manager_tasks.get("unified")
+                if unified_task and not unified_task.done():
+                    cancel_unified_manager_task = True
+                    status_account_ids = global_account_ids
+
+        for target_account_id in bridge_account_ids:
             task = self._running_tasks.pop(target_account_id, None)
             if task and not task.done():
                 task.cancel()
@@ -434,16 +445,20 @@ class SchedulerBridge:
         if self.emby_manager:
             manager_tasks = getattr(self.emby_manager, "_tasks", {})
             manager_running = getattr(self.emby_manager, "_running", set())
-            task_keys = ["unified"] if account_id in {"global", "unified"} else [account_id]
+            task_keys = ["unified"] if cancel_unified_manager_task else [account_id]
             for task_key in task_keys:
                 task = manager_tasks.pop(task_key, None)
                 if task and not task.done():
                     task.cancel()
                     cancelled = True
-                manager_running.discard(task_key)
+                if task_key == "unified":
+                    for target_account_id in global_account_ids:
+                        manager_running.discard(target_account_id)
+                else:
+                    manager_running.discard(task_key)
 
         if cancelled:
-            for target_account_id in account_ids:
+            for target_account_id in status_account_ids:
                 self._record_status(target_account_id, last_watch_status="cancelled", is_running=False)
         return cancelled
 
