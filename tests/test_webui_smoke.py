@@ -146,9 +146,9 @@ def test_webui_serves_entry_assets_and_accepts_mock_token(monkeypatch):
         index_html = index_response.body.decode("utf-8")
         assert "<title>Emby Keeper</title>" in index_html
         assert '<div id="app"></div>' in index_html
-        assert "window.EK_LOAD_STATIC('app-core.js')" in index_html
+        assert "window.EK_LOAD_STATIC('js/api.js')" in index_html
 
-        asset_response = await _asgi_request(app, "GET", "/static/app-core.js")
+        asset_response = await _asgi_request(app, "GET", "/static/js/api.js")
         assert asset_response.status_code == 200
         assert b"tokenExchange(token)" in asset_response.body
         assert b"verifyToken()" in asset_response.body
@@ -189,9 +189,9 @@ def test_webui_process_serves_entry_and_authenticates_with_mock_token(tmp_path):
         assert index_response.status_code == 200
         index_html = index_response.body.decode("utf-8")
         assert "<title>Emby Keeper</title>" in index_html
-        assert "window.EK_LOAD_STATIC('app-core.js')" in index_html
+        assert "window.EK_LOAD_STATIC('js/api.js')" in index_html
 
-        asset_response = _json_request(f"{base_url}/static/app-core.js")
+        asset_response = _json_request(f"{base_url}/static/js/api.js")
         assert asset_response.status_code == 200
         assert b"tokenExchange(token)" in asset_response.body
 
@@ -228,9 +228,9 @@ def test_webui_process_supports_base_prefix_with_mock_token(tmp_path):
         assert index_response.status_code == 200
         index_html = index_response.body.decode("utf-8")
         assert "<title>Emby Keeper</title>" in index_html
-        assert "window.EK_LOAD_STATIC('app-core.js')" in index_html
+        assert "window.EK_LOAD_STATIC('js/api.js')" in index_html
 
-        asset_response = _json_request(f"{base_url}/static/app-core.js")
+        asset_response = _json_request(f"{base_url}/static/js/api.js")
         assert asset_response.status_code == 200
         assert b"const API_BASE_PATH = getApiBasePath()" in asset_response.body
 

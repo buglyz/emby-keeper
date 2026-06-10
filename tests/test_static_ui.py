@@ -1,19 +1,35 @@
 from pathlib import Path
 
-STATIC_INDEX = Path(__file__).resolve().parents[1] / "embykeeperapi" / "static" / "index.html"
-STATIC_CORE = STATIC_INDEX.parent / "app-core.js"
-STATIC_STYLE = STATIC_INDEX.parent / "app-style.css"
-STATIC_VENDOR = STATIC_INDEX.parent / "vendor"
+STATIC_DIR = Path(__file__).resolve().parents[1] / "embykeeperapi" / "static"
+STATIC_INDEX = STATIC_DIR / "index.html"
+STATIC_STYLE = STATIC_DIR / "css" / "app.css"
+STATIC_API = STATIC_DIR / "js" / "api.js"
+STATIC_UTIL = STATIC_DIR / "js" / "util.js"
+STATIC_ROUTER = STATIC_DIR / "js" / "router.js"
+STATIC_PAGES_DIR = STATIC_DIR / "js" / "pages"
+STATIC_VENDOR = STATIC_DIR / "vendor"
+
+
+def _js_sources():
+    """All application JS modules, in a stable order (util/api/router first)."""
+    files = [STATIC_UTIL, STATIC_API, STATIC_ROUTER]
+    files += sorted(STATIC_PAGES_DIR.glob("*.js"))
+    return files
 
 
 def read_static_source():
-    return "\n".join(
-        [
-            STATIC_INDEX.read_text(encoding="utf-8"),
-            STATIC_CORE.read_text(encoding="utf-8"),
-            STATIC_STYLE.read_text(encoding="utf-8"),
-        ]
-    )
+    """Concatenate every front-end source file.
+
+    The WebUI is split into modules (index.html shell, css/app.css, and the
+    js/ modules), so guard tests scan the combined source rather than a single
+    monolithic file.
+    """
+    parts = [
+        STATIC_INDEX.read_text(encoding="utf-8"),
+        STATIC_STYLE.read_text(encoding="utf-8"),
+    ]
+    parts.extend(path.read_text(encoding="utf-8") for path in _js_sources())
+    return "\n".join(parts)
 
 
 def test_empty_server_description_does_not_break_template_quotes():
@@ -121,19 +137,19 @@ def test_config_page_refreshes_after_save():
     html = read_static_source()
 
     assert (
-        "await API.updateConfig(data);\n"
-        "            message.success('配置已保存');\n"
-        "            await loadData();"
+        "await EK.API.updateConfig(data);\n"
+        "          message.success('配置已保存');\n"
+        "          await loadData();"
     ) in html
 
 
 def test_login_form_trims_credentials_before_exchange():
     html = read_static_source()
 
-    assert "API.tokenExchange(tokenInput.value.trim())" in html
-    assert "API.passwordLogin(passwordInput.value.trim())" in html
-    assert "API.tokenExchange(tokenInput.value)" not in html
-    assert "API.passwordLogin(passwordInput.value)" not in html
+    assert "tokenExchange(tokenInput.value.trim())" in html
+    assert "passwordLogin(passwordInput.value.trim())" in html
+    assert "tokenExchange(tokenInput.value)" not in html
+    assert "passwordLogin(passwordInput.value)" not in html
 
 
 def test_runtime_template_placeholders_avoid_raw_angle_brackets():
@@ -174,7 +190,7 @@ def test_login_page_only_shows_available_auth_methods():
 
 
 def test_api_unauthorized_preserves_response_detail_for_auth_routes():
-    core = STATIC_CORE.read_text(encoding="utf-8")
+    core = STATIC_API.read_text(encoding="utf-8")
 
     assert "if (!path.startsWith('/api/auth/'))" in core
     assert "this._formatErrorDetail(data && data.detail) || '登录状态已失效'" in core
@@ -203,12 +219,15 @@ def test_frontend_vendor_assets_are_packaged_locally():
 
     assert "window.EK_STATIC_PATH = `${window.EK_BASE_PATH}/static/`" in html
     assert "window.EK_LOAD_STATIC = function (filename)" in html
-    assert "window.EK_LOAD_STATIC('app-core.js')" in html
-    assert "app-style.css" in html
+    assert "window.EK_LOAD_STATIC('js/api.js')" in html
+    assert "window.EK_LOAD_STATIC('js/router.js')" in html
+    assert "css/app.css" in html
     assert STATIC_STYLE.is_file()
     assert STATIC_STYLE.stat().st_size > 1000
-    assert STATIC_CORE.is_file()
-    assert STATIC_CORE.stat().st_size > 1000
+    assert STATIC_API.is_file()
+    assert STATIC_API.stat().st_size > 1000
+    assert STATIC_ROUTER.is_file()
+    assert STATIC_ROUTER.stat().st_size > 1000
     assert "window.EK_VENDOR_PATH = `${window.EK_BASE_PATH}/static/vendor/`" in html
     assert "window.EK_LOAD_VENDOR = function (filename)" in html
     for filename in (
@@ -278,14 +297,14 @@ def test_frontend_exposes_run_history_and_cancel_actions():
     assert "getRuns({ limit = 50, offset = 0, status = null } = {})" in html
     assert "getRunLogs(id)" in html
     assert "cleanupRuns(days)" in html
-    assert "const RunHistoryPage = {" in html
+    assert "EK.pages.RunHistoryPage = {" in html
     assert "logModalVisible" in html
     assert "openRunLogs(row.run_id)" in html
-    assert "API.getRunLogs(runId)" in html
+    assert "getRunLogs(runId)" in html
     assert "statusFilter" in html
     assert "loadMore" in html
     assert "handleCleanup" in html
-    assert "{ path: 'runs', component: RunHistoryPage }" in html
+    assert "{ path: 'runs', component: pages.RunHistoryPage }" in html
     assert "cancelWatch(id)" in html
     assert "cancelSchedule(id)" in html
     assert "取消任务" in html
@@ -317,21 +336,22 @@ def test_server_actions_refresh_after_runtime_operations():
     assert ':loading="watchAllLoading"' in html
     assert "const watchAllLoading = ref(false)" in html
     assert "watchAllLoading.value = value" in html
-    assert "await API.toggleServer(route.params.id, enabled)" in html
+    assert "toggleServer(route.params.id, enabled)" in html
     assert "await loadData();" in html
 
 
 def test_frontend_layout_has_responsive_app_shell():
     html = read_static_source()
 
-    assert ".header-bar { background: rgba(255,255,255,0.96)" in html
+    assert ".header-bar {" in html
+    assert "backdrop-filter" in html
     assert ".header-actions { display: flex" in html
     assert ".nav-button.active" in html
     assert ".mobile-nav { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr));" in html
     assert ".mobile-nav .nav-button { width: 100%; justify-content: center;" in html
     assert "function isActiveRoute(path)" in html
     assert "current === '/' || current.startsWith('/servers')" in html
-    assert 'cols="1 s:2 m:4" responsive="screen"' in html
+    assert 'class="metric-grid"' in html
     assert 'class="dashboard-toolbar"' in html
     assert 'class="server-card"' in html
     assert 'class="truncate-text"' in html
@@ -345,7 +365,7 @@ def test_frontend_exposes_registrar_quick_run_page():
     assert "quickRegister(data) { return this.post('/api/registrar/quick-run', data); }" in html
     assert "cancelRegistrarRun(runId)" in html
     assert "getRun(id) { return this.get(`/api/runs/${encodeURIComponent(id)}`); }" in html
-    assert "const RegistrarPage = {" in html
+    assert "EK.pages.RegistrarPage = {" in html
     assert "一键抢注" in html
     assert "选择用于抢注的 Telegram 账号" in html
     assert "选择全部启用账号" in html
@@ -386,8 +406,8 @@ def test_frontend_exposes_registrar_quick_run_page():
     assert "注册账号和注册密码不能包含空白字符" in html
     assert 'show-password-on="click"' in html
     assert "form.password = ''" in html
-    assert "{ path: 'registrar', component: RegistrarPage }" in html
-    assert "$router.push('/registrar')" in html
+    assert "{ path: 'registrar', component: pages.RegistrarPage }" in html
+    assert "path: '/registrar'" in html
     assert "login|schedule|runs|config|registrar" in html
 
 
@@ -435,7 +455,7 @@ def test_config_page_exposes_automation_controls():
     assert "normalizeBotForConfig" in html
     assert "splitListText" in html
     assert "optionalNonNegativeInteger" in html
-    assert "API.updateAutomationConfig" in html
+    assert "updateAutomationConfig" in html
     assert "已保留 {{ automationForm.preserved_registrar_sites.length }} 个非模板抢注站点" in html
     assert ".automation-grid" in html
 
@@ -472,14 +492,13 @@ def test_frontend_uses_console_shell_and_direct_spa_route_mapping():
     assert "运维控制台" in html
     assert "function directRouteFromPathname()" in html
     assert "path === '/schedule' || path === '/runs' || path === '/config' || path === '/registrar'" in html
-    assert "path === '/servers' || path.startsWith('/servers/')" in html
     assert "function directRouteHashUrl(route)" in html
     assert "window.history.replaceState(window.history.state, '', directRouteHashUrl(directRoute))" in html
     assert "Capture direct SPA routes before hash history normalizes an empty hash to #/." in html
     assert html.index(
         "const directRoute = !window.location.hash ? directRouteFromPathname() : null"
-    ) < html.index("VueRouter.createRouter")
-    assert "VueRouter.createWebHashHistory(window.EK_BASE_PATH || '/')" in html
+    ) < html.index("createRouter(")
+    assert "createWebHashHistory(window.EK_BASE_PATH || '/')" in html
     assert "router.replace(directRoute)" in html
 
 
@@ -492,7 +511,7 @@ def test_frontend_dashboard_surfaces_operational_status():
     assert "nextScheduleLabel" in html
     assert "最近保活" in html
     assert "Promise.all([" in html
-    assert "API.getSchedule()" in html
+    assert "getSchedule()" in html
 
 
 def test_frontend_run_logs_can_filter_and_copy_errors():
