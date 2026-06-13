@@ -13,7 +13,7 @@
 - **加密存储** — Token 使用 Fernet 对称加密存储，密钥从环境变量读取
 - **多平台部署** — 支持 HuggingFace Spaces、VPS Docker 一键部署
 
- **多截图**
+ **截图**
 ![截图](https://cfi.ryanvan.com/file/1781352841792_PixPin_2026-06-13_20-09-03.png)
 
 
